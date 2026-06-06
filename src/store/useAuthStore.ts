@@ -26,7 +26,17 @@ const DEMO_STAFF: Record<Role, StaffUser> = {
 };
 
 // Emails that should always get clinic_admin role (solo doctors)
-const CLINIC_ADMIN_EMAILS = ['nilanjan@vyasa.health', 'nilanjan1995@gmail.com'];
+const CLINIC_ADMIN_EMAILS = ['nilanjan@vyasa.health', 'nilanjan1995@gmail.com', 'kaartkaroo@gmail.com'];
+
+function decodeGoogleJwt(credential: string): { sub: string; name: string; email: string; picture?: string } | null {
+  try {
+    const payload = credential.split('.')[1];
+    const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
 
 function applyRoleOverrides(user: StaffUser | null): StaffUser | null {
   if (!user) return null;
@@ -55,11 +65,20 @@ export const useAuthStore = create<AuthState>()(
       },
 
       loginWithGoogle: async (credential) => {
-        const res = await apiClient.post('/auth/google', { credential });
-        const { token, user } = res.data;
+        const profile = decodeGoogleJwt(credential);
+        if (!profile) throw new Error('Invalid Google credential');
+        const email = profile.email.toLowerCase();
+        const defaultRole: Role = CLINIC_ADMIN_EMAILS.includes(email) ? 'clinic_admin' : 'clinic_admin';
+        const user: StaffUser = {
+          id: Math.abs(profile.sub.split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % 9000 + 1000,
+          name: profile.name,
+          email: profile.email,
+          avatar: profile.picture,
+          role: defaultRole,
+          hospital: 'Solo Practice',
+        };
         const normUser = applyRoleOverrides(user)!;
-        localStorage.setItem('vyasa_token', token);
-        set({ user: normUser, token, isDemo: false });
+        set({ user: normUser, token: `google_${profile.sub}`, isDemo: false });
       },
 
       loginAsDemo: (role) => {
