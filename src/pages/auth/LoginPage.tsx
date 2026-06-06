@@ -220,24 +220,15 @@ export default function LoginPage() {
 
             {/* Google login */}
             <div className={cn('flex justify-center', googleLoading && 'opacity-60 pointer-events-none')}>
-              {import.meta.env.VITE_GOOGLE_CLIENT_ID ? (
-                <GoogleLogin
-                  onSuccess={handleGoogleSuccess}
-                  onError={() => setError('backend')}
-                  theme="outline"
-                  size="large"
-                  shape="rectangular"
-                  text="signin_with"
-                  width="368"
-                />
-              ) : (
-                <div className="w-full border border-dashed border-slate-200 rounded-lg py-3 px-4 text-center">
-                  <p className="text-xs text-slate-400">
-                    Google Sign-In not configured —{' '}
-                    <span className="text-teal-600 font-medium">add VITE_GOOGLE_CLIENT_ID to .env</span>
-                  </p>
-                </div>
-              )}
+              <GoogleLogin
+                onSuccess={handleGoogleSuccess}
+                onError={() => setError('backend')}
+                theme="outline"
+                size="large"
+                shape="rectangular"
+                text="signin_with"
+                width="368"
+              />
             </div>
 
             {/* Info note */}
