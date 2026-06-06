@@ -1,0 +1,134 @@
+@import "tailwindcss";
+
+@theme {
+  --color-navy-900: #061120;
+  --color-navy-800: #0a1628;
+  --color-navy-700: #0e1e36;
+  --color-navy-600: #152845;
+  --color-navy-500: #1d3557;
+
+  --color-teal-600: #00968a;
+  --color-teal-500: #00b4a6;
+  --color-teal-400: #00cfc0;
+  --color-teal-300: #5de8de;
+  --color-teal-100: #e0f7f6;
+  --color-teal-50:  #f0fdfc;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+  html { font-family: var(--font-sans); }
+  body {
+    @apply bg-slate-50 text-slate-800 antialiased;
+    margin: 0;
+    font-size: 14px;
+  }
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { @apply bg-slate-300 rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-slate-400; }
+}
+
+@layer components {
+  /* ── Sidebar ── */
+  .sidebar-nav-item {
+    @apply flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium
+           text-slate-300 hover:text-white hover:bg-white/5 transition-colors cursor-pointer select-none;
+  }
+  .sidebar-nav-item.active {
+    @apply text-white;
+    background: rgba(0, 180, 166, 0.2);
+    border-left: 2px solid #00cfc0;
+    padding-left: calc(1rem - 2px);
+  }
+
+  /* ── Cards ── */
+  .card {
+    @apply bg-white rounded-xl border border-slate-200 shadow-sm;
+  }
+  .stat-card {
+    @apply bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex flex-col gap-1;
+  }
+
+  /* ── Badge ── */
+  .badge {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold;
+  }
+
+  /* ── Buttons ── */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg
+           text-sm font-semibold transition-all duration-150 cursor-pointer
+           disabled:opacity-50 disabled:cursor-not-allowed select-none;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold
+           bg-teal-500 text-white hover:bg-teal-600 active:scale-95 shadow-sm
+           transition-all duration-150 cursor-pointer disabled:opacity-50 select-none;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold
+           bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 active:scale-95
+           transition-all duration-150 cursor-pointer disabled:opacity-50 select-none;
+  }
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold
+           bg-red-500 text-white hover:bg-red-600 active:scale-95
+           transition-all duration-150 cursor-pointer disabled:opacity-50 select-none;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold
+           text-slate-600 hover:bg-slate-100 active:scale-95
+           transition-all duration-150 cursor-pointer disabled:opacity-50 select-none;
+  }
+  .btn-sm {
+    @apply !px-3 !py-1.5 !text-xs;
+  }
+
+  /* ── Form ── */
+  .input {
+    @apply w-full px-3 py-2 text-sm border border-slate-200 rounded-lg
+           bg-white placeholder:text-slate-400 focus:outline-none
+           focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500 transition;
+  }
+  .label {
+    @apply block text-xs font-semibold text-slate-600 mb-1 uppercase tracking-wide;
+  }
+
+  /* ── Page headers ── */
+  .page-title    { @apply text-xl font-bold text-slate-900; }
+  .page-subtitle { @apply text-sm text-slate-500 mt-0.5; }
+
+  /* ── Tables ── */
+  .table-wrapper { @apply w-full overflow-x-auto rounded-lg border border-slate-200; }
+  .data-table { @apply w-full text-sm; }
+  .data-table thead tr { @apply bg-slate-50 border-b border-slate-200; }
+  .data-table th {
+    @apply px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap;
+  }
+  .data-table td { @apply px-4 py-3 border-b border-slate-100 text-slate-700; }
+  .data-table tbody tr:last-child td { @apply border-b-0; }
+  .data-table tbody tr:hover td { @apply bg-slate-50/60; }
+
+  /* ── Tabs ── */
+  .tab-bar  { @apply flex gap-1 border-b border-slate-200 mb-5; }
+  .tab-btn  {
+    @apply px-4 py-2.5 text-sm font-medium text-slate-500 border-b-2 border-transparent
+           -mb-px cursor-pointer hover:text-slate-700 transition-colors whitespace-nowrap;
+  }
+  .tab-btn.active { @apply text-teal-600 border-teal-500 font-semibold; }
+
+  /* ── Priority / Status badges ── */
+  .priority-critical { @apply bg-red-100 text-red-700; }
+  .priority-high     { @apply bg-orange-100 text-orange-700; }
+  .priority-medium   { @apply bg-yellow-100 text-yellow-700; }
+  .priority-stable   { @apply bg-slate-100 text-slate-600; }
+
+  .status-active     { @apply bg-emerald-100 text-emerald-700; }
+  .status-pending    { @apply bg-yellow-100 text-yellow-700; }
+  .status-discharged { @apply bg-slate-100 text-slate-600; }
+  .status-critical   { @apply bg-red-100 text-red-700; }
+  .status-admitted   { @apply bg-blue-100 text-blue-700; }
+}
