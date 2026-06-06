@@ -1,31 +1,51 @@
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
+import { AppFooter } from './AppFooter';
+import { MobileBottomNav } from './MobileBottomNav';
 import { ToastContainer } from '@/components/ui/Toast';
 import { useAppStore } from '@/store/useAppStore';
+import { useAuthStore } from '@/store/useAuthStore';
 import { cn } from '@/lib/utils';
 
 export function AppLayout() {
-  const { sidebarCollapsed } = useAppStore();
+  const { sidebarCollapsed, mobileSidebarOpen, closeMobileSidebar } = useAppStore();
+  const { user } = useAuthStore();
+
+  // Roles that get a mobile bottom nav
+  const hasMobileBottomNav = user && ['doctor', 'clinic_admin', 'nurse'].includes(user.role);
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50">
+      {/* Mobile sidebar backdrop */}
+      {mobileSidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-30 lg:hidden"
+          onClick={closeMobileSidebar}
+        />
+      )}
+
       <Sidebar />
 
       <div
         className={cn(
           'flex flex-col flex-1 min-w-0 transition-all duration-200',
-          sidebarCollapsed ? 'ml-16' : 'ml-60'
+          // Desktop: offset by sidebar width
+          'lg:ml-60',
+          sidebarCollapsed && 'lg:ml-16'
         )}
       >
         <Topbar />
         <main className="flex-1 overflow-y-auto">
-          <div className="p-5 min-h-full">
+          {/* Extra bottom padding on mobile so content clears the bottom nav */}
+          <div className={cn('p-4 md:p-5 min-h-full', hasMobileBottomNav && 'pb-20 lg:pb-5')}>
             <Outlet />
           </div>
         </main>
+        <AppFooter />
       </div>
 
+      <MobileBottomNav />
       <ToastContainer />
     </div>
   );

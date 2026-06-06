@@ -15,6 +15,7 @@ interface AuthState {
 
 const DEMO_STAFF: Record<Role, StaffUser> = {
   doctor: { id: 1, name: 'Dr. Arjun Mehta', role: 'doctor', email: 'arjun@vyasa.health', specialty: 'Internal Medicine', department: 'Medicine', hospital: 'Vyasa General Hospital' },
+  clinic_admin: { id: 9, name: 'Dr. Nilanjan Roy', role: 'clinic_admin', email: 'nilanjan@vyasa.health', specialty: 'General Medicine', department: 'OPD', hospital: 'Roy Clinic' },
   nurse: { id: 2, name: 'Priya Sharma', role: 'nurse', email: 'priya@vyasa.health', department: 'ICU' },
   pharmacist: { id: 3, name: 'Ravi Kumar', role: 'pharmacist', email: 'ravi@vyasa.health', department: 'Pharmacy' },
   labtech: { id: 4, name: 'Sunita Rao', role: 'labtech', email: 'sunita@vyasa.health', department: 'Laboratory' },
@@ -24,6 +25,19 @@ const DEMO_STAFF: Record<Role, StaffUser> = {
   patient: { id: 8, name: 'Patient Demo', role: 'patient', email: 'patient@vyasa.health' },
 };
 
+// Emails that should always get clinic_admin role (solo doctors)
+const CLINIC_ADMIN_EMAILS = ['nilanjan@vyasa.health', 'nilanjan1995@gmail.com'];
+
+function applyRoleOverrides(user: StaffUser | null): StaffUser | null {
+  if (!user) return null;
+  const email = (user.email ?? '').toLowerCase();
+  const role = (user.role as string).toLowerCase() as StaffUser['role'];
+  if (CLINIC_ADMIN_EMAILS.includes(email) && role === 'doctor') {
+    return { ...user, role: 'clinic_admin' };
+  }
+  return { ...user, role };
+}
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
@@ -32,18 +46,20 @@ export const useAuthStore = create<AuthState>()(
       isDemo: false,
 
       login: async (username, password, portal) => {
-        const endpoint = portal === 'patient' ? '/patient/login' : '/login';
-        const res = await apiClient.post(endpoint, { username, password });
+        const endpoint = portal === 'patient' ? '/auth/patient-login' : '/auth/login';
+        const res = await apiClient.post(endpoint, { email: username, password });
         const { token, user } = res.data;
+        const normUser = applyRoleOverrides(user)!;
         localStorage.setItem('vyasa_token', token);
-        set({ user, token, isDemo: false });
+        set({ user: normUser, token, isDemo: false });
       },
 
       loginWithGoogle: async (credential) => {
         const res = await apiClient.post('/auth/google', { credential });
         const { token, user } = res.data;
+        const normUser = applyRoleOverrides(user)!;
         localStorage.setItem('vyasa_token', token);
-        set({ user, token, isDemo: false });
+        set({ user: normUser, token, isDemo: false });
       },
 
       loginAsDemo: (role) => {
@@ -52,9 +68,23 @@ export const useAuthStore = create<AuthState>()(
 
       logout: () => {
         localStorage.removeItem('vyasa_token');
+        // Delay import to avoid circular module init order issues
+        import('./useAppStore').then(({ useAppStore }) => useAppStore.getState().resetStore());
         set({ user: null, token: null, isDemo: false });
       },
     }),
-    { name: 'vyasa-auth', partialize: (s) => ({ user: s.user, token: s.token, isDemo: s.isDemo }) }
+    {
+      name: 'vyasa-auth',
+      partialize: (s) => ({ user: s.user, token: s.token, isDemo: s.isDemo }),
+      // Fix any persisted session that has the wrong role
+      onRehydrateStorage: () => (state) => {
+        if (state && !state.isDemo && state.user) {
+          const fixed = applyRoleOverrides(state.user);
+          if (fixed?.role !== state.user.role) {
+            state.user = fixed;
+          }
+        }
+      },
+    }
   )
 );

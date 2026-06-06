@@ -19,6 +19,20 @@ const BedsPage = lazy(() => import('@/pages/admin/BedsPage'));
 const StaffPage = lazy(() => import('@/pages/admin/StaffPage'));
 const BillingPage = lazy(() => import('@/pages/billing/BillingPage'));
 const PlaceholderPage = lazy(() => import('@/pages/shared/PlaceholderPage'));
+const PrescriptionsPage = lazy(() => import('@/pages/doctor/PrescriptionsPage'));
+const LabOrdersPage = lazy(() => import('@/pages/doctor/LabOrdersPage'));
+const AdmitPage = lazy(() => import('@/pages/doctor/AdmitPage'));
+const DischargePage = lazy(() => import('@/pages/doctor/DischargePage'));
+const TriagePage = lazy(() => import('@/pages/doctor/TriagePage'));
+const NetworkPage = lazy(() => import('@/pages/doctor/NetworkPage'));
+const AnalyticsPage = lazy(() => import('@/pages/doctor/AnalyticsPage'));
+const ProfilePage = lazy(() => import('@/pages/shared/ProfilePage'));
+const ConsultPage = lazy(() => import('@/pages/doctor/ConsultPage'));
+const PadSettingsPage = lazy(() => import('@/pages/shared/PadSettingsPage'));
+const SettingsPage = lazy(() => import('@/pages/shared/SettingsPage'));
+const NursePatientsPage = lazy(() => import('@/pages/nurse/NursePatientsPage'));
+const SchedulerPage = lazy(() => import('@/pages/doctor/SchedulerPage'));
+const PublicBookingPage = lazy(() => import('@/pages/public/PublicBookingPage'));
 
 function Spinner() {
   return (
@@ -33,10 +47,13 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   const { isDemo } = useAuthStore();
   const { patients, loadDemo } = useAppStore();
 
-  // Restore demo data after a page refresh (in-memory store is cleared on reload)
+  // Restore demo/sample data after page refresh (in-memory store is cleared on reload)
+  // Also seed sample data for clinic_admin real logins so the app isn't empty
   useEffect(() => {
-    if (isDemo && patients.length === 0) loadDemo();
-  }, [isDemo, patients.length, loadDemo]);
+    if (patients.length === 0 && user && (isDemo || user.role === 'clinic_admin')) {
+      loadDemo(user.name, user.id);
+    }
+  }, [isDemo, patients.length, loadDemo, user?.name, user?.role]);
 
   if (!user) return <Navigate to="/login" replace />;
   return <>{children}</>;
@@ -51,6 +68,7 @@ export default function App() {
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/join" element={<JoinPage />} />
           <Route path="/" element={<Navigate to="/login" replace />} />
+          <Route path="/book/:clinicId" element={<Suspense fallback={<div className="flex items-center justify-center h-screen"><Loader2 className="w-10 h-10 animate-spin text-teal-500" /></div>}><PublicBookingPage /></Suspense>} />
 
           <Route path="/app" element={<RequireAuth><AppLayout /></RequireAuth>}>
             {/* Common redirect */}
@@ -64,19 +82,24 @@ export default function App() {
             <Route path="alerts" element={<Suspense fallback={<Spinner />}><AlertsPage /></Suspense>} />
 
             {/* Nurse */}
+            <Route path="nurse-patients" element={<Suspense fallback={<Spinner />}><NursePatientsPage /></Suspense>} />
             <Route path="vitals" element={<Suspense fallback={<Spinner />}><VitalsPage /></Suspense>} />
             <Route path="mar" element={<Suspense fallback={<Spinner />}><PlaceholderPage title="Medication MAR" /></Suspense>} />
             <Route path="notes" element={<Suspense fallback={<Spinner />}><PlaceholderPage title="Nursing Notes" /></Suspense>} />
 
             {/* Doctor extended */}
-            <Route path="prescriptions" element={<Suspense fallback={<Spinner />}><PlaceholderPage title="All Prescriptions" /></Suspense>} />
-            <Route path="labs" element={<Suspense fallback={<Spinner />}><PlaceholderPage title="Lab Orders" /></Suspense>} />
-            <Route path="triage" element={<Suspense fallback={<Spinner />}><PlaceholderPage title="AI Triage" /></Suspense>} />
-            <Route path="admit" element={<Suspense fallback={<Spinner />}><PlaceholderPage title="Admit / Register Patient" /></Suspense>} />
-            <Route path="discharge" element={<Suspense fallback={<Spinner />}><PlaceholderPage title="Discharge" /></Suspense>} />
-            <Route path="network" element={<Suspense fallback={<Spinner />}><PlaceholderPage title="Doctor Network" /></Suspense>} />
-            <Route path="analytics" element={<Suspense fallback={<Spinner />}><PlaceholderPage title="Analytics" /></Suspense>} />
-            <Route path="profile" element={<Suspense fallback={<Spinner />}><PlaceholderPage title="My Profile" /></Suspense>} />
+            <Route path="prescriptions" element={<Suspense fallback={<Spinner />}><PrescriptionsPage /></Suspense>} />
+            <Route path="labs" element={<Suspense fallback={<Spinner />}><LabOrdersPage /></Suspense>} />
+            <Route path="triage" element={<Suspense fallback={<Spinner />}><TriagePage /></Suspense>} />
+            <Route path="admit" element={<Suspense fallback={<Spinner />}><AdmitPage /></Suspense>} />
+            <Route path="discharge" element={<Suspense fallback={<Spinner />}><DischargePage /></Suspense>} />
+            <Route path="network" element={<Suspense fallback={<Spinner />}><NetworkPage /></Suspense>} />
+            <Route path="analytics" element={<Suspense fallback={<Spinner />}><AnalyticsPage /></Suspense>} />
+            <Route path="profile" element={<Suspense fallback={<Spinner />}><ProfilePage /></Suspense>} />
+            <Route path="consult/:patientId" element={<Suspense fallback={<Spinner />}><ConsultPage /></Suspense>} />
+            <Route path="pad-settings" element={<Suspense fallback={<Spinner />}><PadSettingsPage /></Suspense>} />
+            <Route path="settings" element={<Suspense fallback={<Spinner />}><SettingsPage /></Suspense>} />
+            <Route path="schedule" element={<Suspense fallback={<Spinner />}><SchedulerPage /></Suspense>} />
 
             {/* Pharmacy */}
             <Route path="pharmacy" element={<Suspense fallback={<Spinner />}><PharmacyPage /></Suspense>} />

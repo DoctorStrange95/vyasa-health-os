@@ -1,9 +1,11 @@
 import { create } from 'zustand';
-import type { Patient, Alert, Vitals, Medication, LabOrder, NursingNote, ChatMessage, MAREntry, QueueEntry, Bed, Staff, Bill } from '@/types';
+import { persist } from 'zustand/middleware';
+import type { Patient, Alert, Vitals, Medication, LabOrder, NursingNote, ChatMessage, MAREntry, QueueEntry, Bed, Staff, Bill, VisitRecord, DoctorAvailability, AppointmentEntry, NursingPhoto, BookingSlot } from '@/types';
 
 interface AppState {
   // Data
   patients: Patient[];
+  todayAvailability: DoctorAvailability | null;
   alerts: Alert[];
   vitals: Record<string, Vitals[]>;
   prescriptions: Record<string, Medication[]>;
@@ -15,10 +17,15 @@ interface AppState {
   beds: Bed[];
   staff: Staff[];
   bills: Bill[];
+  visits: Record<string, VisitRecord[]>; // patient visit history
+  appointments: AppointmentEntry[];
+  nursingPhotos: Record<string, NursingPhoto[]>;
+  bookingSlots: BookingSlot[];
 
   // UI state
   activePatientId: string | null;
   sidebarCollapsed: boolean;
+  mobileSidebarOpen: boolean;
   toasts: Toast[];
 
   // Actions
@@ -44,9 +51,21 @@ interface AppState {
   setBills: (b: Bill[]) => void;
   setActivePatient: (id: string | null) => void;
   toggleSidebar: () => void;
+  toggleMobileSidebar: () => void;
+  closeMobileSidebar: () => void;
   showToast: (msg: string, type?: Toast['type']) => void;
   removeToast: (id: string) => void;
-  loadDemo: () => void;
+  addVisit: (v: VisitRecord) => void;
+  updateVisit: (id: string, patch: Partial<VisitRecord>) => void;
+  addAppointment: (a: AppointmentEntry) => void;
+  updateAppointment: (id: string, patch: Partial<AppointmentEntry>) => void;
+  setTodayAvailability: (a: DoctorAvailability | null) => void;
+  assignNurse: (patientId: string, nurseId: number, nurseName: string) => void;
+  addNursingPhoto: (photo: NursingPhoto) => void;
+  addBookingSlot: (slot: BookingSlot) => void;
+  updateBookingSlot: (id: string, patch: Partial<BookingSlot>) => void;
+  loadDemo: (doctorName?: string, doctorId?: number) => void;
+  resetStore: () => void;
 }
 
 export interface Toast {
@@ -153,22 +172,34 @@ const DEMO_STAFF: Staff[] = [
   { id: 6, name: 'Anand Kumar', role: 'nurse', email: 'anand@vyasa.health', phone: '9876500006', department: 'Medicine', shift: 'Night', status: 'off-duty' },
 ];
 
-export const useAppStore = create<AppState>()((set, get) => ({
-  patients: [],
-  alerts: [],
-  vitals: {},
-  prescriptions: {},
-  labOrders: {},
-  nursingNotes: {},
-  chatMessages: {},
-  marEntries: {},
-  queue: [],
-  beds: [],
-  staff: [],
-  bills: [],
-  activePatientId: null,
+const EMPTY_STATE = {
+  patients: [] as Patient[],
+  alerts: [] as Alert[],
+  vitals: {} as Record<string, Vitals[]>,
+  prescriptions: {} as Record<string, Medication[]>,
+  labOrders: {} as Record<string, LabOrder[]>,
+  nursingNotes: {} as Record<string, NursingNote[]>,
+  chatMessages: {} as Record<string, ChatMessage[]>,
+  marEntries: {} as Record<string, MAREntry[]>,
+  queue: [] as QueueEntry[],
+  beds: [] as Bed[],
+  staff: [] as Staff[],
+  bills: [] as Bill[],
+  visits: {} as Record<string, VisitRecord[]>,
+  appointments: [] as AppointmentEntry[],
+  nursingPhotos: {} as Record<string, NursingPhoto[]>,
+  bookingSlots: [] as BookingSlot[],
+  todayAvailability: null as DoctorAvailability | null,
+  activePatientId: null as string | null,
   sidebarCollapsed: false,
-  toasts: [],
+  mobileSidebarOpen: false,
+  toasts: [] as Toast[],
+};
+
+export const useAppStore = create<AppState>()(
+  persist(
+    (set, get) => ({
+  ...EMPTY_STATE,
 
   setPatients: (p) => set({ patients: p }),
   upsertPatient: (p) => set(s => ({
@@ -208,6 +239,8 @@ export const useAppStore = create<AppState>()((set, get) => ({
   setBills: (b) => set({ bills: b }),
   setActivePatient: (id) => set({ activePatientId: id }),
   toggleSidebar: () => set(s => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+  toggleMobileSidebar: () => set(s => ({ mobileSidebarOpen: !s.mobileSidebarOpen })),
+  closeMobileSidebar: () => set({ mobileSidebarOpen: false }),
 
   showToast: (message, type = 'info') => {
     const toastId = id();
@@ -216,23 +249,86 @@ export const useAppStore = create<AppState>()((set, get) => ({
   },
   removeToast: (toastId) => set(s => ({ toasts: s.toasts.filter(t => t.id !== toastId) })),
 
-  loadDemo: () => set({
-    patients: DEMO_PATIENTS,
-    vitals: DEMO_VITALS,
-    prescriptions: DEMO_RX,
-    labOrders: DEMO_LABS,
-    nursingNotes: DEMO_NOTES,
-    chatMessages: DEMO_CHAT,
-    queue: DEMO_QUEUE,
-    beds: DEMO_BEDS,
-    staff: DEMO_STAFF,
-    alerts: [
-      { id: 'A1', patientId: 'P001', patientName: 'Ramesh Kumar', type: 'BP Alert', message: 'BP 178/105 — Hypertensive Urgency', severity: 'critical', time: '2026-06-04T08:00:00', acknowledged: false },
-      { id: 'A2', patientId: 'P002', patientName: 'Sunita Devi', type: 'Sugar Alert', message: 'Blood sugar 450 mg/dL — Critical', severity: 'critical', time: '2026-06-04T08:00:00', acknowledged: false },
-      { id: 'A3', patientId: 'P004', patientName: 'Meena Patel', type: 'SpO2 Alert', message: 'SpO2 91% — Desaturation', severity: 'critical', time: '2026-06-04T08:00:00', acknowledged: false },
-    ],
-  }),
-}));
+  addAppointment: (a) => set(s => ({ appointments: [...s.appointments, a] })),
+  updateAppointment: (id, patch) => set(s => ({ appointments: s.appointments.map(a => a.id === id ? { ...a, ...patch } : a) })),
+  addVisit: (v) => set(s => ({
+    visits: { ...s.visits, [v.patientId]: [v, ...(s.visits[v.patientId] ?? [])] },
+  })),
+  updateVisit: (id, patch) => set(s => ({
+    visits: Object.fromEntries(
+      Object.entries(s.visits).map(([pid, list]) => [
+        pid,
+        list.map(v => v.id === id ? { ...v, ...patch } : v),
+      ])
+    ),
+  })),
+  setTodayAvailability: (a) => set({ todayAvailability: a }),
+  assignNurse: (patientId, nurseId, nurseName) => set(s => ({
+    patients: s.patients.map(p => p.id === patientId ? { ...p, assignedNurseId: nurseId, assignedNurseName: nurseName } : p),
+    queue: s.queue.map(q => q.patientId === patientId ? { ...q, assignedNurse: nurseName } : q),
+  })),
+
+  addNursingPhoto: (photo) => set(s => ({
+    nursingPhotos: { ...s.nursingPhotos, [photo.patientId]: [photo, ...(s.nursingPhotos[photo.patientId] ?? [])] },
+  })),
+  addBookingSlot: (slot) => set(s => ({ bookingSlots: [...s.bookingSlots, slot] })),
+  updateBookingSlot: (id, patch) => set(s => ({ bookingSlots: s.bookingSlots.map(sl => sl.id === id ? { ...sl, ...patch } : sl) })),
+
+  loadDemo: (doctorName?: string, doctorId?: number) => {
+    const doc = doctorName || 'Dr. Arjun Mehta';
+    const docId = doctorId ?? 1;
+    const patients = DEMO_PATIENTS.map(p => ({ ...p, attendingDoctor: doc, attendingDoctorId: docId }));
+    const prescriptions: Record<string, Medication[]> = {};
+    for (const [pid, rxList] of Object.entries(DEMO_RX)) {
+      prescriptions[pid] = rxList.map(rx => ({ ...rx, prescribedBy: doc }));
+    }
+    const queue = DEMO_QUEUE.map(q => ({
+      ...q,
+      assignedDoctor: q.assignedDoctor ? doc : q.assignedDoctor,
+    }));
+    return set({
+      patients,
+      prescriptions,
+      vitals: DEMO_VITALS,
+      labOrders: DEMO_LABS,
+      nursingNotes: DEMO_NOTES,
+      chatMessages: DEMO_CHAT,
+      queue,
+      beds: DEMO_BEDS,
+      staff: DEMO_STAFF,
+      alerts: [
+        { id: 'A1', patientId: 'P001', patientName: 'Ramesh Kumar', type: 'BP Alert', message: 'BP 178/105 — Hypertensive Urgency', severity: 'critical', time: '2026-06-04T08:00:00', acknowledged: false },
+        { id: 'A2', patientId: 'P002', patientName: 'Sunita Devi', type: 'Sugar Alert', message: 'Blood sugar 450 mg/dL — Critical', severity: 'critical', time: '2026-06-04T08:00:00', acknowledged: false },
+        { id: 'A3', patientId: 'P004', patientName: 'Meena Patel', type: 'SpO2 Alert', message: 'SpO2 91% — Desaturation', severity: 'critical', time: '2026-06-04T08:00:00', acknowledged: false },
+      ],
+    });
+  },
+
+  resetStore: () => set({ ...EMPTY_STATE }),
+    }),
+    {
+      name: 'vyasa-app',
+      partialize: (s) => ({
+        patients: s.patients,
+        visits: s.visits,
+        vitals: s.vitals,
+        prescriptions: s.prescriptions,
+        labOrders: s.labOrders,
+        nursingNotes: s.nursingNotes,
+        appointments: s.appointments,
+        alerts: s.alerts,
+        queue: s.queue,
+        beds: s.beds,
+        staff: s.staff,
+        bills: s.bills,
+        todayAvailability: s.todayAvailability,
+        nursingPhotos: s.nursingPhotos,
+        bookingSlots: s.bookingSlots,
+        sidebarCollapsed: s.sidebarCollapsed,
+      }),
+    }
+  )
+);
 
 // helper used across the app
 export function ts() { return new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }); }

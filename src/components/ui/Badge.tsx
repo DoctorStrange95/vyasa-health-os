@@ -26,6 +26,8 @@ export function StatusBadge({ status }: { status: PatientStatus }) {
     OPD: 'status-active',
     Critical: 'status-critical',
     Discharged: 'status-discharged',
+    Deceased: 'bg-slate-200 text-slate-600',
+    Referred: 'bg-violet-100 text-violet-700',
   };
   return <span className={cn('badge', cls[status])}>{status}</span>;
 }

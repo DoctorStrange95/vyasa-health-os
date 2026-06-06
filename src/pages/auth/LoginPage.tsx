@@ -10,13 +10,14 @@ import type { Role } from '@/types';
 type Portal = 'staff' | 'patient';
 
 const DEMO_ROLES: { role: Role; label: string; emoji: string }[] = [
-  { role: 'doctor', label: 'Doctor', emoji: '🩺' },
+  { role: 'clinic_admin', label: 'Solo Doctor / Clinic', emoji: '🏥' },
+  { role: 'doctor', label: 'Hospital Doctor', emoji: '🩺' },
   { role: 'nurse', label: 'Nurse', emoji: '💉' },
   { role: 'pharmacist', label: 'Pharmacist', emoji: '💊' },
   { role: 'labtech', label: 'Lab Tech', emoji: '🔬' },
-  { role: 'admin', label: 'Admin', emoji: '⚙️' },
+  { role: 'admin', label: 'Hospital Admin', emoji: '⚙️' },
   { role: 'billing', label: 'Billing', emoji: '💰' },
-  { role: 'receptionist', label: 'Reception', emoji: '🏥' },
+  { role: 'receptionist', label: 'Reception', emoji: '🎫' },
   { role: 'patient', label: 'Patient', emoji: '👤' },
 ];
 
@@ -70,7 +71,9 @@ export default function LoginPage() {
 
   function handleDemo(role: Role) {
     loginAsDemo(role);
-    loadDemo();
+    // Pass the demo user's name so demo data is personalized to them
+    const demoUser = useAuthStore.getState().user;
+    loadDemo(demoUser?.name, demoUser?.id);
     navigate('/app/dashboard');
   }
 

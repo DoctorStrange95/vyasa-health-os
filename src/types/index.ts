@@ -1,11 +1,45 @@
+// ─── Clinic ───────────────────────────────────────────────────────────────────
+
+export interface DaySchedule {
+  day: number;        // 0=Sun 1=Mon … 6=Sat
+  open: boolean;
+  sessions: { start: string; end: string }[];   // morning + optional evening
+  maxPatients: number;
+}
+
+export interface Clinic {
+  id: string;
+  name: string;
+  address: string;
+  lat?: number;
+  lng?: number;
+  phone?: string;
+  fee: number;
+  maxPatients: number;   // fallback cap when no schedule set
+  timings: string;       // auto-generated display string
+  schedule: DaySchedule[];
+  color?: string;
+}
+
+export interface DoctorAvailability {
+  date: string;          // 'YYYY-MM-DD' — stale if not today
+  clinicId: string;
+  clinicName: string;
+  isOpen: boolean;
+  startTime: string;     // '09:00'
+  endTime: string;       // '13:00'
+  maxPatients: number;
+}
+
 // ─── Auth ────────────────────────────────────────────────────────────────────
 
 export type Role =
   | 'doctor'
+  | 'clinic_admin'   // solo-practice doctor who is also their own admin
   | 'nurse'
   | 'pharmacist'
   | 'labtech'
-  | 'admin'
+  | 'admin'          // hospital/facility administrator
   | 'billing'
   | 'receptionist'
   | 'patient';
@@ -23,7 +57,7 @@ export interface StaffUser {
 
 // ─── Patient ─────────────────────────────────────────────────────────────────
 
-export type PatientStatus = 'OPD' | 'IPD' | 'Discharged' | 'Critical';
+export type PatientStatus = 'OPD' | 'IPD' | 'Discharged' | 'Critical' | 'Deceased' | 'Referred';
 export type Priority = 'Critical' | 'High' | 'Medium' | 'Stable';
 
 export interface Patient {
@@ -42,9 +76,19 @@ export interface Patient {
   diagnosis?: string;
   attendingDoctor?: string;
   attendingDoctorId?: number;
+  assignedNurseId?: number;
+  assignedNurseName?: string;
+  clinicId?: string;
   priority: Priority;
   allergies?: string[];
   insurance?: string;
+  deathDate?: string;
+  deathCause?: string;
+  referredHospital?: string;
+  referredDept?: string;
+  referredDoctor?: string;
+  referralReason?: string;
+  referralUrgency?: string;
 }
 
 // ─── Vitals ──────────────────────────────────────────────────────────────────
@@ -97,6 +141,7 @@ export interface LabOrder {
   orderedBy: string;
   orderedAt: string;
   status: LabStatus;
+  urgency?: 'routine' | 'urgent' | 'stat';
   result?: string;
   unit?: string;
   refRange?: string;
@@ -124,6 +169,75 @@ export interface ConsultNote {
   objective: string;
   assessment: string;
   plan: string;
+}
+
+// ─── Visit / Longitudinal Consultation ───────────────────────────────────────
+
+export interface VaccineEntry {
+  id: string;
+  name: string;
+  batchNo?: string;
+  site?: string;
+  givenDate: string;
+  nextDueDate?: string;
+  givenBy: string;
+}
+
+export interface ProcedureEntry {
+  id: string;
+  name: string;
+  notes?: string;
+  performedBy: string;
+  time: string;
+}
+
+export interface AttachmentEntry {
+  id: string;
+  label: string;
+  type: 'photo' | 'report' | 'xray' | 'other';
+  dataUrl: string;
+  uploadedAt: string;
+}
+
+export interface VisitRecord {
+  id: string;
+  patientId: string;
+  date: string;
+  doctorName: string;
+
+  // Subjective
+  chiefComplaint: string;
+  hopi?: string;
+  pastMedical?: string;
+  pastSurgical?: string;
+  familyHistory?: string;
+  socialHistory?: string;
+  allergiesNote?: string;
+  currentMeds?: string;
+
+  // Objective
+  vitalsSnapshot?: { bp?: string; hr?: string; temp?: string; spo2?: string; weight?: string; height?: string; rr?: string; };
+  generalExam?: string;
+  systemicExam?: string;
+  bodyNotes?: Record<string, string>;
+  bodySigns?: string[];
+  investigation?: string;
+
+  // Assessment
+  diagnosis: string;
+  icdCode?: string;
+  secondaryDx?: string;
+
+  // Plan
+  drugs: { form?: string; drug: string; dose: string; strength?: string; puffs?: string; route: string; frequency: string; duration: string; instructions?: string }[];
+  vaccines: VaccineEntry[];
+  procedures: ProcedureEntry[];
+  attachments: AttachmentEntry[];
+  advice: string;
+  followUp: string;
+  referral?: { specialty: string; doctorName: string; reason: string; urgency: string };
+  admitted?: boolean;
+  privateNote?: string;
 }
 
 // ─── MAR ─────────────────────────────────────────────────────────────────────
@@ -169,6 +283,27 @@ export interface Alert {
   acknowledged: boolean;
 }
 
+// ─── Appointment ─────────────────────────────────────────────────────────────
+
+export type AppointmentStatus = 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no-show';
+
+export interface AppointmentEntry {
+  id: string;
+  patientId: string;
+  patientName: string;
+  patientAge?: number;
+  clinicId?: string;
+  clinicName?: string;
+  date: string;          // 'YYYY-MM-DD'
+  time: string;          // 'HH:MM'
+  reason: string;
+  doctorId?: number;
+  doctorName?: string;
+  status: AppointmentStatus;
+  notes?: string;
+  createdAt: string;
+}
+
 // ─── OPD Queue ───────────────────────────────────────────────────────────────
 
 export type QueueStatus = 'waiting' | 'in-progress' | 'completed' | 'no-show';
@@ -211,6 +346,95 @@ export interface Staff {
   specialty?: string;
   shift?: string;
   status: 'active' | 'off-duty' | 'on-leave';
+}
+
+// ─── Drug Knowledge Base ──────────────────────────────────────────────────────
+
+export interface DrugKB {
+  id: string;
+  name: string;
+  genericName: string;
+  brandNames: string[];
+  category: string;
+  defaultDose: string;
+  defaultRoute: string;
+  defaultFrequency: string;
+  defaultDuration: string;
+  defaultInstructions: string;
+  commonFor: string[];
+  contraindications: string[];
+  interactions: string[];
+}
+
+// ─── Favourite Prescriptions ──────────────────────────────────────────────────
+
+export interface FavPrescription {
+  id: string;
+  label: string;
+  drugs: Partial<Medication>[];
+  usageCount: number;
+  lastUsed: string;
+  tags: string[];
+}
+
+export interface FavDrug {
+  id: string;
+  name: string;
+  dose: string;
+  route: string;
+  frequency: string;
+  duration: string;
+  instructions: string;
+  usageCount: number;
+}
+
+// ─── Teleconsult ──────────────────────────────────────────────────────────────
+
+export interface TeleconsultSession {
+  id: string;
+  appointmentId: string;
+  patientId: string;
+  roomUrl: string;
+  status: 'scheduled' | 'active' | 'ended';
+  startedAt?: string;
+  endedAt?: string;
+  whatsappSent: boolean;
+}
+
+// ─── Booking Slot ─────────────────────────────────────────────────────────────
+
+export interface BookingSlot {
+  id: string;
+  clinicId: string;
+  date: string;
+  time: string;
+  durationMins: number;
+  status: 'available' | 'booked' | 'blocked' | 'completed';
+  patientId?: string;
+  patientName?: string;
+  bookedVia: 'self' | 'receptionist' | 'walkin' | 'teleconsult';
+  fee: number;
+}
+
+export interface BookingToken {
+  token: string;
+  clinicId: string;
+  doctorId: string;
+  doctorName: string;
+  clinicName: string;
+  expiresAt: string;
+}
+
+// ─── Nursing Photo ───────────────────────────────────────────────────────────
+
+export interface NursingPhoto {
+  id: string;
+  patientId: string;
+  dataUrl: string;
+  caption?: string;
+  takenAt: string;
+  takenBy: string;
+  bodyRegion?: string;
 }
 
 // ─── Billing ─────────────────────────────────────────────────────────────────
