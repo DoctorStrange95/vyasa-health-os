@@ -45,7 +45,7 @@ export function MobileBottomNav() {
               key={item.to}
               to={item.to}
               className={cn(
-                'flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 text-[10px] font-medium transition-colors',
+                'relative flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 text-[10px] font-medium transition-colors',
                 isActive
                   ? 'text-teal-600'
                   : 'text-slate-400 active:text-teal-500'
@@ -53,7 +53,7 @@ export function MobileBottomNav() {
             >
               <item.icon className={cn('w-5 h-5', isActive && 'text-teal-600')} />
               {item.label}
-              {isActive && <span className="absolute bottom-0 w-6 h-0.5 bg-teal-500 rounded-full" />}
+              {isActive && <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-6 h-0.5 bg-teal-500 rounded-full" />}
             </Link>
           );
         })}

@@ -485,64 +485,51 @@ export default function ConsultPage() {
     <div className="flex flex-col h-full">
       {/* ─── Sticky header ─────────────────────────────────────────────────── */}
       <div className="sticky top-0 z-30 bg-white border-b border-slate-200 shadow-sm">
-        <div className="px-4 py-3 flex items-center gap-3 flex-wrap">
-          <button onClick={() => navigate(-1)} className="btn-ghost p-1.5 rounded-lg">
+        <div className="px-3 py-2.5 flex items-center gap-2">
+          <button onClick={() => navigate(-1)} className="btn-ghost p-1.5 rounded-lg flex-shrink-0">
             <ArrowLeft className="w-5 h-5" />
           </button>
 
           {/* Patient chip */}
-          <div className="flex items-center gap-2.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-navy-800 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 min-w-0 flex-1">
+            <div className="w-7 h-7 rounded-lg bg-navy-800 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
               {patient.name.charAt(0)}
             </div>
             <div className="min-w-0">
-              <div className="font-semibold text-slate-900 text-sm truncate">{patient.name}</div>
-              <div className="text-xs text-slate-500">{patientAge}y · {patient.gender} · {patient.mrn}</div>
+              <div className="font-semibold text-slate-900 text-sm truncate leading-tight">{patient.name}</div>
+              <div className="text-[11px] text-slate-500 leading-tight">{patientAge}y · {patient.gender} · {patient.mrn}</div>
             </div>
-          </div>
-
-          {/* Status pills */}
-          <div className="hidden sm:flex items-center gap-2">
-            <span className={cn('text-xs px-2 py-1 rounded-full font-medium',
-              patient.priority === 'Critical' ? 'bg-red-100 text-red-700' :
-              patient.priority === 'High' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700')}>
-              {patient.priority}
-            </span>
-            {patient.diagnosis && <span className="text-xs text-slate-500 truncate max-w-32">{patient.diagnosis}</span>}
-          </div>
-
-          {/* Clinic selector (OPD only) / Ward badge (IPD) */}
-          {isIPD ? (
-            <div className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-xl px-2.5 py-1">
-              <BedDouble className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
-              <span className="text-xs font-semibold text-blue-800">{patient.ward || 'Ward'}{patient.bed ? ` · ${patient.bed}` : ''}</span>
-            </div>
-          ) : clinics.length > 0 && (
-            <div className="flex items-center gap-1.5 bg-teal-50 border border-teal-200 rounded-xl px-2.5 py-1">
-              <span className="text-[10px] font-bold text-teal-600 uppercase tracking-wide flex-shrink-0">Clinic</span>
+            {/* Ward / clinic inline on mobile */}
+            {isIPD ? (
+              <div className="ml-auto flex items-center gap-1 bg-blue-50 rounded-lg px-2 py-0.5 flex-shrink-0">
+                <BedDouble className="w-3 h-3 text-blue-600" />
+                <span className="text-[11px] font-semibold text-blue-800">{patient.ward || 'Ward'}</span>
+              </div>
+            ) : clinics.length > 0 && (
               <select value={selectedClinicId} onChange={e => setSelectedClinicId(e.target.value)}
-                className="text-xs font-semibold text-teal-800 bg-transparent border-none outline-none cursor-pointer max-w-32">
+                className="ml-auto text-[11px] font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg px-1.5 py-0.5 outline-none cursor-pointer flex-shrink-0 max-w-28">
                 {clinics.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Auto-save indicator */}
           {autoSaved && (
-            <span className="text-xs text-teal-600 flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5" /> Draft saved
+            <span className="text-[11px] text-teal-600 flex items-center gap-1 flex-shrink-0">
+              <CheckCircle2 className="w-3 h-3" />
+              <span className="hidden sm:inline">Saved</span>
             </span>
           )}
 
-          <div className="ml-auto flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 flex-shrink-0">
             {!isIPD && (
-              <button onClick={() => setShowPrint(true)} className="btn-secondary btn-sm">
-                <Printer className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Preview</span>
+              <button onClick={() => setShowPrint(true)} className="btn-secondary btn-sm p-2">
+                <Printer className="w-3.5 h-3.5" />
               </button>
             )}
-            <button type="button" onClick={handleFinalize} disabled={saving} className="btn-primary btn-sm">
+            <button type="button" onClick={handleFinalize} disabled={saving} className="btn-primary btn-sm px-3 py-2">
               {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-              <span className="hidden sm:inline">{saving ? 'Saving…' : editVisitId ? 'Update Visit' : isIPD ? 'Save Round Note' : 'Finalise'}</span>
+              <span className="hidden sm:inline">{saving ? 'Saving…' : editVisitId ? 'Update' : isIPD ? 'Save' : 'Save'}</span>
             </button>
           </div>
         </div>
@@ -1168,17 +1155,22 @@ export default function ConsultPage() {
         <div className="space-y-2 pb-4">
           {/* OPD secondary actions */}
           {!isIPD && (
-            <div className="flex gap-2 flex-wrap">
-              <button type="button" onClick={() => setShowPrint(true)} className="btn-secondary flex-1 text-sm">
-                <Printer className="w-4 h-4" /> Print Rx
+            <div className="grid grid-cols-3 gap-2">
+              <button type="button" onClick={() => setShowPrint(true)} className="btn-secondary text-sm py-3">
+                <Printer className="w-4 h-4" />
+                <span className="hidden sm:inline">Print Rx</span>
+                <span className="sm:hidden">Print</span>
               </button>
-              <button type="button" onClick={sendWhatsApp} className="btn-secondary flex-1 text-sm text-emerald-700 border-emerald-300 hover:bg-emerald-50">
-                <Send className="w-4 h-4" /> WhatsApp
+              <button type="button" onClick={sendWhatsApp} className="btn-secondary text-sm text-emerald-700 border-emerald-300 hover:bg-emerald-50 py-3">
+                <Send className="w-4 h-4" />
+                <span className="hidden sm:inline">WhatsApp</span>
+                <span className="sm:hidden">WA</span>
               </button>
               <button type="button" onClick={() => setShowRefer(true)}
-                className={cn('flex-1 text-sm', referForm.specialty || referForm.doctorName ? 'btn-primary bg-violet-600 hover:bg-violet-700 border-violet-600' : 'btn-secondary')}>
+                className={cn('text-sm py-3', referForm.specialty || referForm.doctorName ? 'btn-primary bg-violet-600 hover:bg-violet-700 border-violet-600' : 'btn-secondary')}>
                 <Share2 className="w-4 h-4" />
-                {referForm.specialty || referForm.doctorName ? 'Edit Referral' : 'Refer Patient'}
+                <span className="hidden sm:inline">{referForm.specialty || referForm.doctorName ? 'Edit Referral' : 'Refer Patient'}</span>
+                <span className="sm:hidden">Refer</span>
               </button>
             </div>
           )}
@@ -1186,13 +1178,15 @@ export default function ConsultPage() {
           <div className="flex gap-2">
             {!isIPD && (
               <button type="button" onClick={() => { setAdmitTab('admit'); setShowAdmit(true); }}
-                className="btn-secondary flex-1 text-sm border-amber-300 text-amber-700 hover:bg-amber-50">
-                <BedDouble className="w-4 h-4" /> Admit / Refer
+                className="btn-secondary flex-1 text-sm border-amber-300 text-amber-700 hover:bg-amber-50 py-3">
+                <BedDouble className="w-4 h-4" />
+                <span className="hidden sm:inline">Admit / Refer</span>
+                <span className="sm:hidden">Admit</span>
               </button>
             )}
-            <button type="button" onClick={handleFinalize} disabled={saving} className="btn-primary flex-1">
+            <button type="button" onClick={handleFinalize} disabled={saving} className="btn-primary flex-1 py-3 text-base">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              {saving ? 'Saving…' : isIPD ? 'Save Round Note' : 'Finalise & Save'}
+              {saving ? 'Saving…' : isIPD ? 'Save Round Note' : editVisitId ? 'Update & Save' : 'Finalise & Save'}
             </button>
           </div>
         </div>

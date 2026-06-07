@@ -266,15 +266,15 @@ export default function PatientListPage() {
         />
       )}
 
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
         <div>
           <h1 className="page-title">Patients</h1>
           <p className="page-subtitle">{patients.length} patients · {patients.filter(p => p.status === 'IPD').length} admitted</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => exportToCSV(patients, visits, vitals)}
-            className="btn-secondary flex items-center gap-2"
+            className="btn-secondary flex items-center gap-2 hidden sm:flex"
             title="Export all patients to Excel/CSV"
           >
             <FileSpreadsheet className="w-4 h-4" />
@@ -282,15 +282,23 @@ export default function PatientListPage() {
           </button>
           <button
             onClick={() => setShowQuickAdd(true)}
-            className="btn-primary flex items-center gap-2"
+            className="btn-primary flex items-center gap-2 flex-1 sm:flex-none"
           >
             <Plus className="w-4 h-4" />
             Add Patient
           </button>
-          <Link to="/app/admit" className="btn-secondary flex items-center gap-2">
+          <Link to="/app/admit" className="btn-secondary flex items-center gap-2 hidden sm:flex">
             <UserPlus className="w-4 h-4" />
             Full Register
           </Link>
+          {/* Mobile: export icon only */}
+          <button
+            onClick={() => exportToCSV(patients, visits, vitals)}
+            className="btn-secondary p-2 sm:hidden"
+            title="Export CSV"
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+          </button>
         </div>
       </div>
 
@@ -324,8 +332,59 @@ export default function PatientListPage() {
         </div>
       </div>
 
-      {/* Table */}
-      <div className="table-wrapper">
+      {/* ── Mobile card view (< md) ── */}
+      <div className="md:hidden space-y-3">
+        {filtered.map(p => {
+          const lastVisit = (visits[p.id] ?? [])[0];
+          const todayStr = new Date().toISOString().slice(0, 10);
+          const consultedToday = (visits[p.id] ?? []).some(v => v.date.startsWith(todayStr));
+          return (
+            <div key={p.id} className="mobile-patient-card">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-full bg-teal-500/10 flex items-center justify-center text-teal-700 text-sm font-bold flex-shrink-0">
+                  {p.name.split(' ').map(w => w[0]).join('').slice(0, 2)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-slate-900">{p.name}</span>
+                    <span className="text-xs text-slate-400">{p.age}y {p.gender === 'M' ? '♂' : p.gender === 'F' ? '♀' : '⚧'}</span>
+                    {p.priority === 'Critical' && (
+                      <span className="text-[10px] font-bold bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full">Critical</span>
+                    )}
+                  </div>
+                  <div className="text-xs text-slate-400 font-mono">{p.mrn}</div>
+                  {(lastVisit?.chiefComplaint || p.diagnosis) && (
+                    <div className="text-xs text-slate-500 mt-0.5 truncate">{lastVisit?.chiefComplaint || p.diagnosis}</div>
+                  )}
+                  <div className="flex items-center gap-2 mt-2 flex-wrap">
+                    <StatusBadge status={p.status} />
+                    {p.ward && <span className="text-xs text-slate-400">{p.ward}{p.bed ? ` · ${p.bed}` : ''}</span>}
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-2 mt-3">
+                <Link to={`/app/patients/${p.id}`} className="btn-secondary btn-sm flex-1 justify-center">View</Link>
+                {(p.status === 'OPD' || p.status === 'IPD' || p.status === 'Critical') && (
+                  consultedToday ? (
+                    <Link to={`/app/consult/${p.id}`}
+                      className="flex-1 inline-flex items-center justify-center gap-1 text-xs bg-amber-50 text-amber-700 border border-amber-200 px-3 py-1.5 rounded-lg font-semibold">
+                      <CheckCircle2 className="w-3 h-3" /> Edit Consult
+                    </Link>
+                  ) : (
+                    <Link to={`/app/consult/${p.id}`} className="btn-primary btn-sm flex-1 justify-center">Consult</Link>
+                  )
+                )}
+              </div>
+            </div>
+          );
+        })}
+        {filtered.length === 0 && (
+          <div className="text-center py-12 text-slate-400 text-sm">No patients found</div>
+        )}
+      </div>
+
+      {/* ── Desktop table (≥ md) ── */}
+      <div className="hidden md:block table-wrapper">
         <table className="data-table">
           <thead>
             <tr>

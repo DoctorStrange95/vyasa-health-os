@@ -113,9 +113,10 @@
   .data-table tbody tr:hover td { @apply bg-slate-50/60; }
 
   /* ── Tabs ── */
-  .tab-bar  { @apply flex gap-1 border-b border-slate-200 mb-5; }
+  .tab-bar  { @apply flex gap-1 border-b border-slate-200 mb-5 overflow-x-auto; scrollbar-width: none; }
+  .tab-bar::-webkit-scrollbar { display: none; }
   .tab-btn  {
-    @apply px-4 py-2.5 text-sm font-medium text-slate-500 border-b-2 border-transparent
+    @apply flex-shrink-0 px-4 py-2.5 text-sm font-medium text-slate-500 border-b-2 border-transparent
            -mb-px cursor-pointer hover:text-slate-700 transition-colors whitespace-nowrap;
   }
   .tab-btn.active { @apply text-teal-600 border-teal-500 font-semibold; }
@@ -181,6 +182,19 @@
     @apply inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium
            bg-teal-50 text-teal-700 border border-teal-200 cursor-pointer
            hover:bg-teal-100 hover:border-teal-300 transition-colors;
+  }
+
+  /* ── Mobile / touch utilities ── */
+  .safe-area-pb {
+    padding-bottom: max(env(safe-area-inset-bottom, 0px), 0px);
+  }
+  /* Ensure tap targets are large enough on mobile */
+  .btn-sm { min-height: 32px; }
+  .btn-primary, .btn-secondary, .btn-danger, .btn-ghost { min-height: 40px; }
+
+  /* Mobile card view for tables */
+  .mobile-patient-card {
+    @apply bg-white rounded-xl border border-slate-200 shadow-sm p-4;
   }
 }
 

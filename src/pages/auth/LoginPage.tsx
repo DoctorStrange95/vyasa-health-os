@@ -251,12 +251,12 @@ export default function LoginPage() {
                   <p className="text-xs text-slate-400 text-center mt-2 mb-3">
                     Full app with sample patient data. No sign-in needed.
                   </p>
-                  <div className="grid grid-cols-4 gap-2">
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                     {DEMO_ROLES.map(({ role, label, emoji }) => (
                       <button key={role} onClick={() => handleDemo(role)}
-                        className="flex flex-col items-center gap-1 p-2.5 rounded-xl border-2 border-slate-200 bg-white hover:border-teal-400 hover:bg-teal-50 active:scale-95 transition-all cursor-pointer">
-                        <span className="text-xl">{emoji}</span>
-                        <span className="text-[10px] font-semibold text-slate-600">{label}</span>
+                        className="flex flex-col items-center gap-1 p-3 rounded-xl border-2 border-slate-200 bg-white hover:border-teal-400 hover:bg-teal-50 active:scale-95 transition-all cursor-pointer min-h-[72px] justify-center">
+                        <span className="text-2xl">{emoji}</span>
+                        <span className="text-[10px] font-semibold text-slate-600 text-center leading-tight">{label}</span>
                       </button>
                     ))}
                   </div>

@@ -93,12 +93,13 @@ export default function PatientDetailPage() {
           </div>
         </div>
         <div className="flex gap-2 flex-shrink-0 flex-wrap justify-end">
-          <button className="btn-secondary btn-sm">
-            <Printer className="w-3.5 h-3.5" /> Print Summary
+          <button className="btn-secondary btn-sm hidden sm:flex">
+            <Printer className="w-3.5 h-3.5" /> Print
           </button>
           {patient.status !== 'Deceased' && (
             <button onClick={() => setShowSchedule(true)} className="btn-secondary btn-sm">
-              <Calendar className="w-3.5 h-3.5" /> Schedule
+              <Calendar className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Schedule</span>
             </button>
           )}
           {patient.status !== 'Deceased' && patient.status !== 'Discharged' && (
@@ -107,13 +108,13 @@ export default function PatientDetailPage() {
             </Link>
           )}
           {isIPD && (
-            <Link to={`/app/discharge?pid=${id}`} className="btn-secondary btn-sm">
+            <Link to={`/app/discharge?pid=${id}`} className="btn-secondary btn-sm hidden sm:flex">
               <FileText className="w-3.5 h-3.5" /> Discharge
             </Link>
           )}
           {patient.status !== 'Deceased' && (
-            <button onClick={() => setDeathModal(true)} className="btn-sm bg-slate-100 hover:bg-red-50 text-slate-500 hover:text-red-600 border border-slate-200 hover:border-red-200 transition-colors">
-              <Skull className="w-3.5 h-3.5" /> Mark Deceased
+            <button onClick={() => setDeathModal(true)} className="btn-sm bg-slate-100 hover:bg-red-50 text-slate-500 hover:text-red-600 border border-slate-200 hover:border-red-200 transition-colors hidden sm:flex">
+              <Skull className="w-3.5 h-3.5" />
             </button>
           )}
         </div>
