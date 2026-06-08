@@ -4,7 +4,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAppStore } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { cn } from '@/lib/utils';
-import type { QueueEntry, QueueStatus } from '@/types';
+import type { QueueEntry, QueueStatus, AppointmentEntry, Patient } from '@/types';
 
 function getDays() {
   return Array.from({ length: 7 }, (_, i) => {
@@ -25,30 +25,34 @@ const STATUS_CONFIG: Record<QueueStatus, { label: string; color: string; dot: st
   'no-show':     { label: 'No Show',    color: 'bg-red-100 text-red-500',      dot: 'bg-red-400' },
 };
 
-function getMockSchedule(patients: ReturnType<typeof useAppStore.getState>['patients']) {
+type ScheduleSlot = { name: string; reason: string; time: string; patientId: string };
+
+function getSchedule(
+  appointments: AppointmentEntry[],
+  patients: Patient[],
+): Record<string, ScheduleSlot[]> {
   const days = getDays();
-  const schedule: Record<string, { name: string; reason: string; time: string; patientId: string }[]> = {};
-  days.forEach((day, i) => {
+  const admittedIds = new Set(patients.filter(p => p.status === 'IPD').map(p => p.id));
+  const schedule: Record<string, ScheduleSlot[]> = {};
+  days.forEach(day => {
     const key = day.date.toDateString();
-    const slots = patients.slice(i % patients.length, (i % patients.length) + 3);
-    schedule[key] = slots.map((p, j) => ({
-      name: p.name,
-      reason: p.diagnosis ?? 'Follow-up',
-      time: `${9 + j * 2}:00`,
-      patientId: p.id,
-    }));
+    const dateStr = day.date.toISOString().slice(0, 10);
+    schedule[key] = appointments
+      .filter(a => a.date === dateStr && a.status !== 'cancelled' && !admittedIds.has(a.patientId))
+      .sort((a, b) => a.time.localeCompare(b.time))
+      .map(a => ({ name: a.patientName, reason: a.reason, time: a.time, patientId: a.patientId }));
   });
   return schedule;
 }
 
 export default function OPDQueuePage() {
-  const { queue, patients, todayAvailability, setQueue, staff, assignNurse, showToast } = useAppStore();
+  const { queue, patients, appointments, todayAvailability, setQueue, staff, assignNurse, showToast } = useAppStore();
   const { user } = useAuthStore();
   const navigate = useNavigate();
   const [activeDay, setActiveDay] = useState(0);
   const [showAddWalkin, setShowAddWalkin] = useState(false);
   const days = getDays();
-  const schedule = getMockSchedule(patients);
+  const schedule = getSchedule(appointments, patients);
 
   const waiting    = queue.filter(q => q.status === 'waiting');
   const inProgress = queue.filter(q => q.status === 'in-progress');

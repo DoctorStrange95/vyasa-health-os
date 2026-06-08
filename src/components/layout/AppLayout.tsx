@@ -4,12 +4,13 @@ import { Topbar } from './Topbar';
 import { AppFooter } from './AppFooter';
 import { MobileBottomNav } from './MobileBottomNav';
 import { ToastContainer } from '@/components/ui/Toast';
+import { QuickRegisterModal } from '@/components/QuickRegisterModal';
 import { useAppStore } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { cn } from '@/lib/utils';
 
 export function AppLayout() {
-  const { sidebarCollapsed, mobileSidebarOpen, closeMobileSidebar } = useAppStore();
+  const { sidebarCollapsed, mobileSidebarOpen, closeMobileSidebar, quickRegisterOpen } = useAppStore();
   const { user } = useAuthStore();
 
   // Roles that get a mobile bottom nav
@@ -47,6 +48,7 @@ export function AppLayout() {
 
       <MobileBottomNav />
       <ToastContainer />
+      {quickRegisterOpen && <QuickRegisterModal />}
     </div>
   );
 }

@@ -83,7 +83,7 @@ const NAV_ITEMS: Record<Role, NavItem[]> = {
 
 export function Sidebar() {
   const { user, logout } = useAuthStore();
-  const { sidebarCollapsed, toggleSidebar, mobileSidebarOpen, closeMobileSidebar, alerts } = useAppStore();
+  const { sidebarCollapsed, toggleSidebar, mobileSidebarOpen, closeMobileSidebar, alerts, openQuickRegister } = useAppStore();
   const location = useLocation();
 
   if (!user) return null;
@@ -185,6 +185,23 @@ export function Sidebar() {
           );
         })}
       </nav>
+
+      {/* Register Patient — quick access for clinic_admin / doctor / receptionist */}
+      {(['clinic_admin', 'doctor', 'receptionist'] as Role[]).includes(user.role) && (
+        <div className={cn('px-2 pb-2', collapsed && 'lg:px-1')}>
+          <button
+            onClick={() => { openQuickRegister(); closeMobileSidebar(); }}
+            className={cn(
+              'w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-sm font-semibold',
+              'bg-teal-500 hover:bg-teal-600 active:scale-95 text-white transition-all shadow-sm',
+              collapsed && 'lg:justify-center lg:px-0'
+            )}
+          >
+            <UserPlus className="w-4.5 h-4.5 flex-shrink-0" />
+            <span className={cn(collapsed && 'lg:hidden')}>Register Patient</span>
+          </button>
+        </div>
+      )}
 
       {/* Logout */}
       <div className="p-2 border-t border-white/10">

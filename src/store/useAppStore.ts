@@ -26,6 +26,7 @@ interface AppState {
   activePatientId: string | null;
   sidebarCollapsed: boolean;
   mobileSidebarOpen: boolean;
+  quickRegisterOpen: boolean;
   toasts: Toast[];
 
   // Actions
@@ -53,6 +54,8 @@ interface AppState {
   toggleSidebar: () => void;
   toggleMobileSidebar: () => void;
   closeMobileSidebar: () => void;
+  openQuickRegister: () => void;
+  closeQuickRegister: () => void;
   showToast: (msg: string, type?: Toast['type']) => void;
   removeToast: (id: string) => void;
   addVisit: (v: VisitRecord) => void;
@@ -193,6 +196,7 @@ const EMPTY_STATE = {
   activePatientId: null as string | null,
   sidebarCollapsed: false,
   mobileSidebarOpen: false,
+  quickRegisterOpen: false,
   toasts: [] as Toast[],
 };
 
@@ -241,6 +245,8 @@ export const useAppStore = create<AppState>()(
   toggleSidebar: () => set(s => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   toggleMobileSidebar: () => set(s => ({ mobileSidebarOpen: !s.mobileSidebarOpen })),
   closeMobileSidebar: () => set({ mobileSidebarOpen: false }),
+  openQuickRegister: () => set({ quickRegisterOpen: true, mobileSidebarOpen: false }),
+  closeQuickRegister: () => set({ quickRegisterOpen: false }),
 
   showToast: (message, type = 'info') => {
     const toastId = id();
@@ -286,6 +292,15 @@ export const useAppStore = create<AppState>()(
       ...q,
       assignedDoctor: q.assignedDoctor ? doc : q.assignedDoctor,
     }));
+    // Build appointments relative to today (only OPD patients: P003, P005)
+    const d = (n: number) => { const dt = new Date(); dt.setDate(dt.getDate() + n); return dt.toISOString().slice(0, 10); };
+    const appointments: AppointmentEntry[] = [
+      { id: 'APT001', patientId: 'P003', patientName: 'Vikram Singh', patientAge: 35, date: d(0), time: '09:00', reason: 'Fever with chills, R/O Malaria', status: 'scheduled', doctorId: docId, doctorName: doc, clinicId: 'C1', clinicName: 'Roy Clinic', createdAt: now(), token: 1, consultationFee: 500, amountPaid: 500, paymentMode: 'cash' },
+      { id: 'APT002', patientId: 'P005', patientName: 'Arun Joshi', patientAge: 28, date: d(0), time: '11:00', reason: 'Acute Gastroenteritis', status: 'scheduled', doctorId: docId, doctorName: doc, clinicId: 'C1', clinicName: 'Roy Clinic', createdAt: now(), token: 2, consultationFee: 500, amountPaid: 500, paymentMode: 'upi' },
+      { id: 'APT003', patientId: 'P003', patientName: 'Vikram Singh', patientAge: 35, date: d(2), time: '10:00', reason: 'Fever follow-up', status: 'scheduled', doctorId: docId, doctorName: doc, clinicId: 'C1', clinicName: 'Roy Clinic', createdAt: now(), token: 1, consultationFee: 500, amountPaid: 500, paymentMode: 'cash' },
+      { id: 'APT004', patientId: 'P005', patientName: 'Arun Joshi', patientAge: 28, date: d(3), time: '09:30', reason: 'Gastro follow-up', status: 'scheduled', doctorId: docId, doctorName: doc, clinicId: 'C2', clinicName: 'City Nursing Home OPD', createdAt: now(), token: 1, consultationFee: 300, amountPaid: 300, paymentMode: 'cash' },
+      { id: 'APT005', patientId: 'P006', patientName: 'Kavitha Rao', patientAge: 70, date: d(5), time: '10:00', reason: 'COPD post-discharge review', status: 'scheduled', doctorId: docId, doctorName: doc, clinicId: 'C1', clinicName: 'Roy Clinic', createdAt: now(), token: 1, consultationFee: 500, amountPaid: 500, paymentMode: 'insurance' },
+    ];
     return set({
       patients,
       prescriptions,
@@ -296,6 +311,7 @@ export const useAppStore = create<AppState>()(
       queue,
       beds: DEMO_BEDS,
       staff: DEMO_STAFF,
+      appointments,
       alerts: [
         { id: 'A1', patientId: 'P001', patientName: 'Ramesh Kumar', type: 'BP Alert', message: 'BP 178/105 — Hypertensive Urgency', severity: 'critical', time: '2026-06-04T08:00:00', acknowledged: false },
         { id: 'A2', patientId: 'P002', patientName: 'Sunita Devi', type: 'Sugar Alert', message: 'Blood sugar 450 mg/dL — Critical', severity: 'critical', time: '2026-06-04T08:00:00', acknowledged: false },

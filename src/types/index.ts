@@ -287,6 +287,8 @@ export interface Alert {
 
 export type AppointmentStatus = 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no-show';
 
+export type PaymentMode = 'cash' | 'upi' | 'card' | 'insurance';
+
 export interface AppointmentEntry {
   id: string;
   patientId: string;
@@ -302,6 +304,11 @@ export interface AppointmentEntry {
   status: AppointmentStatus;
   notes?: string;
   createdAt: string;
+  // Registration payment
+  consultationFee?: number;
+  amountPaid?: number;
+  paymentMode?: PaymentMode;
+  token?: number;
 }
 
 // ─── OPD Queue ───────────────────────────────────────────────────────────────
