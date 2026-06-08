@@ -198,22 +198,47 @@ export default function OPDQueuePage() {
 
         <div className="mt-4 space-y-2">
           {todaySlots.length === 0 ? (
-            <div className="text-center py-6 text-slate-400 text-sm">No appointments scheduled</div>
-          ) : todaySlots.map((slot, i) => (
-            <div key={i} className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 hover:bg-teal-50 transition-colors">
-              <div className="w-8 h-8 rounded-lg bg-teal-100 flex items-center justify-center flex-shrink-0">
-                <span className="text-xs font-bold text-teal-700">{i + 1}</span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="font-medium text-slate-800 text-sm">{slot.name}</div>
-                <div className="text-xs text-slate-500">{slot.reason} · {slot.time}</div>
-              </div>
-              <button onClick={() => navigate(`/app/consult/${slot.patientId}`)}
-                className="btn-primary btn-sm flex-shrink-0">
-                <Stethoscope className="w-3.5 h-3.5" /> Consult
-              </button>
+            <div className="text-center py-6 text-slate-400 text-sm">
+              No OPD appointments scheduled for this day
             </div>
-          ))}
+          ) : todaySlots.map((slot, i) => {
+            const pt = patients.find(p => p.id === slot.patientId);
+            const isIPD = pt?.status === 'IPD' || pt?.status === 'Critical';
+            return (
+              <div key={i} className={cn(
+                'flex items-center gap-3 p-3 rounded-xl transition-colors',
+                isIPD ? 'bg-blue-50 border border-blue-200' : 'bg-slate-50 hover:bg-teal-50'
+              )}>
+                <div className={cn('w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0',
+                  isIPD ? 'bg-blue-100' : 'bg-teal-100')}>
+                  <span className={cn('text-xs font-bold', isIPD ? 'text-blue-700' : 'text-teal-700')}>{i + 1}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium text-slate-800 text-sm">{slot.name}</span>
+                    {isIPD && (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-600 text-white">
+                        IPD · {pt?.ward}
+                      </span>
+                    )}
+                    {pt?.status === 'OPD' && (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-teal-100 text-teal-700">
+                        OPD
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-slate-500">{slot.reason} · {slot.time}</div>
+                </div>
+                <button
+                  onClick={() => navigate(`/app/consult/${slot.patientId}`)}
+                  className={cn('btn-sm flex-shrink-0', isIPD ? 'btn-secondary border-blue-300 text-blue-700' : 'btn-primary')}
+                >
+                  <Stethoscope className="w-3.5 h-3.5" />
+                  {isIPD ? 'Round Note' : 'Consult'}
+                </button>
+              </div>
+            );
+          })}
         </div>
       </div>
 
