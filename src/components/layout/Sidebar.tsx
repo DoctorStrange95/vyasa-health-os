@@ -35,12 +35,13 @@ const NAV_ITEMS: Record<Role, NavItem[]> = {
   ],
   // Solo-practice doctor — minimal, workflow-ordered
   clinic_admin: [
-    { icon: ListOrdered,  label: "Today's OPD",    to: '/app/queue' },
-    { icon: Users,        label: 'My Patients',     to: '/app/patients' },
-    { icon: CalendarDays, label: 'Scheduler',       to: '/app/schedule' },
-    { icon: BarChart3,    label: 'Analytics',       to: '/app/analytics' },
-    { icon: Settings2,    label: 'Settings',        to: '/app/settings' },
-    { icon: User,         label: 'My Profile',      to: '/app/profile' },
+    { icon: LayoutDashboard, label: 'Dashboard',       to: '/app/dashboard' },
+    { icon: ListOrdered,     label: "Today's OPD",     to: '/app/queue' },
+    { icon: Users,           label: 'My Patients',     to: '/app/patients' },
+    { icon: CalendarDays,    label: 'Scheduler',       to: '/app/schedule' },
+    { icon: BarChart3,       label: 'Analytics',       to: '/app/analytics' },
+    { icon: Settings2,       label: 'Settings',        to: '/app/settings' },
+    { icon: User,            label: 'My Profile',      to: '/app/profile' },
   ],
   nurse: [
     { icon: Users, label: 'My Patients', to: '/app/nurse-patients' },
