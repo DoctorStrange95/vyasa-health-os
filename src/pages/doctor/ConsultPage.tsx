@@ -4,12 +4,13 @@ import {
   ChevronDown, ChevronUp, CheckCircle2, Printer, Send, Save,
   Plus, Trash2, ArrowLeft, FileText, Loader2,
   Activity, Pill, FlaskConical, ClipboardList, MessageCircle, X,
-  BedDouble, Share2, Syringe, Scissors, Upload, Camera
+  BedDouble, Share2, Syringe, Scissors, Upload, Camera, Calculator
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePadStore } from '@/store/usePadStore';
 import { BodyDiagram } from '@/components/BodyDiagram';
+import { ClinicalCalculators } from '@/components/ClinicalCalculators';
 import { DrugAutocomplete } from '@/components/prescription/DrugAutocomplete';
 import { FrequencyPicker } from '@/components/prescription/FrequencyPicker';
 import { DurationPicker } from '@/components/prescription/DurationPicker';
@@ -120,6 +121,7 @@ export default function ConsultPage() {
   const [saving, setSaving] = useState(false);
   const [autoSaved, setAutoSaved] = useState(false);
   const [showPrint, setShowPrint] = useState(false);
+  const [showCalc, setShowCalc] = useState(false);
   const [showAdmit, setShowAdmit] = useState(false);
   const [showRefer, setShowRefer] = useState(false);
   const [admitTab, setAdmitTab] = useState<'admit'|'refer'>('admit');
@@ -522,6 +524,9 @@ export default function ConsultPage() {
           )}
 
           <div className="flex items-center gap-1.5 flex-shrink-0">
+            <button onClick={() => setShowCalc(true)} className="btn-secondary btn-sm p-2" title="Clinical Calculators">
+              <Calculator className="w-3.5 h-3.5" />
+            </button>
             {!isIPD && (
               <button onClick={() => setShowPrint(true)} className="btn-secondary btn-sm p-2">
                 <Printer className="w-3.5 h-3.5" />
@@ -1393,6 +1398,16 @@ export default function ConsultPage() {
       {showPrint && (
         <PrintPreview patient={patient} draft={draft} pad={pad} clinicName={activeClinic?.name} clinicAddress={activeClinic?.address} clinicPhone={activeClinic?.phone} onClose={() => setShowPrint(false)} onWhatsApp={sendWhatsApp} />
       )}
+
+      {/* ─── Clinical Calculators ──────────────────────────────────────────── */}
+      {showCalc && (
+        <ClinicalCalculators
+          onClose={() => setShowCalc(false)}
+          patientAge={typeof patient.age === 'number' ? patient.age : undefined}
+          patientWeight={parseFloat(draft.vitals.weight) || undefined}
+          patientSex={patient.gender === 'M' ? 'M' : patient.gender === 'F' ? 'F' : undefined}
+        />
+      )}
     </div>
   );
 }
@@ -1402,6 +1417,17 @@ export default function ConsultPage() {
 const THEME_COLORS: Record<string, string> = {
   teal: '#0d9488', navy: '#0a1628', maroon: '#7f1d1d', dark: '#1e293b',
 };
+
+interface PrintSections {
+  complaint: boolean;
+  diagnosis: boolean;
+  rx: boolean;
+  investigation: boolean;
+  advice: boolean;
+  followup: boolean;
+  vitalsRow: boolean;
+  hopi: boolean;
+}
 
 function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, clinicPhone, onClose, onWhatsApp }: {
   patient: NonNullable<ReturnType<typeof useAppStore.getState>['patients'][0]>;
@@ -1417,6 +1443,32 @@ function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, clinicPh
   const theme = THEME_COLORS[pad.theme] ?? THEME_COLORS.teal;
   const patientAge = typeof patient.age === 'number' ? patient.age : '';
   const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+
+  const [ps, setPs] = useState<PrintSections>({
+    complaint: true,
+    diagnosis: true,
+    rx: true,
+    investigation: true,
+    advice: true,
+    followup: true,
+    vitalsRow: true,
+    hopi: false,
+  });
+
+  function togglePs(key: keyof PrintSections) {
+    setPs(s => ({ ...s, [key]: !s[key] }));
+  }
+
+  const SECTION_LABELS: { key: keyof PrintSections; label: string }[] = [
+    { key: 'complaint', label: 'C/C' },
+    { key: 'hopi', label: 'History' },
+    { key: 'diagnosis', label: 'Diagnosis' },
+    { key: 'rx', label: 'Rx' },
+    { key: 'investigation', label: 'Investigations' },
+    { key: 'advice', label: 'Advice' },
+    { key: 'followup', label: 'Follow-up' },
+    { key: 'vitalsRow', label: 'Vitals Row' },
+  ];
 
   function doPrint() {
     const content = printRef.current?.innerHTML ?? '';
@@ -1461,7 +1513,7 @@ function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, clinicPh
           <span className="font-semibold text-slate-800">Prescription Preview</span>
           <div className="flex items-center gap-2">
             <button onClick={doPrint} className="btn-primary btn-sm">
-              <Printer className="w-3.5 h-3.5" /> Print
+              <Printer className="w-3.5 h-3.5" /> Print / PDF
             </button>
             <button onClick={() => { onClose(); onWhatsApp(); }} className="btn-secondary btn-sm text-emerald-700 border-emerald-300 hover:bg-emerald-50">
               <Send className="w-3.5 h-3.5" /> WhatsApp
@@ -1469,6 +1521,22 @@ function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, clinicPh
             <button onClick={onClose} className="btn-ghost p-1.5 rounded-lg">
               <X className="w-4 h-4" />
             </button>
+          </div>
+        </div>
+
+        {/* Section toggles */}
+        <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mr-1">Print sections:</span>
+            {SECTION_LABELS.map(({ key, label }) => (
+              <button key={key} type="button" onClick={() => togglePs(key)}
+                className={cn('text-xs px-2.5 py-1 rounded-full border font-medium transition-all',
+                  ps[key]
+                    ? 'bg-teal-500 border-teal-500 text-white'
+                    : 'bg-white border-slate-300 text-slate-400 line-through')}>
+                {label}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -1505,18 +1573,30 @@ function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, clinicPh
               <div><span className="text-slate-400">Age/Sex: </span><span className="font-semibold">{patientAge}Y/{patient.gender}</span></div>
               <div><span className="text-slate-400">Date: </span><span className="font-semibold">{today}</span></div>
               {patient.mrn && <div><span className="text-slate-400">MRN: </span><span className="font-semibold">{patient.mrn}</span></div>}
-              {draft.vitals.bp && <div><span className="text-slate-400">BP: </span><span className="font-semibold">{draft.vitals.bp}</span></div>}
-              {draft.vitals.weight && <div><span className="text-slate-400">Wt: </span><span className="font-semibold">{draft.vitals.weight}kg</span></div>}
+              {ps.vitalsRow && draft.vitals.bp && <div><span className="text-slate-400">BP: </span><span className="font-semibold">{draft.vitals.bp}</span></div>}
+              {ps.vitalsRow && draft.vitals.weight && <div><span className="text-slate-400">Wt: </span><span className="font-semibold">{draft.vitals.weight}kg</span></div>}
+              {ps.vitalsRow && draft.vitals.hr && <div><span className="text-slate-400">HR: </span><span className="font-semibold">{draft.vitals.hr} bpm</span></div>}
+              {ps.vitalsRow && draft.vitals.spo2 && <div><span className="text-slate-400">SpO2: </span><span className="font-semibold">{draft.vitals.spo2}%</span></div>}
             </div>
 
-            {/* Complaint + Diagnosis */}
-            {draft.chiefComplaint && (
+            {/* Complaint */}
+            {ps.complaint && draft.chiefComplaint && (
               <div className="mb-2">
                 <div className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: theme }}>C/C</div>
                 <div className="text-sm">{draft.chiefComplaint}</div>
               </div>
             )}
-            {draft.diagnosis && (
+
+            {/* History / HOPI */}
+            {ps.hopi && draft.hopi && (
+              <div className="mb-2">
+                <div className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: theme }}>History</div>
+                <div className="text-sm">{draft.hopi}</div>
+              </div>
+            )}
+
+            {/* Diagnosis */}
+            {ps.diagnosis && draft.diagnosis && (
               <div className="mb-3">
                 <div className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: theme }}>Diagnosis</div>
                 <div className="text-sm font-medium">{draft.diagnosis} {draft.icdCode && `(${draft.icdCode})`}</div>
@@ -1525,7 +1605,7 @@ function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, clinicPh
             )}
 
             {/* Rx */}
-            {draft.rxRows.some(r => r.drug.trim()) && (
+            {ps.rx && draft.rxRows.some(r => r.drug.trim()) && (
               <div className="mb-3">
                 <div className="text-xl font-bold mb-2" style={{ color: theme }}>℞</div>
                 {draft.rxRows.filter(r => r.drug.trim()).map((r, i) => (
@@ -1547,7 +1627,7 @@ function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, clinicPh
             )}
 
             {/* Investigations */}
-            {draft.investigation && (
+            {ps.investigation && draft.investigation && (
               <div className="mb-3">
                 <div className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: theme }}>Investigations</div>
                 <div className="text-sm">{draft.investigation}</div>
@@ -1555,7 +1635,7 @@ function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, clinicPh
             )}
 
             {/* Advice */}
-            {draft.advice && (
+            {ps.advice && draft.advice && (
               <div className="mb-3">
                 <div className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: theme }}>Advice</div>
                 <div className="text-sm">{draft.advice}</div>
@@ -1563,7 +1643,7 @@ function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, clinicPh
             )}
 
             {/* Follow-up */}
-            {draft.followUp && draft.followUp !== 'No follow-up' && (
+            {ps.followup && draft.followUp && draft.followUp !== 'No follow-up' && (
               <div className="mb-4">
                 <div className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: theme }}>Follow-up</div>
                 <div className="text-sm">After <strong>{draft.followUp}</strong>

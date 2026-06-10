@@ -3,6 +3,7 @@ import { Clock, UserCheck, Users, Stethoscope, CalendarDays, Plus, ChevronRight,
 import { useNavigate, Link } from 'react-router-dom';
 import { useAppStore } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
+import { usePadStore } from '@/store/usePadStore';
 import { cn } from '@/lib/utils';
 import type { QueueEntry, QueueStatus, AppointmentEntry, Patient } from '@/types';
 
@@ -30,6 +31,7 @@ type ScheduleSlot = { name: string; reason: string; time: string; patientId: str
 function getSchedule(
   appointments: AppointmentEntry[],
   patients: Patient[],
+  clinicId?: string,
 ): Record<string, ScheduleSlot[]> {
   const days = getDays();
   const admittedIds = new Set(patients.filter(p => p.status === 'IPD').map(p => p.id));
@@ -38,7 +40,12 @@ function getSchedule(
     const key = day.date.toDateString();
     const dateStr = day.date.toISOString().slice(0, 10);
     schedule[key] = appointments
-      .filter(a => a.date === dateStr && a.status !== 'cancelled' && !admittedIds.has(a.patientId))
+      .filter(a =>
+        a.date === dateStr &&
+        a.status !== 'cancelled' &&
+        !admittedIds.has(a.patientId) &&
+        (!clinicId || a.clinicId === clinicId)
+      )
       .sort((a, b) => a.time.localeCompare(b.time))
       .map(a => ({ name: a.patientName, reason: a.reason, time: a.time, patientId: a.patientId }));
   });
@@ -46,13 +53,21 @@ function getSchedule(
 }
 
 export default function OPDQueuePage() {
-  const { queue, patients, appointments, todayAvailability, setQueue, staff, assignNurse, showToast } = useAppStore();
+  const { queue, patients, appointments, todayAvailability, setQueue, staff, assignNurse, showToast, openQuickRegister } = useAppStore();
   const { user } = useAuthStore();
+  const { clinics } = usePadStore();
   const navigate = useNavigate();
   const [activeDay, setActiveDay] = useState(0);
   const [showAddWalkin, setShowAddWalkin] = useState(false);
+  const [manualClinicId, setManualClinicId] = useState('all');
   const days = getDays();
-  const schedule = getSchedule(appointments, patients);
+
+  const todayDateStr = new Date().toISOString().slice(0, 10);
+  const avail = todayAvailability?.date === todayDateStr ? todayAvailability : null;
+
+  // Active clinic: use today's availability clinic, fallback to manual selector
+  const activeClinicId = avail?.clinicId ?? (manualClinicId === 'all' ? undefined : manualClinicId);
+  const schedule = getSchedule(appointments, patients, activeClinicId);
 
   const waiting    = queue.filter(q => q.status === 'waiting');
   const inProgress = queue.filter(q => q.status === 'in-progress');
@@ -60,10 +75,6 @@ export default function OPDQueuePage() {
   const total      = queue.length;
   const todaySlots = schedule[days[activeDay].date.toDateString()] ?? [];
   const weekTotal  = Object.values(schedule).flat().length;
-
-  // Availability info
-  const todayDateStr = new Date().toISOString().slice(0, 10);
-  const avail = todayAvailability?.date === todayDateStr ? todayAvailability : null;
   const atLimit = avail ? total >= avail.maxPatients : false;
 
   const nurses = staff.filter(s => s.role === 'nurse' && s.status === 'active');
@@ -96,10 +107,10 @@ export default function OPDQueuePage() {
           <p className="text-sm text-slate-500">{waiting.length} waiting · {inProgress.length} in consult · {done.length} done today</p>
         </div>
         <div className="flex items-center gap-2">
-          <Link to="/app/patients" className="btn-secondary btn-sm flex items-center gap-2">
+          <button onClick={openQuickRegister} className="btn-secondary btn-sm flex items-center gap-2">
             <UserPlus className="w-4 h-4" />
             Register Patient
-          </Link>
+          </button>
           <button onClick={() => {
             if (atLimit) { showToast(`Queue full — max ${avail!.maxPatients} patients for today`, 'warning'); return; }
             setShowAddWalkin(true);
@@ -171,9 +182,24 @@ export default function OPDQueuePage() {
 
       {/* 7-day calendar strip */}
       <div className="card p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <CalendarDays className="w-4 h-4 text-teal-600" />
-          <span className="font-semibold text-slate-800 text-sm">Schedule — Next 7 Days</span>
+        <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <CalendarDays className="w-4 h-4 text-teal-600" />
+            <span className="font-semibold text-slate-800 text-sm">Schedule — Next 7 Days</span>
+            {avail && (
+              <span className="text-xs text-teal-600 font-medium bg-teal-50 px-2 py-0.5 rounded-full">{avail.clinicName}</span>
+            )}
+          </div>
+          {!avail && clinics.length > 0 && (
+            <select
+              value={manualClinicId}
+              onChange={e => setManualClinicId(e.target.value)}
+              className="input text-xs py-1 px-2 w-auto max-w-[180px]"
+            >
+              <option value="all">All Clinics</option>
+              {clinics.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          )}
         </div>
         <div className="flex gap-2 overflow-x-auto pb-1">
           {days.map((day, i) => {
@@ -250,7 +276,7 @@ export default function OPDQueuePage() {
             <span className="text-sm font-bold text-teal-700">In Consultation ({inProgress.length})</span>
           </div>
           <div className="space-y-2">
-            {inProgress.map(q => <QueueCard key={q.id} q={q} nurses={nurses} onConsult={id => navigate(`/app/consult/${id}`)} onAssignNurse={handleAssignNurse} />)}
+            {inProgress.map(q => <QueueCard key={q.id} q={q} nurses={nurses} onConsult={id => navigate(`/app/consult/${id}`)} onAssignNurse={handleAssignNurse} isReceptionist={user?.role === 'receptionist'} />)}
           </div>
         </div>
       )}
@@ -265,7 +291,7 @@ export default function OPDQueuePage() {
           <div className="card p-8 text-center text-slate-400 text-sm">Queue is empty — no patients waiting</div>
         ) : (
           <div className="space-y-2">
-            {waiting.map(q => <QueueCard key={q.id} q={q} nurses={nurses} onConsult={id => navigate(`/app/consult/${id}`)} onAssignNurse={handleAssignNurse} />)}
+            {waiting.map(q => <QueueCard key={q.id} q={q} nurses={nurses} onConsult={id => navigate(`/app/consult/${id}`)} onAssignNurse={handleAssignNurse} isReceptionist={user?.role === 'receptionist'} />)}
           </div>
         )}
       </div>
@@ -275,7 +301,7 @@ export default function OPDQueuePage() {
         <div>
           <div className="text-sm font-bold text-slate-500 mb-3">Completed ({done.length})</div>
           <div className="space-y-2">
-            {done.map(q => <QueueCard key={q.id} q={q} nurses={nurses} onConsult={id => navigate(`/app/consult/${id}`)} onAssignNurse={handleAssignNurse} />)}
+            {done.map(q => <QueueCard key={q.id} q={q} nurses={nurses} onConsult={id => navigate(`/app/consult/${id}`)} onAssignNurse={handleAssignNurse} isReceptionist={user?.role === 'receptionist'} />)}
           </div>
         </div>
       )}
@@ -293,9 +319,10 @@ interface QueueCardProps {
   nurses: { id: number; name: string }[];
   onConsult: (patientId: string) => void;
   onAssignNurse: (patientId: string, nurseId: number, nurseName: string) => void;
+  isReceptionist?: boolean;
 }
 
-function QueueCard({ q, nurses, onConsult, onAssignNurse }: QueueCardProps) {
+function QueueCard({ q, nurses, onConsult, onAssignNurse, isReceptionist }: QueueCardProps) {
   const cfg = STATUS_CONFIG[q.status];
   const [nurseOpen, setNurseOpen] = useState(false);
   const [assigned, setAssigned] = useState(q.assignedNurse ?? '');
@@ -354,6 +381,11 @@ function QueueCard({ q, nurses, onConsult, onAssignNurse }: QueueCardProps) {
           <Link to={`/app/patients/${q.patientId}`} className="btn-secondary btn-sm text-xs">
             View Record
           </Link>
+        ) : isReceptionist ? (
+          // Receptionist sees token/status only — no clinical access
+          <span className={cn('text-xs font-medium px-3 py-1.5 rounded-full', cfg.color)}>
+            Token {q.token}
+          </span>
         ) : (
           <button onClick={() => onConsult(q.patientId)} className="btn-primary btn-sm">
             <Stethoscope className="w-3.5 h-3.5" />

@@ -2,6 +2,9 @@
 
 const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? 'https://vyasa-os-backend.onrender.com';
 
+// Ping backend on load so Render free-tier warms up before first login attempt
+fetch(`${BASE}/health`).catch(() => {});
+
 let accessToken = localStorage.getItem('vyasa_access_token') ?? '';
 let refreshToken = localStorage.getItem('vyasa_refresh_token') ?? '';
 

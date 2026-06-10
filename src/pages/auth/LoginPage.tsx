@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { Stethoscope, Eye, EyeOff, Loader2, Building2, User, UserPlus, CheckCircle2, Info, WifiOff } from 'lucide-react';
-import { GoogleLogin, type CredentialResponse } from '@react-oauth/google';
+import { Stethoscope, Eye, EyeOff, Loader2, User, UserPlus, CheckCircle2, Info, WifiOff, Clock, ShieldCheck, X } from 'lucide-react';
+import { useGoogleLogin } from '@react-oauth/google';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useAppStore } from '@/store/useAppStore';
 import { cn } from '@/lib/utils';
@@ -30,42 +30,108 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [slowStart, setSlowStart] = useState(false);
   const [error, setError] = useState('');
   const [showDemo, setShowDemo] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  // Google new-user registration flow
+  const [googleNewUser, setGoogleNewUser] = useState<{ email: string; name: string } | null>(null);
+  const [gRegForm, setGRegForm] = useState({ name: '', specialty: '', degrees: '', phone: '', licenseNumber: '' });
 
-  const { login, loginWithGoogle, loginAsDemo } = useAuthStore();
+  const { login, loginWithGoogle, completeGoogleRegister, loginAsDemo } = useAuthStore();
   const { loadDemo } = useAppStore();
   const navigate = useNavigate();
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [geoPos, setGeoPos] = useState<{ lat: number; lng: number } | null>(null);
+
+  // Silently request GPS on mount so it's ready when the doctor logs in
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      pos => setGeoPos({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => {}, // denied or unavailable — silent fail
+      { timeout: 8000, maximumAge: 300000 },
+    );
+  }, []);
+
+  const googleLogin = useGoogleLogin({
+    flow: 'implicit',
+    onSuccess: (tokenResponse) => handleGoogleAccessToken(tokenResponse.access_token),
+    onError: () => setError('Google sign-in failed. Try again.'),
+    onNonOAuthError: (err) => setError(err.type === 'popup_closed' ? 'Sign-in window was closed.' : 'Google sign-in popup was blocked — please allow popups for this site.'),
+  });
+
+  // After login, check if pending approval
+  function afterLogin() {
+    const status = useAuthStore.getState().approvalStatus;
+    if (status === 'pending') {
+      navigate('/pending-approval');
+    } else {
+      navigate('/app/dashboard');
+    }
+  }
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+    setSlowStart(false);
     setLoading(true);
+    // After 6 seconds, show "server waking up" hint
+    const wakeTimer = setTimeout(() => setSlowStart(true), 6000);
     try {
-      await login(username, password, portal);
-      navigate('/app/dashboard');
-    } catch {
+      await login(username, password, geoPos ?? undefined);
+      afterLogin();
+    } catch (err) {
       setAttempt(a => a + 1);
-      setError('backend');
+      setError(err instanceof Error ? err.message : 'backend');
     } finally {
+      clearTimeout(wakeTimer);
+      setSlowStart(false);
       setLoading(false);
     }
   }
 
-  async function handleGoogleSuccess(response: CredentialResponse) {
-    if (!response.credential) return;
+  async function handleGoogleAccessToken(accessToken: string) {
     setGoogleLoading(true);
     setError('');
+    const tryLogin = async () => loginWithGoogle(accessToken, geoPos ?? undefined);
     try {
-      await loginWithGoogle(response.credential);
-      navigate('/app/dashboard');
-    } catch {
+      let result;
+      try {
+        result = await tryLogin();
+      } catch (firstErr) {
+        if (firstErr instanceof Error && firstErr.message === 'Failed to fetch') {
+          await new Promise(r => setTimeout(r, 5000));
+          result = await tryLogin();
+        } else {
+          throw firstErr;
+        }
+      }
+      if (result.isNewUser) {
+        setGoogleNewUser({ email: result.googleEmail, name: result.googleName });
+        setGRegForm(f => ({ ...f, name: result.googleName }));
+      } else {
+        afterLogin();
+      }
+    } catch (err) {
       setAttempt(a => a + 1);
-      setError('backend');
+      setError(err instanceof Error ? err.message : 'backend');
     } finally {
       setGoogleLoading(false);
+    }
+  }
+
+  async function handleGoogleRegister(e: React.FormEvent) {
+    e.preventDefault();
+    if (!googleNewUser) return;
+    setLoading(true);
+    try {
+      await completeGoogleRegister({ ...gRegForm, email: googleNewUser.email });
+      afterLogin();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Registration failed');
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -154,7 +220,7 @@ export default function LoginPage() {
                 className={cn('flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-semibold transition-colors',
                   portal === 'staff' ? 'bg-navy-800 text-white' : 'bg-white text-slate-500 hover:bg-slate-50'
                 )}>
-                <Building2 className="w-4 h-4" /> Hospital Staff
+                <Stethoscope className="w-4 h-4" /> Doctor Login
               </button>
               <button onClick={() => setPortal('patient')}
                 className={cn('flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-semibold transition-colors',
@@ -168,7 +234,7 @@ export default function LoginPage() {
               <div>
                 <label className="label">Username or Email</label>
                 <input type="text" value={username} onChange={e => setUsername(e.target.value)}
-                  placeholder="staff@hospital.com" className="input" required autoComplete="username" />
+                  placeholder="doctor@clinic.com" className="input" required autoComplete="username" />
               </div>
               <div>
                 <label className="label">Password</label>
@@ -204,7 +270,21 @@ export default function LoginPage() {
                   </button>
                 </div>
               )}
+              {error && error !== 'backend' && (
+                <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2.5 space-y-1">
+                  <p className="text-sm text-red-600 font-medium">{error}</p>
+                  {(error.toLowerCase().includes('email') || error.toLowerCase().includes('password') || error.toLowerCase().includes('invalid')) && (
+                    <p className="text-xs text-red-500">No account yet? Use <strong>demo mode</strong> below to explore, or <strong>Create Account</strong> to register.</p>
+                  )}
+                </div>
+              )}
 
+              {slowStart && (
+                <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                  <Loader2 className="w-3.5 h-3.5 text-blue-500 animate-spin flex-shrink-0" />
+                  <p className="text-xs text-blue-700">Server is waking up — this can take up to 60 seconds on first login.</p>
+                </div>
+              )}
               <button type="submit" disabled={loading} className="btn-primary w-full py-3">
                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                 {loading ? 'Signing in…' : 'Sign In'}
@@ -219,17 +299,19 @@ export default function LoginPage() {
             </div>
 
             {/* Google login */}
-            <div className={cn('flex justify-center', googleLoading && 'opacity-60 pointer-events-none')}>
-              <GoogleLogin
-                onSuccess={handleGoogleSuccess}
-                onError={() => setError('backend')}
-                theme="outline"
-                size="large"
-                shape="rectangular"
-                text="signin_with"
-                width="368"
-              />
-            </div>
+            <button
+              type="button"
+              onClick={() => { setError(''); googleLogin(); }}
+              disabled={googleLoading}
+              className="w-full flex items-center justify-center gap-3 border border-slate-300 rounded-lg py-2.5 px-4 bg-white hover:bg-slate-50 active:bg-slate-100 transition-colors disabled:opacity-60 disabled:cursor-not-allowed font-medium text-slate-700 text-sm"
+            >
+              {googleLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin text-slate-500" />
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 0 0 2.38-5.88c0-.57-.05-.66-.15-1.18z"/><path fill="#34A853" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2a4.8 4.8 0 0 1-7.18-2.54H1.83v2.07A8 8 0 0 0 8.98 17z"/><path fill="#FBBC05" d="M4.5 10.52a4.8 4.8 0 0 1 0-3.04V5.41H1.83a8 8 0 0 0 0 7.18z"/><path fill="#EA4335" d="M8.98 4.18c1.17 0 2.23.4 3.06 1.2l2.3-2.3A8 8 0 0 0 1.83 5.4L4.5 7.49a4.77 4.77 0 0 1 4.48-3.31z"/></svg>
+              )}
+              {googleLoading ? 'Continuing with Google…' : 'Sign in / Sign up with Google'}
+            </button>
 
             {/* Info note */}
             <div className="flex items-start gap-2 mt-4 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5">
@@ -282,6 +364,62 @@ export default function LoginPage() {
           </p>
         </div>
       </div>
+
+      {/* ── Google New-User Registration Modal ── */}
+      {googleNewUser && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <div>
+                <h3 className="font-bold text-slate-900">Complete your profile</h3>
+                <p className="text-xs text-slate-500 mt-0.5">Signing in as <span className="font-semibold">{googleNewUser.email}</span></p>
+              </div>
+              <button onClick={() => setGoogleNewUser(null)} className="p-1.5 rounded-lg hover:bg-slate-100">
+                <X className="w-4 h-4 text-slate-400" />
+              </button>
+            </div>
+            <form onSubmit={handleGoogleRegister} className="p-6 space-y-4">
+              <div>
+                <label className="label">Full Name *</label>
+                <input type="text" value={gRegForm.name} onChange={e => setGRegForm(f => ({ ...f, name: e.target.value }))}
+                  className="input" required placeholder="Dr. John Smith" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Specialty</label>
+                  <input type="text" value={gRegForm.specialty} onChange={e => setGRegForm(f => ({ ...f, specialty: e.target.value }))}
+                    className="input" placeholder="General Medicine" />
+                </div>
+                <div>
+                  <label className="label">Phone</label>
+                  <input type="tel" value={gRegForm.phone} onChange={e => setGRegForm(f => ({ ...f, phone: e.target.value }))}
+                    className="input" placeholder="+91 98765 43210" />
+                </div>
+              </div>
+              <div>
+                <label className="label">Degrees / Qualifications</label>
+                <input type="text" value={gRegForm.degrees} onChange={e => setGRegForm(f => ({ ...f, degrees: e.target.value }))}
+                  className="input" placeholder="MBBS, MD" />
+              </div>
+              <div>
+                <label className="label">MCI / State Council License Number *</label>
+                <input type="text" value={gRegForm.licenseNumber} onChange={e => setGRegForm(f => ({ ...f, licenseNumber: e.target.value }))}
+                  className="input" required placeholder="MH-12345" />
+                <p className="text-[11px] text-slate-400 mt-1">Required for prescription access. Verified by our team within a few hours.</p>
+              </div>
+              {error && <p className="text-sm text-red-600">{error}</p>}
+              <button type="submit" disabled={loading} className="btn-primary w-full py-3">
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+                {loading ? 'Submitting…' : 'Submit for Approval'}
+              </button>
+              <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                <Clock className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-700">After submitting, our team will verify your license number. Full access is granted after approval — usually within a few hours.</p>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -69,6 +69,7 @@ interface AppState {
   updateBookingSlot: (id: string, patch: Partial<BookingSlot>) => void;
   loadDemo: (doctorName?: string, doctorId?: number) => void;
   resetStore: () => void;
+  syncFromBackend: () => Promise<void>;
 }
 
 export interface Toast {
@@ -86,7 +87,7 @@ const DEMO_PATIENTS: Patient[] = [
   { id: 'P003', name: 'Vikram Singh', age: 35, gender: 'M', mrn: 'MRN-003', status: 'OPD', diagnosis: 'Fever with chills, R/O Malaria', attendingDoctor: 'Dr. Arjun Mehta', attendingDoctorId: 1, priority: 'Medium', allergies: [] },
   { id: 'P004', name: 'Meena Patel', age: 55, gender: 'F', mrn: 'MRN-004', bloodGroup: 'O+', status: 'IPD', ward: 'ICU', bed: 'ICU-02', admitDate: '2026-05-30', diagnosis: 'Septic Shock, Post-op', attendingDoctor: 'Dr. Arjun Mehta', attendingDoctorId: 1, priority: 'Critical', allergies: ['Sulfa'], insurance: 'Mediclaim' },
   { id: 'P005', name: 'Arun Joshi', age: 28, gender: 'M', mrn: 'MRN-005', status: 'OPD', diagnosis: 'Acute Gastroenteritis', attendingDoctor: 'Dr. Arjun Mehta', attendingDoctorId: 1, priority: 'Stable', allergies: [] },
-  { id: 'P006', name: 'Kavitha Rao', age: 70, gender: 'F', mrn: 'MRN-006', bloodGroup: 'AB+', status: 'Discharged', admitDate: '2026-05-25', diagnosis: 'COPD Exacerbation', attendingDoctor: 'Dr. Arjun Mehta', attendingDoctorId: 1, priority: 'Stable', allergies: [] },
+  { id: 'P006', name: 'Kavitha Rao', age: 70, gender: 'F', mrn: 'MRN-006', bloodGroup: 'AB+', status: 'OPD', admitDate: '2026-05-25', diagnosis: 'COPD Exacerbation', attendingDoctor: 'Dr. Arjun Mehta', attendingDoctorId: 1, priority: 'Stable', allergies: [] },
 ];
 
 const DEMO_VITALS: Record<string, Vitals[]> = {
@@ -206,11 +207,16 @@ export const useAppStore = create<AppState>()(
   ...EMPTY_STATE,
 
   setPatients: (p) => set({ patients: p }),
-  upsertPatient: (p) => set(s => ({
-    patients: s.patients.find(x => x.id === p.id)
-      ? s.patients.map(x => x.id === p.id ? p : x)
-      : [...s.patients, p]
-  })),
+  upsertPatient: (p) => {
+    set(s => ({
+      patients: s.patients.find(x => x.id === p.id)
+        ? s.patients.map(x => x.id === p.id ? p : x)
+        : [...s.patients, p]
+    }));
+    import('@/lib/api').then(({ isApiEnabled, api }) => {
+      if (isApiEnabled()) api.post('/patients', p).catch(console.warn);
+    });
+  },
   setAlerts: (a) => set({ alerts: a }),
   addAlert: (a) => set(s => ({ alerts: [a, ...s.alerts] })),
   acknowledgeAlert: (id) => set(s => ({
@@ -255,11 +261,26 @@ export const useAppStore = create<AppState>()(
   },
   removeToast: (toastId) => set(s => ({ toasts: s.toasts.filter(t => t.id !== toastId) })),
 
-  addAppointment: (a) => set(s => ({ appointments: [...s.appointments, a] })),
-  updateAppointment: (id, patch) => set(s => ({ appointments: s.appointments.map(a => a.id === id ? { ...a, ...patch } : a) })),
-  addVisit: (v) => set(s => ({
-    visits: { ...s.visits, [v.patientId]: [v, ...(s.visits[v.patientId] ?? [])] },
-  })),
+  addAppointment: (a) => {
+    set(s => ({ appointments: [...s.appointments, a] }));
+    import('@/lib/api').then(({ isApiEnabled, api }) => {
+      if (isApiEnabled()) api.post('/appointments', a).catch(console.warn);
+    });
+  },
+  updateAppointment: (id, patch) => {
+    set(s => ({ appointments: s.appointments.map(a => a.id === id ? { ...a, ...patch } : a) }));
+    import('@/lib/api').then(({ isApiEnabled, api }) => {
+      if (isApiEnabled()) api.patch(`/appointments/${id}`, patch).catch(console.warn);
+    });
+  },
+  addVisit: (v) => {
+    set(s => ({
+      visits: { ...s.visits, [v.patientId]: [v, ...(s.visits[v.patientId] ?? [])] },
+    }));
+    import('@/lib/api').then(({ isApiEnabled, api }) => {
+      if (isApiEnabled()) api.post('/visits', v).catch(console.warn);
+    });
+  },
   updateVisit: (id, patch) => set(s => ({
     visits: Object.fromEntries(
       Object.entries(s.visits).map(([pid, list]) => [
@@ -312,6 +333,8 @@ export const useAppStore = create<AppState>()(
       beds: DEMO_BEDS,
       staff: DEMO_STAFF,
       appointments,
+      // Set today's clinic to Roy Clinic to match today's demo appointments (APT001, APT002)
+      todayAvailability: { date: d(0), clinicId: 'C1', clinicName: 'Roy Clinic', isOpen: true, startTime: '09:00', endTime: '13:00', maxPatients: 15 },
       alerts: [
         { id: 'A1', patientId: 'P001', patientName: 'Ramesh Kumar', type: 'BP Alert', message: 'BP 178/105 — Hypertensive Urgency', severity: 'critical', time: '2026-06-04T08:00:00', acknowledged: false },
         { id: 'A2', patientId: 'P002', patientName: 'Sunita Devi', type: 'Sugar Alert', message: 'Blood sugar 450 mg/dL — Critical', severity: 'critical', time: '2026-06-04T08:00:00', acknowledged: false },
@@ -321,6 +344,27 @@ export const useAppStore = create<AppState>()(
   },
 
   resetStore: () => set({ ...EMPTY_STATE }),
+
+  syncFromBackend: async () => {
+    const { isApiEnabled, api } = await import('@/lib/api');
+    if (!isApiEnabled()) return;
+    try {
+      // Fetch patients
+      const patients = await api.get<Patient[]>('/patients');
+      // Build visits map
+      const visitsArr = await api.get<VisitRecord[]>('/visits/clinic');
+      const visitsMap: Record<string, VisitRecord[]> = {};
+      for (const v of visitsArr) {
+        if (!visitsMap[v.patientId]) visitsMap[v.patientId] = [];
+        visitsMap[v.patientId].push(v);
+      }
+      // Fetch appointments (next 30 days)
+      const appointments = await api.get<AppointmentEntry[]>('/appointments');
+      set({ patients, visits: visitsMap, appointments });
+    } catch (err) {
+      console.warn('[vyasa] backend sync failed:', err);
+    }
+  },
     }),
     {
       name: 'vyasa-app',

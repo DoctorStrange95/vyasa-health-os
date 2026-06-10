@@ -1,51 +1,78 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { StaffUser, Role } from '@/types';
-import { apiClient } from '@/api/client';
+import { api, setTokens, clearTokens } from '@/lib/api';
 
 interface AuthState {
   user: StaffUser | null;
   token: string | null;
   isDemo: boolean;
-  login: (username: string, password: string, portal: 'staff' | 'patient') => Promise<void>;
-  loginWithGoogle: (credential: string) => Promise<void>;
+  approvalStatus: 'pending' | 'approved' | 'rejected' | 'suspended' | null;
+  login: (email: string, password: string, geo?: { lat: number; lng: number; locationLabel?: string }) => Promise<void>;
+  register: (data: RegisterPayload) => Promise<void>;
+  loginWithGoogle: (credential: string, geo?: { lat: number; lng: number }) => Promise<GoogleResult>;
+  completeGoogleRegister: (data: GoogleRegisterPayload) => Promise<void>;
   loginAsDemo: (role: Role) => void;
   logout: () => void;
 }
 
-const DEMO_STAFF: Record<Role, StaffUser> = {
-  doctor: { id: 1, name: 'Dr. Arjun Mehta', role: 'doctor', email: 'arjun@vyasa.health', specialty: 'Internal Medicine', department: 'Medicine', hospital: 'Vyasa General Hospital' },
-  clinic_admin: { id: 9, name: 'Dr. Nilanjan Roy', role: 'clinic_admin', email: 'nilanjan@vyasa.health', specialty: 'General Medicine', department: 'OPD', hospital: 'Roy Clinic' },
-  nurse: { id: 2, name: 'Priya Sharma', role: 'nurse', email: 'priya@vyasa.health', department: 'ICU' },
-  pharmacist: { id: 3, name: 'Ravi Kumar', role: 'pharmacist', email: 'ravi@vyasa.health', department: 'Pharmacy' },
-  labtech: { id: 4, name: 'Sunita Rao', role: 'labtech', email: 'sunita@vyasa.health', department: 'Laboratory' },
-  admin: { id: 5, name: 'Admin User', role: 'admin', email: 'admin@vyasa.health' },
-  billing: { id: 6, name: 'Billing Staff', role: 'billing', email: 'billing@vyasa.health' },
-  receptionist: { id: 7, name: 'Reception', role: 'receptionist', email: 'reception@vyasa.health' },
-  patient: { id: 8, name: 'Patient Demo', role: 'patient', email: 'patient@vyasa.health' },
-};
-
-// Emails that should always get clinic_admin role (solo doctors)
-const CLINIC_ADMIN_EMAILS = ['nilanjan@vyasa.health', 'nilanjan1995@gmail.com', 'kaartkaroo@gmail.com'];
-
-function decodeGoogleJwt(credential: string): { sub: string; name: string; email: string; picture?: string } | null {
-  try {
-    const payload = credential.split('.')[1];
-    const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
-    return JSON.parse(json);
-  } catch {
-    return null;
-  }
+export interface RegisterPayload {
+  name: string;
+  email: string;
+  password: string;
+  role?: string;
+  specialty?: string;
+  degrees?: string;
+  phone?: string;
+  licenseNumber?: string;
 }
 
-function applyRoleOverrides(user: StaffUser | null): StaffUser | null {
-  if (!user) return null;
-  const email = (user.email ?? '').toLowerCase();
-  const role = (user.role as string).toLowerCase() as StaffUser['role'];
-  if (CLINIC_ADMIN_EMAILS.includes(email) && role === 'doctor') {
-    return { ...user, role: 'clinic_admin' };
-  }
-  return { ...user, role };
+export type GoogleResult =
+  | { isNewUser: false }
+  | { isNewUser: true; googleEmail: string; googleName: string };
+
+export interface GoogleRegisterPayload {
+  name: string;
+  email: string;
+  specialty?: string;
+  degrees?: string;
+  phone?: string;
+  licenseNumber?: string;
+  googleId?: string;
+}
+
+const DEMO_STAFF: Record<Role, StaffUser> = {
+  doctor:       { id: 1, name: 'Dr. Arjun Mehta',  role: 'doctor',       email: 'arjun@vyasa.health',   specialty: 'Internal Medicine', department: 'Medicine' },
+  clinic_admin: { id: 9, name: 'Dr. Nilanjan Roy',  role: 'clinic_admin', email: 'nilanjan@vyasa.health', specialty: 'General Medicine',  department: 'OPD' },
+  nurse:        { id: 2, name: 'Priya Sharma',      role: 'nurse',        email: 'priya@vyasa.health',    department: 'ICU' },
+  pharmacist:   { id: 3, name: 'Ravi Kumar',        role: 'pharmacist',   email: 'ravi@vyasa.health',     department: 'Pharmacy' },
+  labtech:      { id: 4, name: 'Sunita Rao',        role: 'labtech',      email: 'sunita@vyasa.health',   department: 'Laboratory' },
+  admin:        { id: 5, name: 'Admin User',        role: 'admin',        email: 'admin@vyasa.health' },
+  billing:      { id: 6, name: 'Billing Staff',     role: 'billing',      email: 'billing@vyasa.health' },
+  receptionist: { id: 7, name: 'Reception',         role: 'receptionist', email: 'reception@vyasa.health' },
+  patient:      { id: 8, name: 'Patient Demo',      role: 'patient',      email: 'patient@vyasa.health' },
+  superadmin:   { id: 0, name: 'Super Admin',       role: 'superadmin',   email: 'admin@vyasa.health' },
+};
+
+interface BackendAuthResponse {
+  accessToken: string;
+  refreshToken: string;
+  user: {
+    id: number; name: string; email: string; role: string;
+    clinicId: string; specialty?: string; degrees?: string;
+    approvalStatus?: string;
+  };
+}
+
+function toStaffUser(u: BackendAuthResponse['user']): StaffUser {
+  return {
+    id: u.id,
+    name: u.name,
+    email: u.email,
+    role: u.role as Role,
+    specialty: u.specialty,
+    hospital: u.clinicId,
+  };
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -54,56 +81,103 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       token: null,
       isDemo: false,
+      approvalStatus: null,
 
-      login: async (username, password, portal) => {
-        const endpoint = portal === 'patient' ? '/auth/patient-login' : '/auth/login';
-        const res = await apiClient.post(endpoint, { email: username, password });
-        const { token, user } = res.data;
-        const normUser = applyRoleOverrides(user)!;
-        localStorage.setItem('vyasa_token', token);
-        set({ user: normUser, token, isDemo: false });
+      // ─── Real backend login ────────────────────────────────────────────────
+      login: async (email, password, geo) => {
+        const data = await api.post<BackendAuthResponse>('/auth/login', { email, password, ...geo });
+        setTokens(data.accessToken, data.refreshToken);
+        set({
+          user: toStaffUser(data.user),
+          token: data.accessToken,
+          isDemo: false,
+          approvalStatus: (data.user.approvalStatus ?? 'approved') as AuthState['approvalStatus'],
+        });
+        // Sync backend data into app store
+        import('./useAppStore').then(({ useAppStore }) =>
+          useAppStore.getState().syncFromBackend()
+        );
       },
 
-      loginWithGoogle: async (credential) => {
-        const profile = decodeGoogleJwt(credential);
-        if (!profile) throw new Error('Invalid Google credential');
-        const email = profile.email.toLowerCase();
-        const defaultRole: Role = CLINIC_ADMIN_EMAILS.includes(email) ? 'clinic_admin' : 'clinic_admin';
-        const user: StaffUser = {
-          id: Math.abs(profile.sub.split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % 9000 + 1000,
-          name: profile.name,
-          email: profile.email,
-          avatar: profile.picture,
-          role: defaultRole,
-          hospital: 'Solo Practice',
-        };
-        const normUser = applyRoleOverrides(user)!;
-        set({ user: normUser, token: `google_${profile.sub}`, isDemo: false });
+      // ─── Real backend register ─────────────────────────────────────────────
+      register: async (payload) => {
+        const data = await api.post<BackendAuthResponse>('/auth/register', payload);
+        setTokens(data.accessToken, data.refreshToken);
+        set({
+          user: toStaffUser(data.user),
+          token: data.accessToken,
+          isDemo: false,
+          approvalStatus: (data.user.approvalStatus ?? 'pending') as AuthState['approvalStatus'],
+        });
+        // New user — start with clean local state
+        import('./useAppStore').then(({ useAppStore }) =>
+          useAppStore.getState().syncFromBackend()
+        );
       },
 
+      // ─── Google OAuth ──────────────────────────────────────────────────────
+      loginWithGoogle: async (credential, geo) => {
+        const result = await api.post<
+          BackendAuthResponse & { isNewUser?: false } |
+          { isNewUser: true; googleEmail: string; googleName: string }
+        >('/auth/google', { accessToken: credential, ...geo });
+
+        if ('isNewUser' in result && result.isNewUser) {
+          return { isNewUser: true, googleEmail: result.googleEmail, googleName: result.googleName };
+        }
+
+        const r = result as BackendAuthResponse;
+        setTokens(r.accessToken, r.refreshToken);
+        set({
+          user: toStaffUser(r.user),
+          token: r.accessToken,
+          isDemo: false,
+          approvalStatus: (r.user.approvalStatus ?? 'approved') as AuthState['approvalStatus'],
+        });
+        import('./useAppStore').then(({ useAppStore }) =>
+          useAppStore.getState().syncFromBackend()
+        );
+        return { isNewUser: false };
+      },
+
+      // ─── Complete Google registration (new user) ──────────────────────────
+      completeGoogleRegister: async (payload) => {
+        // Register with a random secure password (Google handles auth)
+        const data = await api.post<BackendAuthResponse>('/auth/register', {
+          ...payload,
+          password: `google_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+          role: 'clinic_admin',
+          googleId: payload.googleId,
+        });
+        setTokens(data.accessToken, data.refreshToken);
+        set({
+          user: toStaffUser(data.user),
+          token: data.accessToken,
+          isDemo: false,
+          approvalStatus: (data.user.approvalStatus ?? 'pending') as AuthState['approvalStatus'],
+        });
+        import('./useAppStore').then(({ useAppStore }) =>
+          useAppStore.getState().syncFromBackend()
+        );
+      },
+
+      // ─── Demo mode (no backend) ────────────────────────────────────────────
       loginAsDemo: (role) => {
-        set({ user: DEMO_STAFF[role], token: 'demo', isDemo: true });
+        clearTokens();
+        set({ user: DEMO_STAFF[role], token: 'demo', isDemo: true, approvalStatus: 'approved' });
       },
 
       logout: () => {
-        localStorage.removeItem('vyasa_token');
-        // Delay import to avoid circular module init order issues
+        const rt = localStorage.getItem('vyasa_refresh_token');
+        if (rt) api.post('/auth/logout', { refreshToken: rt }).catch(() => {});
+        clearTokens();
         import('./useAppStore').then(({ useAppStore }) => useAppStore.getState().resetStore());
-        set({ user: null, token: null, isDemo: false });
+        set({ user: null, token: null, isDemo: false, approvalStatus: null });
       },
     }),
     {
       name: 'vyasa-auth',
-      partialize: (s) => ({ user: s.user, token: s.token, isDemo: s.isDemo }),
-      // Fix any persisted session that has the wrong role
-      onRehydrateStorage: () => (state) => {
-        if (state && !state.isDemo && state.user) {
-          const fixed = applyRoleOverrides(state.user);
-          if (fixed?.role !== state.user.role) {
-            state.user = fixed;
-          }
-        }
-      },
+      partialize: (s) => ({ user: s.user, token: s.token, isDemo: s.isDemo, approvalStatus: s.approvalStatus }),
     }
   )
 );

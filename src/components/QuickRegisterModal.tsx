@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
-import { X, User, Calendar, CreditCard, Printer, CheckCircle2 } from 'lucide-react';
+import { X, User, Calendar, CreditCard, Printer, CheckCircle2, Stethoscope } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePadStore } from '@/store/usePadStore';
@@ -26,6 +27,7 @@ export function QuickRegisterModal() {
   const { patients, queue, closeQuickRegister, upsertPatient, setQueue, addAppointment, showToast } = useAppStore();
   const { user } = useAuthStore();
   const { clinics, settings } = usePadStore();
+  const navigate = useNavigate();
 
   const todayStr = new Date().toISOString().slice(0, 10);
   const defaultFee = clinics[0]?.fee ?? 300;
@@ -209,11 +211,19 @@ export function QuickRegisterModal() {
             </div>
           </div>
 
-          <div className="p-4 flex gap-2 border-t border-slate-100">
-            <button onClick={handlePrint} className="btn-secondary flex-1">
-              <Printer className="w-4 h-4" /> Print Slip
+          <div className="p-4 flex flex-col gap-2 border-t border-slate-100">
+            <button
+              onClick={() => { closeQuickRegister(); navigate(`/app/consult/${registered.patient.id}`); }}
+              className="btn-primary w-full"
+            >
+              <Stethoscope className="w-4 h-4" /> Start Consultation
             </button>
-            <button onClick={closeQuickRegister} className="btn-primary flex-1">Done</button>
+            <div className="flex gap-2">
+              <button onClick={handlePrint} className="btn-secondary flex-1">
+                <Printer className="w-4 h-4" /> Print Slip
+              </button>
+              <button onClick={closeQuickRegister} className="btn-secondary flex-1">Done</button>
+            </div>
           </div>
         </div>
       </div>

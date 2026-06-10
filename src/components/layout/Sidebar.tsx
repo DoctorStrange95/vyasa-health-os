@@ -7,7 +7,7 @@ import {
   Bell, LogOut, FileText, ListOrdered, Network, User,
   Activity, ClipboardList, Package, TestTube,
   DollarSign, Receipt, UserCheck, Stethoscope, BedDouble,
-  BarChart3, Link2, ScrollText, Gauge, ChevronLeft, Settings2, CalendarDays
+  BarChart3, Link2, ScrollText, Gauge, ChevronLeft, Settings2, CalendarDays, ClipboardCheck
 } from 'lucide-react';
 import type { Role } from '@/types';
 
@@ -76,6 +76,7 @@ const NAV_ITEMS: Record<Role, NavItem[]> = {
     { icon: LayoutDashboard, label: 'Dashboard', to: '/app/reception' },
     { icon: UserCheck, label: 'Register Patient', to: '/app/register' },
     { icon: CalendarDays, label: 'Appointments', to: '/app/queue' },
+    { icon: ClipboardCheck, label: 'Prescriptions', to: '/app/rx-view' },
     { icon: DollarSign, label: 'Collect Payment', to: '/app/collect-payment' },
   ],
   patient: [

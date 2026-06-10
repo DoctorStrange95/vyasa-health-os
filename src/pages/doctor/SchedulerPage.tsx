@@ -1,268 +1,301 @@
 import { useState, useMemo } from 'react';
-import { CalendarDays, Plus, ChevronLeft, ChevronRight, Clock, User, CheckCircle, XCircle } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, UserPlus, Stethoscope, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useAppStore } from '@/store/useAppStore';
 import { usePadStore } from '@/store/usePadStore';
-import type { BookingSlot, Clinic, DaySchedule } from '@/types';
+import { cn } from '@/lib/utils';
+import type { AppointmentStatus } from '@/types';
 
-function today() { return new Date().toISOString().slice(0, 10); }
-function addDays(d: string, n: number) {
-  const dt = new Date(d);
-  dt.setDate(dt.getDate() + n);
-  return dt.toISOString().slice(0, 10);
-}
-function fmt(d: string) {
-  return new Date(d).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
-}
-function hhmm(t: string) {
-  const d = new Date(`2000-01-01T${t}`);
-  return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+function todayStr() { return new Date().toISOString().slice(0, 10); }
+
+function addDays(base: Date, n: number) {
+  const d = new Date(base);
+  d.setDate(d.getDate() + n);
+  return d;
 }
 
-function generateSlots(clinicId: string, date: string, clinics: Clinic[], fee: number): Omit<BookingSlot, 'id'>[] {
-  const clinic = clinics.find(c => c.id === clinicId);
-  if (!clinic) return [];
-  const dow = new Date(date).getDay();
-  const daySched = clinic.schedule.find((s: DaySchedule) => s.day === dow);
-  if (!daySched?.open) return [];
-  const slots: Omit<BookingSlot, 'id'>[] = [];
-  for (const sess of daySched.sessions) {
-    let [h, m] = sess.start.split(':').map(Number);
-    const [eh, em] = sess.end.split(':').map(Number);
-    while (h * 60 + m < eh * 60 + em) {
-      const time = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-      slots.push({ clinicId, date, time, durationMins: 15, status: 'available', bookedVia: 'walkin', fee });
-      m += 15;
-      if (m >= 60) { h += 1; m -= 60; }
-    }
-  }
-  return slots;
+function fmtDate(d: Date) {
+  return d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
-interface BookModalProps { slot: BookingSlot; onClose: () => void; }
-function BookModal({ slot, onClose }: BookModalProps) {
-  const { patients, updateBookingSlot, showToast } = useAppStore();
-  const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<string | null>(null);
-  const filtered = search.length >= 2
-    ? patients.filter(p => p.name.toLowerCase().includes(search.toLowerCase()) || p.mrn.toLowerCase().includes(search.toLowerCase())).slice(0, 8)
-    : [];
-
-  const book = () => {
-    if (!selected) return;
-    const p = patients.find(px => px.id === selected)!;
-    updateBookingSlot(slot.id, { status: 'booked', patientId: p.id, patientName: p.name, bookedVia: 'receptionist' });
-    showToast(`Slot booked for ${p.name}`, 'success');
-    onClose();
-  };
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: 'white', borderRadius: 12, padding: 24, width: 380, maxWidth: '95vw' }}>
-        <h3 style={{ margin: '0 0 4px', fontSize: 15, fontWeight: 700 }}>Book Slot — {hhmm(slot.time)}</h3>
-        <p style={{ color: '#64748b', fontSize: 12, marginBottom: 14 }}>{slot.date}</p>
-        <input
-          className="input"
-          placeholder="Search patient name or MRN…"
-          value={search}
-          onChange={e => { setSearch(e.target.value); setSelected(null); }}
-          autoFocus
-        />
-        {filtered.length > 0 && (
-          <div style={{ border: '1px solid #e2e8f0', borderRadius: 8, marginTop: 6, overflow: 'hidden' }}>
-            {filtered.map(p => (
-              <div
-                key={p.id}
-                onClick={() => setSelected(p.id)}
-                style={{ padding: '8px 12px', cursor: 'pointer', background: selected === p.id ? '#f0fdfa' : 'white', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}
-              >
-                <span style={{ fontWeight: 600 }}>{p.name}</span>
-                <span style={{ color: '#94a3b8', marginLeft: 8 }}>{p.mrn} · {p.age}Y/{p.gender}</span>
-              </div>
-            ))}
-          </div>
-        )}
-        <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-          <button onClick={onClose} className="btn-secondary" style={{ flex: 1 }}>Cancel</button>
-          <button onClick={book} className="btn-primary" style={{ flex: 1 }} disabled={!selected}>Book</button>
-        </div>
-      </div>
-    </div>
-  );
+function fmtTime(t: string) {
+  return new Date(`2000-01-01T${t}`).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
 }
+
+function dateStr(d: Date) { return d.toISOString().slice(0, 10); }
+
+const STATUS_STYLES: Record<AppointmentStatus, { label: string; chip: string; dot: string }> = {
+  scheduled:  { label: 'Scheduled',   chip: 'bg-teal-100 text-teal-700',    dot: 'bg-teal-500' },
+  confirmed:  { label: 'Confirmed',   chip: 'bg-blue-100 text-blue-700',    dot: 'bg-blue-500' },
+  completed:  { label: 'Completed',   chip: 'bg-slate-100 text-slate-500',  dot: 'bg-slate-400' },
+  cancelled:  { label: 'Cancelled',   chip: 'bg-red-100 text-red-600',      dot: 'bg-red-400' },
+  'no-show':  { label: 'No Show',     chip: 'bg-orange-100 text-orange-600', dot: 'bg-orange-400' },
+};
 
 export default function SchedulerPage() {
-  const { bookingSlots, addBookingSlot, updateBookingSlot, showToast } = useAppStore();
+  const { appointments, updateAppointment, openQuickRegister, showToast, patients } = useAppStore();
   const { clinics } = usePadStore();
-  const [selectedClinicId, setSelectedClinicId] = useState(clinics[0]?.id ?? '');
-  const [weekStart, setWeekStart] = useState(today());
-  const [bookingSlot, setBookingSlot] = useState<BookingSlot | null>(null);
+  const [selectedClinicId, setSelectedClinicId] = useState<string>('all');
+  const [weekOffset, setWeekOffset] = useState(0);
 
-  const clinic = clinics.find(c => c.id === selectedClinicId);
+  // Start of current displayed week (Monday-aligned)
+  const weekStart = useMemo(() => {
+    const base = new Date();
+    base.setDate(base.getDate() + weekOffset * 7);
+    // align to Monday
+    const dow = base.getDay();
+    const diff = dow === 0 ? -6 : 1 - dow;
+    base.setDate(base.getDate() + diff);
+    base.setHours(0, 0, 0, 0);
+    return base;
+  }, [weekOffset]);
 
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
 
-  const slotsForDay = (date: string) => {
-    const stored = bookingSlots.filter(s => s.clinicId === selectedClinicId && s.date === date);
-    if (stored.length > 0) return stored;
-    return generateSlots(selectedClinicId, date, clinics, clinic?.fee ?? 0).map(s => ({
-      ...s,
-      id: `slot-${selectedClinicId}-${date}-${s.time}`,
-    }));
-  };
+  // Filter appointments for this week + clinic
+  const weekAppointments = useMemo(() => {
+    const from = dateStr(days[0]);
+    const to = dateStr(days[6]);
+    return appointments.filter(a => {
+      if (a.date < from || a.date > to) return false;
+      if (selectedClinicId !== 'all' && a.clinicId !== selectedClinicId) return false;
+      return true;
+    });
+  }, [appointments, days, selectedClinicId]);
 
-  const ensureSlots = (date: string) => {
-    const stored = bookingSlots.filter(s => s.clinicId === selectedClinicId && s.date === date);
-    if (stored.length === 0) {
-      const generated = generateSlots(selectedClinicId, date, clinics, clinic?.fee ?? 0);
-      generated.forEach(s => addBookingSlot({ ...s, id: `slot-${selectedClinicId}-${date}-${s.time}` }));
-    }
-  };
+  // Group by date
+  const byDay = useMemo(() => {
+    const map: Record<string, typeof appointments> = {};
+    days.forEach(d => { map[dateStr(d)] = []; });
+    weekAppointments.forEach(a => {
+      if (map[a.date]) map[a.date].push(a);
+    });
+    // sort each day by time
+    Object.values(map).forEach(arr => arr.sort((a, b) => a.time.localeCompare(b.time)));
+    return map;
+  }, [weekAppointments, days]);
 
-  const statusColor = (status: BookingSlot['status']) =>
-    status === 'booked' ? '#dcfce7' :
-    status === 'blocked' ? '#fee2e2' :
-    status === 'completed' ? '#f1f5f9' : '#f0fdfa';
+  const todayDate = todayStr();
+  const weekLabel = `${fmtDate(days[0])} — ${fmtDate(days[6])}`;
 
-  const statusText = (status: BookingSlot['status']) =>
-    status === 'booked' ? '#166534' :
-    status === 'blocked' ? '#991b1b' :
-    status === 'completed' ? '#64748b' : '#0f766e';
+  const totalThisWeek = weekAppointments.filter(a => a.status !== 'cancelled').length;
+  const todayCount = (byDay[todayDate] ?? []).filter(a => a.status !== 'cancelled').length;
 
   return (
-    <div style={{ padding: 20, maxWidth: 1100, margin: '0 auto' }}>
+    <div className="max-w-3xl mx-auto space-y-4">
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-        <CalendarDays style={{ width: 22, height: 22, color: '#0d9488' }} />
-        <div>
-          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>Scheduler</h1>
-          <p style={{ margin: 0, fontSize: 12, color: '#64748b' }}>Clinic appointment schedule</p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-teal-500/10 flex items-center justify-center flex-shrink-0">
+            <CalendarDays className="w-5 h-5 text-teal-600" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-slate-900">Scheduler</h1>
+            <p className="text-sm text-slate-500">{todayCount} today · {totalThisWeek} this week</p>
+          </div>
         </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div className="flex items-center gap-2 flex-wrap">
           <select
             value={selectedClinicId}
             onChange={e => setSelectedClinicId(e.target.value)}
-            className="input"
-            style={{ width: 200, fontSize: 13 }}
+            className="input text-sm py-1.5 w-auto"
           >
+            <option value="all">All Clinics</option>
             {clinics.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
+          <button onClick={openQuickRegister} className="btn-primary btn-sm">
+            <UserPlus className="w-3.5 h-3.5" /> Book Appointment
+          </button>
         </div>
       </div>
 
       {/* Week navigation */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <button onClick={() => setWeekStart(d => addDays(d, -7))} className="btn-secondary btn-sm">
-          <ChevronLeft style={{ width: 14, height: 14 }} />
+      <div className="flex items-center gap-2">
+        <button onClick={() => setWeekOffset(o => o - 1)} className="btn-secondary btn-sm p-2">
+          <ChevronLeft className="w-4 h-4" />
         </button>
-        <span style={{ fontWeight: 600, fontSize: 14 }}>
-          {fmt(weekStart)} — {fmt(addDays(weekStart, 6))}
-        </span>
-        <button onClick={() => setWeekStart(d => addDays(d, 7))} className="btn-secondary btn-sm">
-          <ChevronRight style={{ width: 14, height: 14 }} />
+        <span className="flex-1 text-center text-sm font-semibold text-slate-700">{weekLabel}</span>
+        <button onClick={() => setWeekOffset(o => o + 1)} className="btn-secondary btn-sm p-2">
+          <ChevronRight className="w-4 h-4" />
         </button>
-        <button onClick={() => setWeekStart(today())} className="btn-secondary btn-sm">Today</button>
+        <button onClick={() => setWeekOffset(0)} className="btn-secondary btn-sm">Today</button>
       </div>
 
-      {/* Day columns */}
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${days.length}, minmax(120px, 1fr))`, gap: 8, overflowX: 'auto' }}>
-        {days.map(date => {
-          const daySlots = slotsForDay(date);
-          const dow = new Date(date).getDay();
-          const daySched = clinic?.schedule.find(s => s.day === dow);
-          const isOpen = daySched?.open;
-          const isToday = date === today();
+      {/* Day cards */}
+      <div className="space-y-3">
+        {days.map(day => {
+          const ds = dateStr(day);
+          const dayAppts = byDay[ds] ?? [];
+          const isToday = ds === todayDate;
+          const isPast = ds < todayDate;
+          const active = dayAppts.filter(a => a.status !== 'cancelled');
 
           return (
-            <div key={date} style={{ minHeight: 300 }}>
-              <div style={{
-                background: isToday ? '#0d9488' : '#f1f5f9',
-                color: isToday ? 'white' : '#334155',
-                padding: '6px 8px', borderRadius: '8px 8px 0 0',
-                fontSize: 12, fontWeight: 600, textAlign: 'center',
-              }}>
-                {fmt(date)}
-                {!isOpen && <div style={{ fontSize: 10, opacity: 0.7 }}>Closed</div>}
+            <div key={ds} className={cn(
+              'card overflow-hidden',
+              isToday && 'ring-2 ring-teal-500'
+            )}>
+              {/* Day header */}
+              <div className={cn(
+                'flex items-center justify-between px-4 py-2.5',
+                isToday ? 'bg-teal-500' : isPast ? 'bg-slate-50' : 'bg-white',
+                'border-b border-slate-200'
+              )}>
+                <div className="flex items-center gap-2">
+                  {isToday && <span className="w-2 h-2 rounded-full bg-white animate-pulse" />}
+                  <span className={cn(
+                    'font-bold text-sm',
+                    isToday ? 'text-white' : 'text-slate-800'
+                  )}>
+                    {isToday ? 'Today · ' : ''}{fmtDate(day)}
+                  </span>
+                </div>
+                <span className={cn(
+                  'text-xs font-semibold px-2 py-0.5 rounded-full',
+                  active.length > 0
+                    ? isToday ? 'bg-white/20 text-white' : 'bg-teal-100 text-teal-700'
+                    : isToday ? 'bg-white/10 text-teal-100' : 'text-slate-400'
+                )}>
+                  {active.length === 0 ? 'No appointments' : `${active.length} appointment${active.length > 1 ? 's' : ''}`}
+                </span>
               </div>
-              <div style={{ border: '1px solid #e2e8f0', borderTop: 'none', borderRadius: '0 0 8px 8px', minHeight: 200, padding: 6, background: 'white' }}>
-                {!isOpen && (
-                  <div style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', paddingTop: 20 }}>No clinic</div>
-                )}
-                {isOpen && daySlots.length === 0 && (
+
+              {/* Appointments */}
+              {active.length === 0 ? (
+                <div className="px-4 py-5 text-center">
+                  <p className="text-sm text-slate-400">No appointments scheduled</p>
                   <button
-                    onClick={() => ensureSlots(date)}
-                    className="btn-secondary btn-sm"
-                    style={{ width: '100%', marginTop: 8, fontSize: 11 }}
+                    onClick={openQuickRegister}
+                    className="mt-2 text-xs text-teal-600 hover:text-teal-700 font-medium"
                   >
-                    <Plus style={{ width: 11, height: 11 }} /> Generate slots
+                    + Add appointment
                   </button>
-                )}
-                {daySlots.map(slot => (
-                  <div
-                    key={slot.id}
-                    style={{
-                      marginBottom: 4, borderRadius: 6, padding: '4px 6px',
-                      background: statusColor(slot.status),
-                      border: `1px solid ${slot.status === 'booked' ? '#86efac' : slot.status === 'blocked' ? '#fca5a5' : '#99f6e4'}`,
-                      fontSize: 11,
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ fontWeight: 600, color: statusText(slot.status) }}>
-                        <Clock style={{ width: 9, height: 9, display: 'inline', marginRight: 2 }} />
-                        {hhmm(slot.time)}
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {dayAppts.map(apt => {
+                    const st = STATUS_STYLES[apt.status];
+                    const pt = patients.find(p => p.id === apt.patientId);
+                    const isIPD = pt?.status === 'IPD';
+                    const balance = (apt.consultationFee ?? 0) - (apt.amountPaid ?? 0);
+
+                    return (
+                      <div key={apt.id} className={cn(
+                        'flex items-center gap-3 px-4 py-3',
+                        apt.status === 'cancelled' && 'opacity-50',
+                        apt.status === 'completed' && 'bg-slate-50/60'
+                      )}>
+                        {/* Time */}
+                        <div className="flex-shrink-0 text-center w-16">
+                          <div className="text-sm font-bold text-slate-800">{fmtTime(apt.time)}</div>
+                          {apt.token && (
+                            <div className="text-[10px] text-slate-400 font-medium">Token {apt.token}</div>
+                          )}
+                        </div>
+
+                        {/* Dot */}
+                        <div className={cn('w-2 h-2 rounded-full flex-shrink-0', st.dot)} />
+
+                        {/* Info */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-semibold text-slate-900 text-sm">{apt.patientName}</span>
+                            {isIPD && (
+                              <span className="badge bg-blue-100 text-blue-700 text-[10px]">IPD · {pt?.ward}</span>
+                            )}
+                            {apt.clinicName && selectedClinicId === 'all' && (
+                              <span className="text-[10px] text-slate-400">{apt.clinicName}</span>
+                            )}
+                          </div>
+                          <div className="text-xs text-slate-500 mt-0.5 truncate">{apt.reason}</div>
+                          {/* Payment summary */}
+                          {apt.consultationFee !== undefined && (
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="text-[10px] text-slate-400">
+                                ₹{apt.amountPaid ?? 0} paid
+                                {balance > 0 && <span className="text-red-500 ml-1">· ₹{balance} due</span>}
+                              </span>
+                              {apt.paymentMode && (
+                                <span className="text-[10px] text-slate-400 capitalize">· {apt.paymentMode}</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Status chip */}
+                        <span className={cn('badge text-[10px] flex-shrink-0 hidden sm:inline-flex', st.chip)}>
+                          {st.label}
+                        </span>
+
+                        {/* Actions */}
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          {(apt.status === 'scheduled' || apt.status === 'confirmed') && !isIPD && (
+                            <Link
+                              to={`/app/consult/${apt.patientId}`}
+                              className="btn-primary btn-sm px-2.5 py-1.5 text-xs"
+                            >
+                              <Stethoscope className="w-3 h-3" />
+                              <span className="hidden sm:inline">Consult</span>
+                            </Link>
+                          )}
+                          {(apt.status === 'scheduled' || apt.status === 'confirmed') && isIPD && (
+                            <Link
+                              to={`/app/consult/${apt.patientId}`}
+                              className="btn-secondary btn-sm px-2.5 py-1.5 text-xs border-blue-300 text-blue-700"
+                            >
+                              <Stethoscope className="w-3 h-3" />
+                              <span className="hidden sm:inline">Round</span>
+                            </Link>
+                          )}
+                          {apt.status === 'scheduled' && (
+                            <button
+                              onClick={() => { updateAppointment(apt.id, { status: 'completed' }); showToast('Marked completed', 'success'); }}
+                              title="Mark completed"
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
+                            >
+                              <CheckCircle2 className="w-4 h-4" />
+                            </button>
+                          )}
+                          {apt.status !== 'cancelled' && apt.status !== 'completed' && (
+                            <button
+                              onClick={() => { updateAppointment(apt.id, { status: 'cancelled' }); showToast('Appointment cancelled', 'info'); }}
+                              title="Cancel"
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                            >
+                              <XCircle className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {/* Cancelled ones — collapsed */}
+                  {dayAppts.filter(a => a.status === 'cancelled').length > 0 && (
+                    <div className="px-4 py-2 flex items-center gap-1.5 bg-slate-50">
+                      <AlertCircle className="w-3 h-3 text-slate-400" />
+                      <span className="text-xs text-slate-400">
+                        {dayAppts.filter(a => a.status === 'cancelled').length} cancelled
                       </span>
-                      {slot.status === 'available' && (
-                        <button
-                          onClick={() => { ensureSlots(date); setBookingSlot(slot); }}
-                          style={{ background: '#0d9488', color: 'white', border: 'none', borderRadius: 4, padding: '1px 5px', fontSize: 10, cursor: 'pointer' }}
-                        >
-                          +
-                        </button>
-                      )}
-                      {slot.status === 'booked' && (
-                        <button
-                          onClick={() => { updateBookingSlot(slot.id, { status: 'available', patientId: undefined, patientName: undefined }); showToast('Slot freed', 'info'); }}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}
-                          title="Cancel booking"
-                        >
-                          <XCircle style={{ width: 11, height: 11 }} />
-                        </button>
-                      )}
                     </div>
-                    {slot.patientName && (
-                      <div style={{ color: '#166534', fontSize: 10, marginTop: 1 }}>
-                        <User style={{ width: 8, height: 8, display: 'inline', marginRight: 2 }} />
-                        {slot.patientName}
-                      </div>
-                    )}
-                    {slot.status === 'completed' && (
-                      <div style={{ color: '#64748b', fontSize: 10 }}>
-                        <CheckCircle style={{ width: 8, height: 8, display: 'inline' }} /> Done
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
       </div>
 
-      {/* Stats */}
-      <div style={{ display: 'flex', gap: 16, marginTop: 20 }}>
-        {[
-          { label: 'Booked', color: '#dcfce7', textColor: '#166534', count: bookingSlots.filter(s => s.clinicId === selectedClinicId && s.status === 'booked').length },
-          { label: 'Available', color: '#f0fdfa', textColor: '#0f766e', count: bookingSlots.filter(s => s.clinicId === selectedClinicId && s.status === 'available').length },
-          { label: 'Completed', color: '#f1f5f9', textColor: '#64748b', count: bookingSlots.filter(s => s.clinicId === selectedClinicId && s.status === 'completed').length },
-        ].map(st => (
-          <div key={st.label} style={{ background: st.color, borderRadius: 8, padding: '8px 14px', fontSize: 13 }}>
-            <span style={{ color: st.textColor, fontWeight: 600 }}>{st.count}</span>
-            <span style={{ color: '#64748b', marginLeft: 6 }}>{st.label}</span>
-          </div>
-        ))}
-      </div>
-
-      {bookingSlot && <BookModal slot={bookingSlot} onClose={() => setBookingSlot(null)} />}
+      {/* Empty week state */}
+      {weekAppointments.length === 0 && (
+        <div className="card p-10 text-center">
+          <CalendarDays className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+          <p className="text-slate-500 font-medium">No appointments this week</p>
+          <p className="text-slate-400 text-sm mt-1 mb-4">Use Register Patient to schedule appointments</p>
+          <button onClick={openQuickRegister} className="btn-primary mx-auto">
+            <UserPlus className="w-4 h-4" /> Book Appointment
+          </button>
+        </div>
+      )}
     </div>
   );
 }

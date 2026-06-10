@@ -1,11 +1,10 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Search, UserPlus, FileSpreadsheet, Plus, X, CheckCircle2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Search, UserPlus, FileSpreadsheet, BedDouble, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { PriorityBadge, StatusBadge } from '@/components/ui/Badge';
-import type { PatientStatus, Patient } from '@/types';
-import { cn } from '@/lib/utils';
+import type { PatientStatus } from '@/types';
 
 type Filter = 'all' | PatientStatus;
 
@@ -86,157 +85,14 @@ function exportToCSV(
   URL.revokeObjectURL(url);
 }
 
-// ─── Quick Add Modal ──────────────────────────────────────────────────────────
-
-interface QuickAddProps {
-  totalPatients: number;
-  onClose: () => void;
-}
-
-function QuickAddModal({ totalPatients, onClose }: QuickAddProps) {
-  const { upsertPatient } = useAppStore();
-  const { user } = useAuthStore();
-  const navigate = useNavigate();
-
-  const [name, setName] = useState('');
-  const [age, setAge] = useState('');
-  const [gender, setGender] = useState<Patient['gender']>('M');
-  const [phone, setPhone] = useState('');
-  const [complaint, setComplaint] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!name.trim() || !age) return;
-    setSaving(true);
-    await new Promise(r => setTimeout(r, 300));
-
-    const newId = `p-${Date.now()}`;
-    const mrn = `MRN-${String(totalPatients + 1).padStart(3, '0')}`;
-    upsertPatient({
-      id: newId,
-      name: name.trim(),
-      age: Number(age),
-      gender,
-      mrn,
-      phone: phone.trim() || undefined,
-      diagnosis: complaint.trim() || undefined,
-      status: 'OPD',
-      priority: 'Stable',
-      allergies: [],
-      attendingDoctor: user?.name ?? '',
-      attendingDoctorId: user?.id,
-    });
-    setSaving(false);
-    onClose();
-    navigate(`/app/consult/${newId}`);
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-bold text-slate-900">Quick Add Patient</h2>
-            <p className="text-xs text-slate-400 mt-0.5">Registers as OPD → opens consultation</p>
-          </div>
-          <button type="button" onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <div>
-            <label className="label">Full Name *</label>
-            <input
-              autoFocus
-              type="text"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              className="input"
-              placeholder="Patient name"
-              required
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label">Age *</label>
-              <input
-                type="number"
-                min={1}
-                max={120}
-                value={age}
-                onChange={e => setAge(e.target.value)}
-                className="input"
-                placeholder="Years"
-                required
-              />
-            </div>
-            <div>
-              <label className="label">Gender</label>
-              <div className="flex gap-1.5 mt-1">
-                {(['M', 'F', 'Other'] as Patient['gender'][]).map(g => (
-                  <button
-                    key={g}
-                    type="button"
-                    onClick={() => setGender(g)}
-                    className={cn('flex-1 text-xs py-2 rounded-lg border-2 font-semibold transition-all',
-                      gender === g
-                        ? 'border-teal-500 bg-teal-50 text-teal-700'
-                        : 'border-slate-200 text-slate-500 hover:border-slate-300'
-                    )}>
-                    {g}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <label className="label">Phone</label>
-            <input
-              type="tel"
-              value={phone}
-              onChange={e => setPhone(e.target.value)}
-              className="input"
-              placeholder="Mobile number"
-            />
-          </div>
-
-          <div>
-            <label className="label">Chief Complaint</label>
-            <input
-              type="text"
-              value={complaint}
-              onChange={e => setComplaint(e.target.value)}
-              className="input"
-              placeholder="Presenting complaint"
-            />
-          </div>
-
-          <div className="flex gap-3 pt-1">
-            <button type="button" onClick={onClose} className="btn-secondary flex-1">Cancel</button>
-            <button type="submit" disabled={saving || !name.trim() || !age}
-              className="btn-primary flex-1 disabled:opacity-50">
-              {saving ? 'Saving…' : 'Add & Consult'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function PatientListPage() {
-  const { patients, visits, vitals } = useAppStore();
+  const { patients, visits, vitals, openQuickRegister } = useAppStore();
+  const { user } = useAuthStore();
+  const isReceptionist = user?.role === 'receptionist';
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
-  const [showQuickAdd, setShowQuickAdd] = useState(false);
 
   const filtered = patients.filter(p => {
     const matchSearch =
@@ -259,13 +115,6 @@ export default function PatientListPage() {
 
   return (
     <div>
-      {showQuickAdd && (
-        <QuickAddModal
-          totalPatients={patients.length}
-          onClose={() => setShowQuickAdd(false)}
-        />
-      )}
-
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
         <div>
           <h1 className="page-title">Patients</h1>
@@ -280,16 +129,18 @@ export default function PatientListPage() {
             <FileSpreadsheet className="w-4 h-4" />
             Export
           </button>
+          {/* Primary: opens unified QuickRegisterModal (with payment + slip) */}
           <button
-            onClick={() => setShowQuickAdd(true)}
+            onClick={openQuickRegister}
             className="btn-primary flex items-center gap-2 flex-1 sm:flex-none"
           >
-            <Plus className="w-4 h-4" />
-            Add Patient
-          </button>
-          <Link to="/app/admit" className="btn-secondary flex items-center gap-2 hidden sm:flex">
             <UserPlus className="w-4 h-4" />
-            Full Register
+            Register Patient
+          </button>
+          {/* Secondary: full IPD admission form */}
+          <Link to="/app/admit" className="btn-secondary flex items-center gap-2 hidden sm:flex" title="Full admission form for IPD patients">
+            <BedDouble className="w-4 h-4" />
+            IPD Admit
           </Link>
           {/* Mobile: export icon only */}
           <button
@@ -364,7 +215,7 @@ export default function PatientListPage() {
               </div>
               <div className="flex gap-2 mt-3">
                 <Link to={`/app/patients/${p.id}`} className="btn-secondary btn-sm flex-1 justify-center">View</Link>
-                {(p.status === 'OPD' || p.status === 'IPD' || p.status === 'Critical') && (
+                {!isReceptionist && (p.status === 'OPD' || p.status === 'IPD' || p.status === 'Critical') && (
                   consultedToday ? (
                     <Link to={`/app/consult/${p.id}`}
                       className="flex-1 inline-flex items-center justify-center gap-1 text-xs bg-amber-50 text-amber-700 border border-amber-200 px-3 py-1.5 rounded-lg font-semibold">
@@ -450,7 +301,7 @@ export default function PatientListPage() {
                   <td>
                     <div className="flex items-center gap-2 flex-wrap">
                       <Link to={`/app/patients/${p.id}`} className="btn-secondary btn-sm">View</Link>
-                      {(p.status === 'OPD' || p.status === 'IPD' || p.status === 'Critical') && (
+                      {!isReceptionist && (p.status === 'OPD' || p.status === 'IPD' || p.status === 'Critical') && (
                         consultedToday ? (
                           <>
                             <span className="inline-flex items-center gap-1 text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-1 rounded-lg font-medium">

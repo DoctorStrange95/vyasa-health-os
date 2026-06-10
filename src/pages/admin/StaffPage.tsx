@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Users, Mail, Phone, Plus, Link2, Copy, Check, UserCheck, UserX } from 'lucide-react';
+import { Users, Mail, Phone, Plus, Link2, Copy, Check, UserCheck, UserX, Trash2 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
+import { usePadStore } from '@/store/usePadStore';
 import { Modal } from '@/components/ui/Modal';
 import { cn } from '@/lib/utils';
 import type { Role, Staff } from '@/types';
@@ -44,8 +45,16 @@ export default function StaffPage() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [pending, setPending] = useState<PendingStaff[]>(DEMO_PENDING);
   const [filterRole, setFilterRole] = useState<Role | 'all'>('all');
+  const [confirmRemoveId, setConfirmRemoveId] = useState<number | null>(null);
 
   const filtered = staff.filter(s => filterRole === 'all' || s.role === filterRole);
+
+  function removeStaff(id: number) {
+    const member = staff.find(s => s.id === id);
+    setStaff(staff.filter(s => s.id !== id));
+    setConfirmRemoveId(null);
+    showToast(`${member?.name ?? 'Staff'} removed from team`, 'info');
+  }
 
   function approveStaff(ps: PendingStaff) {
     const newStaff: Staff = {
@@ -142,7 +151,7 @@ export default function StaffPage() {
       {/* Staff grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filtered.map(s => (
-          <div key={s.id} className="card p-5 hover:shadow-md transition-shadow">
+          <div key={s.id} className={cn('card p-5 transition-shadow', confirmRemoveId === s.id ? 'border-red-300 shadow-none' : 'hover:shadow-md')}>
             <div className="flex items-start gap-4">
               <div className="w-11 h-11 rounded-full bg-teal-500/10 flex items-center justify-center font-bold text-base flex-shrink-0 text-teal-700">
                 {s.name.split(' ').map(w => w[0]).join('').slice(0, 2)}
@@ -170,7 +179,30 @@ export default function StaffPage() {
                   </div>
                 )}
               </div>
+              {/* Remove button */}
+              {confirmRemoveId !== s.id && (
+                <button
+                  onClick={() => setConfirmRemoveId(s.id)}
+                  className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0"
+                  title="Remove from team"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
             </div>
+
+            {/* Inline confirmation */}
+            {confirmRemoveId === s.id && (
+              <div className="mt-3 pt-3 border-t border-red-100 flex items-center justify-between gap-3">
+                <p className="text-xs text-red-600 font-medium">Remove {s.name} from the team?</p>
+                <div className="flex gap-2 flex-shrink-0">
+                  <button onClick={() => setConfirmRemoveId(null)} className="btn-secondary btn-sm">Cancel</button>
+                  <button onClick={() => removeStaff(s.id)} className="btn-sm bg-red-500 hover:bg-red-600 text-white rounded-lg px-3 py-1.5 text-xs font-semibold">
+                    Remove
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         ))}
         {filtered.length === 0 && (
@@ -303,18 +335,27 @@ function AddStaffModal({ open, onClose }: { open: boolean; onClose: () => void }
 // ─── Invite Link Modal ────────────────────────────────────────────────────────
 
 function InviteLinkModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { clinics } = usePadStore();
   const [selectedRole, setSelectedRole] = useState<Role>('nurse');
+  const [selectedClinicIds, setSelectedClinicIds] = useState<string[]>(() => clinics.map(c => c.id));
   const [copied, setCopied] = useState(false);
 
-  const HOSPITAL = 'Vyasa General Hospital';
-  const TOKEN = btoa(`${selectedRole}-${HOSPITAL}-${Date.now()}`).slice(0, 16);
-  const link = `${window.location.origin}/join?role=${selectedRole}&hospital=${encodeURIComponent(HOSPITAL)}&token=${TOKEN}`;
+  function toggleClinic(id: string) {
+    setSelectedClinicIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    setCopied(false);
+  }
+
+  const selectedClinics = clinics.filter(c => selectedClinicIds.includes(c.id));
+  const clinicIdsParam = selectedClinics.map(c => c.id).join(',');
+  const clinicNamesParam = selectedClinics.map(c => c.name).join(',');
+  const TOKEN = btoa(`${selectedRole}-${clinicIdsParam}-${Date.now()}`).slice(0, 16);
+  const link = selectedClinics.length > 0
+    ? `${window.location.origin}/join?role=${selectedRole}&clinicIds=${encodeURIComponent(clinicIdsParam)}&clinicNames=${encodeURIComponent(clinicNamesParam)}&token=${TOKEN}`
+    : '';
 
   function copy() {
-    navigator.clipboard.writeText(link).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
-    });
+    if (!link) return;
+    navigator.clipboard.writeText(link).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2500); });
   }
 
   return (
@@ -344,24 +385,52 @@ function InviteLinkModal({ open, onClose }: { open: boolean; onClose: () => void
           </div>
         </div>
 
-        <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-          <div className="flex items-center gap-2 mb-1">
-            <span className={cn('badge', ROLE_COLOR[selectedRole])}>{ROLE_EMOJI[selectedRole]} {selectedRole}</span>
-            <span className="text-xs text-slate-500">invite link for {HOSPITAL}</span>
+        {clinics.length > 0 && (
+          <div>
+            <label className="label">Clinic(s) this staff will work at</label>
+            <div className="space-y-2">
+              {clinics.map(c => (
+                <label key={c.id} className={cn(
+                  'flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all',
+                  selectedClinicIds.includes(c.id) ? 'border-teal-400 bg-teal-50' : 'border-slate-200 hover:border-slate-300'
+                )}>
+                  <input type="checkbox" className="w-4 h-4 accent-teal-500"
+                    checked={selectedClinicIds.includes(c.id)}
+                    onChange={() => toggleClinic(c.id)} />
+                  <div>
+                    <div className="text-sm font-semibold text-slate-800">{c.name}</div>
+                    {c.address && <div className="text-xs text-slate-500">{c.address}</div>}
+                  </div>
+                </label>
+              ))}
+            </div>
           </div>
-          <div className="flex items-center gap-2 mt-3">
-            <code className="flex-1 text-xs text-slate-700 bg-white border border-slate-200 rounded-lg px-3 py-2 font-mono truncate">
-              {link}
-            </code>
-            <button
-              onClick={copy}
-              className={cn('btn btn-sm flex-shrink-0 transition-all', copied ? 'btn-primary' : 'btn-secondary')}
-            >
-              {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-              {copied ? 'Copied!' : 'Copy'}
-            </button>
+        )}
+
+        {selectedClinics.length === 0 ? (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
+            Select at least one clinic to generate the invite link.
           </div>
-        </div>
+        ) : (
+          <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+            <div className="flex items-center gap-2 mb-1">
+              <span className={cn('badge', ROLE_COLOR[selectedRole])}>{ROLE_EMOJI[selectedRole]} {selectedRole}</span>
+              <span className="text-xs text-slate-500">for {selectedClinics.map(c => c.name).join(' + ')}</span>
+            </div>
+            <div className="flex items-center gap-2 mt-3">
+              <code className="flex-1 text-xs text-slate-700 bg-white border border-slate-200 rounded-lg px-3 py-2 font-mono truncate">
+                {link}
+              </code>
+              <button
+                onClick={copy}
+                className={cn('btn btn-sm flex-shrink-0 transition-all', copied ? 'btn-primary' : 'btn-secondary')}
+              >
+                {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                {copied ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="bg-teal-50 border border-teal-200 rounded-xl p-4">
           <h4 className="text-sm font-semibold text-teal-800 mb-2">How it works</h4>

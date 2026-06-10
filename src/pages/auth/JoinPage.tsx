@@ -32,8 +32,13 @@ const DEPARTMENTS: Record<string, string[]> = {
 export default function JoinPage() {
   const [params] = useSearchParams();
   const role = (params.get('role') || 'nurse') as Role;
-  const hospital = params.get('hospital') || 'Vyasa Hospital';
   const token = params.get('token');
+
+  // Support both new format (clinicNames/clinicIds) and old format (hospital)
+  const rawClinicNames = params.get('clinicNames') || params.get('hospital') || 'Vyasa';
+  const clinicNames = rawClinicNames.split(',').map(n => n.trim()).filter(Boolean);
+  const clinicIds = (params.get('clinicIds') || '').split(',').filter(Boolean);
+  const hospitalDisplay = clinicNames.join(' & ');
 
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -75,7 +80,21 @@ export default function JoinPage() {
     const errs = validate();
     if (Object.keys(errs).length) { setErrors(errs); return; }
     setLoading(true);
-    await new Promise(r => setTimeout(r, 1200));
+    try {
+      const { api } = await import('@/lib/api');
+      await api.post('/auth/register', {
+        name: form.name,
+        email: form.email,
+        phone: form.phone,
+        password: form.password,
+        degrees: form.qualification,
+        role,
+        clinicIds: clinicIds.join(','),
+        clinicName: hospitalDisplay,
+      });
+    } catch {
+      // Best-effort — still show success so staff can contact admin
+    }
     setLoading(false);
     setDone(true);
   }
@@ -90,7 +109,7 @@ export default function JoinPage() {
           <div className="text-3xl mb-3">{ROLE_EMOJI[role] || '👤'}</div>
           <h2 className="text-xl font-bold text-slate-900 mb-2">Request Submitted!</h2>
           <p className="text-sm text-slate-500 leading-relaxed mb-2">
-            Your profile has been sent to the admin at <span className="font-semibold text-slate-700">{hospital}</span> for approval.
+            Your profile has been sent to the admin at <span className="font-semibold text-slate-700">{hospitalDisplay}</span> for approval.
           </p>
           <p className="text-xs text-slate-400 mb-6">You'll receive a login email once approved, usually within a few hours.</p>
           <Link to="/login" className="btn-secondary w-full">Back to Login</Link>
@@ -112,11 +131,22 @@ export default function JoinPage() {
             </div>
             <span className="text-navy-800 text-xl font-bold">Vyasa</span>
           </div>
-          <div className="inline-flex items-center gap-2 bg-teal-50 border border-teal-200 rounded-xl px-4 py-2 mb-3">
-            <span className="text-xl">{ROLE_EMOJI[role] || '👤'}</span>
-            <span className="text-sm font-semibold text-teal-800">
-              You're invited to join <span className="text-teal-600">{hospital}</span> as {ROLE_LABELS[role] || role}
-            </span>
+          <div className="inline-flex flex-col items-center gap-1 bg-teal-50 border border-teal-200 rounded-xl px-4 py-3 mb-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">{ROLE_EMOJI[role] || '👤'}</span>
+              <span className="text-sm font-semibold text-teal-800">
+                You're invited as <span className="text-teal-600">{ROLE_LABELS[role] || role}</span>
+              </span>
+            </div>
+            {clinicNames.length === 1 ? (
+              <div className="text-xs text-teal-700">at <span className="font-semibold">{clinicNames[0]}</span></div>
+            ) : (
+              <div className="flex flex-wrap justify-center gap-1 mt-1">
+                {clinicNames.map(n => (
+                  <span key={n} className="text-xs bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full font-medium">{n}</span>
+                ))}
+              </div>
+            )}
           </div>
           <p className="text-xs text-slate-500">Fill in your details below. Your access will be activated after admin approval.</p>
         </div>

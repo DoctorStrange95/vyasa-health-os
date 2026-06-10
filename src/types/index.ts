@@ -42,7 +42,8 @@ export type Role =
   | 'admin'          // hospital/facility administrator
   | 'billing'
   | 'receptionist'
-  | 'patient';
+  | 'patient'
+  | 'superadmin';
 
 export interface StaffUser {
   id: number;
@@ -89,6 +90,7 @@ export interface Patient {
   referredDoctor?: string;
   referralReason?: string;
   referralUrgency?: string;
+  locality?: string;
 }
 
 // ─── Vitals ──────────────────────────────────────────────────────────────────

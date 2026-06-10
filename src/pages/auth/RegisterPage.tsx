@@ -162,7 +162,7 @@ function DoctorForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =
   const [done, setDone] = useState(false);
   const [form, setForm] = useState({
     name: '', email: '', phone: '', specialty: '',
-    mciNumber: '', hospital: '', city: '', state: '',
+    mciNumber: '', regState: '', hospital: '', city: '', state: '',
     password: '', confirm: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -176,6 +176,7 @@ function DoctorForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =
     if (form.phone.length < 10) e.phone = 'Enter a valid 10-digit number';
     if (!form.specialty) e.specialty = 'Required';
     if (!form.mciNumber.trim()) e.mciNumber = 'Required';
+    if (!form.regState) e.regState = 'Required';
     if (form.password.length < 8) e.password = 'At least 8 characters';
     if (form.password !== form.confirm) e.confirm = 'Passwords do not match';
     return e;
@@ -186,10 +187,27 @@ function DoctorForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =
     const errs = validate();
     if (Object.keys(errs).length) { setErrors(errs); return; }
     setLoading(true);
-    await new Promise(r => setTimeout(r, 1200));
-    setLoading(false);
-    setDone(true);
-    setTimeout(onSuccess, 2000);
+    try {
+      const { api } = await import('@/lib/api');
+      await api.post('/auth/register', {
+        name: form.name,
+        email: form.email,
+        phone: form.phone,
+        specialty: form.specialty,
+        password: form.password,
+        licenseNumber: form.mciNumber,
+        regState: form.regState,
+        state: form.state,
+        city: form.city,
+        role: 'clinic_admin',
+      });
+      setDone(true);
+      setTimeout(onSuccess, 2000);
+    } catch (err) {
+      setErrors({ email: err instanceof Error ? err.message : 'Registration failed. Please try again.' });
+    } finally {
+      setLoading(false);
+    }
   }
 
   if (done) return <SuccessCard title="Registration submitted!" message="Your doctor profile is under review. You'll receive a login link on your email within 24 hours." />;
@@ -234,24 +252,30 @@ function DoctorForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =
             </select>
           </Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="MCI / State Medical Council No. *" error={errors.mciNumber}>
-              <input className={cn('input', errors.mciNumber && 'border-red-400')} placeholder="MH-12345" value={form.mciNumber} onChange={e => set('mciNumber', e.target.value)} />
+            <Field label="MCI / State Reg. No. *" error={errors.mciNumber}>
+              <input className={cn('input', errors.mciNumber && 'border-red-400')} placeholder="e.g. MH-12345" value={form.mciNumber} onChange={e => set('mciNumber', e.target.value)} />
             </Field>
-            <Field label="Primary Hospital / Clinic">
-              <input className="input" placeholder="e.g. Apollo, Fortis" value={form.hospital} onChange={e => set('hospital', e.target.value)} />
+            <Field label="State of Registration (Medical Council) *" error={errors.regState}>
+              <select className={cn('input', errors.regState && 'border-red-400')} value={form.regState} onChange={e => set('regState', e.target.value)}>
+                <option value="">Which state issued it?</option>
+                {STATES.map(s => <option key={s}>{s}</option>)}
+              </select>
             </Field>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Field label="City">
               <input className="input" placeholder="Mumbai" value={form.city} onChange={e => set('city', e.target.value)} />
             </Field>
-            <Field label="State">
+            <Field label="State of Practice">
               <select className="input" value={form.state} onChange={e => set('state', e.target.value)}>
-                <option value="">Select…</option>
+                <option value="">Which state do you practice in?</option>
                 {STATES.map(s => <option key={s}>{s}</option>)}
               </select>
             </Field>
           </div>
+          <Field label="Primary Hospital / Clinic">
+            <input className="input" placeholder="e.g. Apollo, Fortis, or your own clinic name" value={form.hospital} onChange={e => set('hospital', e.target.value)} />
+          </Field>
         </div>
 
         {/* Password */}

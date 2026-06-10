@@ -35,6 +35,8 @@ const NursePatientsPage = lazy(() => import('@/pages/nurse/NursePatientsPage'));
 const SchedulerPage = lazy(() => import('@/pages/doctor/SchedulerPage'));
 const PublicBookingPage = lazy(() => import('@/pages/public/PublicBookingPage'));
 const ReceptionistDashboard = lazy(() => import('@/pages/receptionist/ReceptionistDashboard'));
+const RegisterPatientPage = lazy(() => import('@/pages/receptionist/RegisterPatientPage'));
+const PrescriptionViewerPage = lazy(() => import('@/pages/receptionist/PrescriptionViewerPage'));
 
 function Spinner() {
   return (
@@ -142,7 +144,8 @@ export default function App() {
             <Route path="bills" element={<Suspense fallback={<Spinner />}><PlaceholderPage title="Bills List" /></Suspense>} />
 
             {/* Receptionist */}
-            <Route path="register" element={<Suspense fallback={<Spinner />}><PlaceholderPage title="Register Patient" /></Suspense>} />
+            <Route path="register" element={<Suspense fallback={<Spinner />}><RegisterPatientPage /></Suspense>} />
+            <Route path="rx-view" element={<Suspense fallback={<Spinner />}><PrescriptionViewerPage /></Suspense>} />
 
             {/* Patient portal */}
             <Route path="patient-rx" element={<Suspense fallback={<Spinner />}><PlaceholderPage title="My Prescriptions" /></Suspense>} />
