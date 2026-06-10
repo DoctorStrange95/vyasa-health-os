@@ -1,13 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Pill, Users, Building2, Save, Plus, Trash2, CheckCircle2,
   RefreshCw, Printer, Mail, Phone, Link2, Copy, Check,
-  UserCheck, UserX, Settings, Edit2, MapPin, X
+  UserCheck, UserX, Settings, Edit2, MapPin, X, QrCode
 } from 'lucide-react';
 import { usePadStore } from '@/store/usePadStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useAppStore } from '@/store/useAppStore';
+import { api, isApiEnabled } from '@/lib/api';
 import { Modal } from '@/components/ui/Modal';
 import { cn } from '@/lib/utils';
 import type { Role, Staff, Clinic } from '@/types';
@@ -29,6 +30,30 @@ function RxPadTab() {
   const [saved, setSaved] = useState(false);
   const set = (k: string, v: unknown) => setSettings({ [k]: v } as never);
   const theme = THEMES.find(t => t.id === S.theme)?.color ?? '#0d9488';
+
+  // Autofill from backend if pad is still at defaults (never configured)
+  useEffect(() => {
+    if (S.doctorName) return; // Already configured by user — don't overwrite
+    const fromUser = () => {
+      if (user?.name) setSettings({ doctorName: user.name, specialty: user.specialty || S.specialty });
+    };
+    if (isApiEnabled()) {
+      api.get<Record<string, unknown>>('/auth/me').then(data => {
+        setSettings({
+          doctorName: (data.doctor_name as string) || (data.name as string) || user?.name || '',
+          degrees: (data.pad_degrees as string) || (data.degrees as string) || '',
+          specialty: (data.pad_specialty as string) || (data.specialty as string) || user?.specialty || '',
+          regNumber: (data.pad_reg as string) || (data.reg_number as string) || '',
+          clinicName: (data.clinic_name as string) || '',
+          phone: (data.pad_phone as string) || (data.phone as string) || '',
+          address: (data.address as string) || '',
+          timings: (data.timings as string) || S.timings,
+        });
+      }).catch(fromUser);
+    } else {
+      fromUser();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const displayName = S.doctorName || user?.name || 'Dr. Your Name';
   const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 
@@ -89,6 +114,41 @@ function RxPadTab() {
                   <input value={(S as never)[f.key]} onChange={e => set(f.key, e.target.value)} placeholder={f.placeholder} className="input" />
                 </div>
               ))}
+            </div>
+          </div>
+
+          <div className="card p-5 space-y-3">
+            <h3 className="text-xs font-bold uppercase tracking-widest text-teal-600">Payment Collection</h3>
+            <p className="text-xs text-slate-500">Your receptionist uses this QR to collect payments on your behalf at the front desk.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
+              <div>
+                <label className="label">Consultation Fee (₹)</label>
+                <input type="number" className="input" value={S.fee ?? ''} onChange={e => set('fee', e.target.value ? Number(e.target.value) : undefined)} placeholder="e.g. 500" />
+              </div>
+              <div>
+                <label className="label">UPI / Payment QR Code</label>
+                {S.qrCodeUrl ? (
+                  <div className="flex items-center gap-3">
+                    <img src={S.qrCodeUrl} alt="QR" className="w-16 h-16 rounded-xl border border-slate-200 object-contain" />
+                    <div className="space-y-1.5">
+                      <p className="text-xs text-emerald-600 font-medium">✓ QR uploaded</p>
+                      <button type="button" onClick={() => set('qrCodeUrl', '')} className="text-xs text-red-500 hover:underline">Remove</button>
+                    </div>
+                  </div>
+                ) : (
+                  <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-300 rounded-xl p-4 cursor-pointer hover:border-teal-400 hover:bg-teal-50/50 transition-colors">
+                    <QrCode className="w-8 h-8 text-slate-300 mb-1.5" />
+                    <span className="text-xs text-slate-500 font-medium">Upload QR Image</span>
+                    <span className="text-xs text-slate-400 mt-0.5">PNG, JPG — max 2MB</span>
+                    <input type="file" accept="image/*" className="hidden" onChange={e => {
+                      const file = e.target.files?.[0]; if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = ev => set('qrCodeUrl', ev.target?.result as string);
+                      reader.readAsDataURL(file);
+                    }} />
+                  </label>
+                )}
+              </div>
             </div>
           </div>
 
@@ -234,24 +294,69 @@ const ROLE_DESC: Record<string, string> = {
 };
 
 interface PendingStaff {
-  id: string; name: string; email: string; phone: string; role: Role; department?: string; qualification?: string; requestedAt: string;
+  id: string; name: string; email: string; phone: string; role: Role; department?: string; qualification?: string; degrees?: string; requestedAt: string; invited_clinic_name?: string; created_at?: string;
 }
-const DEMO_PENDING: PendingStaff[] = [
-  { id: 'PS1', name: 'Meera Singh', email: 'meera@gmail.com', phone: '9812345670', role: 'nurse', department: 'OPD', qualification: 'BSc Nursing', requestedAt: '2026-06-05T10:30:00' },
-  { id: 'PS2', name: 'Kartik Rao', email: 'kartik@gmail.com', phone: '9823456781', role: 'receptionist', requestedAt: '2026-06-05T14:00:00' },
-];
 
 function StaffTab() {
   const { staff, setStaff, showToast } = useAppStore();
   const [addOpen, setAddOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [pending, setPending] = useState<PendingStaff[]>(DEMO_PENDING);
+  const [pending, setPending] = useState<PendingStaff[]>([]);
+  const [loadingPending, setLoadingPending] = useState(false);
+  const [confirmRemoveId, setConfirmRemoveId] = useState<number | null>(null);
 
-  function approveStaff(ps: PendingStaff) {
-    const newStaff: Staff = { id: Date.now(), name: ps.name, role: ps.role, email: ps.email, phone: ps.phone, department: ps.department, shift: 'Day', status: 'active' };
-    setStaff([...staff, newStaff]);
-    setPending(p => p.filter(x => x.id !== ps.id));
-    showToast(`${ps.name} approved`, 'success');
+  // Fetch real pending staff from backend
+  useEffect(() => {
+    if (!isApiEnabled()) return;
+    setLoadingPending(true);
+    api.get<PendingStaff[]>('/staff/pending')
+      .then(data => setPending(data.map(u => ({
+        ...u,
+        requestedAt: u.created_at ?? new Date().toISOString(),
+        qualification: u.degrees ?? u.qualification,
+      }))))
+      .catch(() => {})
+      .finally(() => setLoadingPending(false));
+  }, []);
+
+  async function approveStaff(ps: PendingStaff) {
+    try {
+      if (isApiEnabled()) {
+        await api.post(`/staff/${ps.id}/approve`, {});
+      }
+      const newStaff: Staff = { id: Number(ps.id), name: ps.name, role: ps.role, email: ps.email, phone: ps.phone, department: ps.department, shift: 'Day', status: 'active' };
+      setStaff([...staff, newStaff]);
+      setPending(p => p.filter(x => x.id !== ps.id));
+      showToast(`${ps.name} approved`, 'success');
+    } catch {
+      showToast('Failed to approve — try again', 'error');
+    }
+  }
+
+  async function rejectStaff(ps: PendingStaff) {
+    try {
+      if (isApiEnabled()) {
+        await api.post(`/staff/${ps.id}/reject`, {});
+      }
+      setPending(p => p.filter(x => x.id !== ps.id));
+      showToast(`${ps.name} rejected`, 'info');
+    } catch {
+      showToast('Failed to reject — try again', 'error');
+    }
+  }
+
+  async function removeStaff(id: number) {
+    const member = staff.find(s => s.id === id);
+    try {
+      if (isApiEnabled()) {
+        await api.del(`/staff/${id}`);
+      }
+      setStaff(staff.filter(s => s.id !== id));
+      setConfirmRemoveId(null);
+      showToast(`${member?.name ?? 'Staff'} removed from team`, 'info');
+    } catch {
+      showToast('Failed to remove — try again', 'error');
+    }
   }
 
   return (
@@ -279,12 +384,15 @@ function StaffTab() {
       </div>
 
       {/* Pending approvals */}
-      {pending.length > 0 && (
+      {(pending.length > 0 || loadingPending) && (
         <div>
           <div className="flex items-center gap-2 mb-3">
             <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
             <span className="font-bold text-slate-900 text-sm">Pending Approvals</span>
-            <span className="badge bg-amber-100 text-amber-700">{pending.length}</span>
+            {loadingPending
+              ? <span className="text-xs text-slate-400">Loading…</span>
+              : <span className="badge bg-amber-100 text-amber-700">{pending.length}</span>
+            }
           </div>
           <div className="space-y-2">
             {pending.map(ps => (
@@ -301,10 +409,10 @@ function StaffTab() {
                     <div className="text-xs text-slate-500 mt-0.5">{ps.email} · {ps.phone}{ps.qualification ? ` · ${ps.qualification}` : ''}</div>
                   </div>
                   <div className="flex gap-2 flex-shrink-0">
-                    <button onClick={() => setPending(p => p.filter(x => x.id !== ps.id))} className="btn-secondary btn-sm text-red-600 border-red-200 hover:bg-red-50">
+                    <button onClick={() => rejectStaff(ps)} className="btn-secondary btn-sm text-red-600 border-red-200 hover:bg-red-50">
                       <UserX className="w-3.5 h-3.5" /> Reject
                     </button>
-                    <button onClick={() => approveStaff(ps)} className="btn-primary btn-sm">
+                    <button onClick={() => void approveStaff(ps)} className="btn-primary btn-sm">
                       <UserCheck className="w-3.5 h-3.5" /> Approve
                     </button>
                   </div>
@@ -319,7 +427,7 @@ function StaffTab() {
       {staff.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {staff.map(s => (
-            <div key={s.id} className="card p-4 hover:shadow-md transition-shadow">
+            <div key={s.id} className={cn('card p-4 transition-shadow', confirmRemoveId === s.id ? 'border-red-300' : 'hover:shadow-md')}>
               <div className="flex items-start gap-3">
                 <div className="w-10 h-10 rounded-full bg-teal-500/10 flex items-center justify-center font-bold text-teal-700 flex-shrink-0">
                   {s.name.split(' ').map(w => w[0]).join('').slice(0, 2)}
@@ -338,7 +446,27 @@ function StaffTab() {
                   {s.email && <a href={`mailto:${s.email}`} className="text-xs text-teal-600 flex items-center gap-1 hover:underline mt-1"><Mail className="w-3 h-3" />{s.email}</a>}
                   {s.phone && <div className="flex items-center gap-1 text-xs text-slate-400 mt-0.5"><Phone className="w-3 h-3" />{s.phone}</div>}
                 </div>
+                {confirmRemoveId !== s.id && (
+                  <button
+                    onClick={() => setConfirmRemoveId(s.id)}
+                    className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0"
+                    title="Remove from team"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
               </div>
+              {confirmRemoveId === s.id && (
+                <div className="mt-3 pt-3 border-t border-red-100 flex items-center justify-between gap-3">
+                  <p className="text-xs text-red-600 font-medium">Remove {s.name}?</p>
+                  <div className="flex gap-2 flex-shrink-0">
+                    <button onClick={() => setConfirmRemoveId(null)} className="btn-secondary btn-sm">Cancel</button>
+                    <button onClick={() => removeStaff(s.id)} className="btn-sm bg-red-500 hover:bg-red-600 text-white rounded-lg px-3 py-1.5 text-xs font-semibold">
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -420,19 +548,38 @@ function AddStaffModal({ open, onClose }: { open: boolean; onClose: () => void }
 }
 
 function InviteLinkModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { user } = useAuthStore();
+  const { clinics } = usePadStore();
   const [selectedRole, setSelectedRole] = useState<Role>('nurse');
+  const [selectedClinicIds, setSelectedClinicIds] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
-  const clinic = user?.hospital ?? 'My Clinic';
-  const TOKEN = btoa(`${selectedRole}-${clinic}-${Date.now()}`).slice(0, 16);
-  const link = `${window.location.origin}/join?role=${selectedRole}&hospital=${encodeURIComponent(clinic)}&token=${TOKEN}`;
-  function copy() { navigator.clipboard.writeText(link).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2500); }); }
+
+  // Default-select all clinics when modal opens
+  useState(() => { if (clinics.length > 0 && selectedClinicIds.length === 0) setSelectedClinicIds(clinics.map(c => c.id)); });
+
+  function toggleClinic(id: string) {
+    setSelectedClinicIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    setCopied(false);
+  }
+
+  const selectedClinics = clinics.filter(c => selectedClinicIds.includes(c.id));
+  const clinicIdsParam = selectedClinics.map(c => c.id).join(',');
+  const clinicNamesParam = selectedClinics.map(c => c.name).join(',');
+  const TOKEN = btoa(`${selectedRole}-${clinicIdsParam}-${Date.now()}`).slice(0, 16);
+  const link = selectedClinics.length > 0
+    ? `${window.location.origin}/join?role=${selectedRole}&clinicIds=${encodeURIComponent(clinicIdsParam)}&clinicNames=${encodeURIComponent(clinicNamesParam)}&token=${TOKEN}`
+    : '';
+
+  function copy() {
+    if (!link) return;
+    navigator.clipboard.writeText(link).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2500); });
+  }
 
   return (
     <Modal open={open} onClose={onClose} title="Invite Staff via Link" size="md"
       footer={<button onClick={onClose} className="btn-secondary">Close</button>}>
       <div className="space-y-4">
         <p className="text-sm text-slate-600">Share this link with your staff member. They fill in their details, and you approve their access.</p>
+
         <div>
           <label className="label">Role for this invite</label>
           <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
@@ -446,19 +593,51 @@ function InviteLinkModal({ open, onClose }: { open: boolean; onClose: () => void
             ))}
           </div>
         </div>
-        <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-          <div className="flex items-center gap-2">
-            <code className="flex-1 text-xs text-slate-700 bg-white border border-slate-200 rounded-lg px-3 py-2 font-mono truncate">{link}</code>
-            <button onClick={copy} className={cn('btn btn-sm flex-shrink-0', copied ? 'btn-primary' : 'btn-secondary')}>
-              {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-              {copied ? 'Copied!' : 'Copy'}
-            </button>
+
+        {clinics.length > 0 && (
+          <div>
+            <label className="label">Clinic(s) this staff will work at</label>
+            <p className="text-xs text-slate-400 mb-2">Select all that apply — a nurse can work across multiple locations.</p>
+            <div className="space-y-2">
+              {clinics.map(c => (
+                <label key={c.id} className={cn(
+                  'flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all',
+                  selectedClinicIds.includes(c.id) ? 'border-teal-400 bg-teal-50' : 'border-slate-200 hover:border-slate-300'
+                )}>
+                  <input type="checkbox" className="w-4 h-4 accent-teal-500"
+                    checked={selectedClinicIds.includes(c.id)}
+                    onChange={() => toggleClinic(c.id)} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold text-slate-800">{c.name}</div>
+                    {c.address && <div className="text-xs text-slate-500 truncate">{c.address}</div>}
+                  </div>
+                </label>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
+
+        {selectedClinics.length === 0 ? (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
+            Select at least one clinic to generate the invite link.
+          </div>
+        ) : (
+          <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+            <div className="text-xs text-slate-500 mb-2 font-medium">Invite link for {selectedClinics.map(c => c.name).join(' + ')}</div>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 text-xs text-slate-700 bg-white border border-slate-200 rounded-lg px-3 py-2 font-mono truncate">{link}</code>
+              <button onClick={copy} className={cn('btn btn-sm flex-shrink-0', copied ? 'btn-primary' : 'btn-secondary')}>
+                {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                {copied ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="bg-teal-50 border border-teal-200 rounded-xl p-3 text-xs text-teal-700 space-y-1">
           <p className="font-semibold">How it works:</p>
           <ol className="list-decimal list-inside space-y-0.5">
-            <li>Share this link with your staff via WhatsApp or email</li>
+            <li>Share this link via WhatsApp or email</li>
             <li>They open it, enter their name & create a password</li>
             <li>You see their request in Pending Approvals → click Approve</li>
           </ol>

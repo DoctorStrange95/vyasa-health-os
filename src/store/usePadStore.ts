@@ -20,6 +20,8 @@ export interface PadSettings {
   showQuote: boolean;
   showTimings: boolean;
   customFields: { label: string; value: string }[];
+  qrCodeUrl?: string;
+  fee?: number;
 }
 
 const DEFAULT: PadSettings = {
@@ -40,6 +42,8 @@ const DEFAULT: PadSettings = {
   showQuote: true,
   showTimings: true,
   customFields: [],
+  qrCodeUrl: '',
+  fee: undefined,
 };
 
 function makeSchedule(

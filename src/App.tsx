@@ -7,6 +7,7 @@ import { Loader2 } from 'lucide-react';
 
 const LoginPage = lazy(() => import('@/pages/auth/LoginPage'));
 const RegisterPage = lazy(() => import('@/pages/auth/RegisterPage'));
+const PendingApprovalPage = lazy(() => import('@/pages/auth/PendingApprovalPage'));
 const JoinPage = lazy(() => import('@/pages/auth/JoinPage'));
 const DashboardPage = lazy(() => import('@/pages/doctor/DashboardPage'));
 const PatientListPage = lazy(() => import('@/pages/doctor/PatientListPage'));
@@ -33,6 +34,7 @@ const SettingsPage = lazy(() => import('@/pages/shared/SettingsPage'));
 const NursePatientsPage = lazy(() => import('@/pages/nurse/NursePatientsPage'));
 const SchedulerPage = lazy(() => import('@/pages/doctor/SchedulerPage'));
 const PublicBookingPage = lazy(() => import('@/pages/public/PublicBookingPage'));
+const ReceptionistDashboard = lazy(() => import('@/pages/receptionist/ReceptionistDashboard'));
 
 function Spinner() {
   return (
@@ -50,12 +52,26 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   // Restore demo/sample data after page refresh (in-memory store is cleared on reload)
   // Also seed sample data for clinic_admin real logins so the app isn't empty
   useEffect(() => {
-    if (patients.length === 0 && user && (isDemo || user.role === 'clinic_admin')) {
+    if (patients.length === 0 && user && (isDemo || ['clinic_admin', 'doctor', 'superadmin'].includes(user.role))) {
       loadDemo(user.name, user.id);
     }
   }, [isDemo, patients.length, loadDemo, user?.name, user?.role]);
 
   if (!user) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+}
+
+// Redirect to the correct home page based on role
+function RoleIndex() {
+  const { user } = useAuthStore();
+  if (user?.role === 'receptionist') return <Navigate to="/app/reception" replace />;
+  return <Navigate to="/app/dashboard" replace />;
+}
+
+// Block receptionist from doctor-only pages
+function DoctorOnly({ children }: { children: React.ReactNode }) {
+  const { user } = useAuthStore();
+  if (user?.role === 'receptionist') return <Navigate to="/app/reception" replace />;
   return <>{children}</>;
 }
 
@@ -66,16 +82,21 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/pending-approval" element={<Suspense fallback={null}><PendingApprovalPage /></Suspense>} />
           <Route path="/join" element={<JoinPage />} />
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="/book/:clinicId" element={<Suspense fallback={<div className="flex items-center justify-center h-screen"><Loader2 className="w-10 h-10 animate-spin text-teal-500" /></div>}><PublicBookingPage /></Suspense>} />
 
           <Route path="/app" element={<RequireAuth><AppLayout /></RequireAuth>}>
-            {/* Common redirect */}
-            <Route index element={<Navigate to="/app/dashboard" replace />} />
+            {/* Role-aware home redirect */}
+            <Route index element={<RoleIndex />} />
+
+            {/* Receptionist portal */}
+            <Route path="reception" element={<Suspense fallback={<Spinner />}><ReceptionistDashboard /></Suspense>} />
+            <Route path="collect-payment" element={<Suspense fallback={<Spinner />}><ReceptionistDashboard /></Suspense>} />
 
             {/* Doctor / shared */}
-            <Route path="dashboard" element={<Suspense fallback={<Spinner />}><DashboardPage /></Suspense>} />
+            <Route path="dashboard" element={<Suspense fallback={<Spinner />}><DoctorOnly><DashboardPage /></DoctorOnly></Suspense>} />
             <Route path="patients" element={<Suspense fallback={<Spinner />}><PatientListPage /></Suspense>} />
             <Route path="patients/:id" element={<Suspense fallback={<Spinner />}><PatientDetailPage /></Suspense>} />
             <Route path="queue" element={<Suspense fallback={<Spinner />}><OPDQueuePage /></Suspense>} />
@@ -96,7 +117,7 @@ export default function App() {
             <Route path="network" element={<Suspense fallback={<Spinner />}><NetworkPage /></Suspense>} />
             <Route path="analytics" element={<Suspense fallback={<Spinner />}><AnalyticsPage /></Suspense>} />
             <Route path="profile" element={<Suspense fallback={<Spinner />}><ProfilePage /></Suspense>} />
-            <Route path="consult/:patientId" element={<Suspense fallback={<Spinner />}><ConsultPage /></Suspense>} />
+            <Route path="consult/:patientId" element={<Suspense fallback={<Spinner />}><DoctorOnly><ConsultPage /></DoctorOnly></Suspense>} />
             <Route path="pad-settings" element={<Suspense fallback={<Spinner />}><PadSettingsPage /></Suspense>} />
             <Route path="settings" element={<Suspense fallback={<Spinner />}><SettingsPage /></Suspense>} />
             <Route path="schedule" element={<Suspense fallback={<Spinner />}><SchedulerPage /></Suspense>} />

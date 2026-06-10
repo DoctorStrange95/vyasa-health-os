@@ -73,12 +73,21 @@ const NAV_ITEMS: Record<Role, NavItem[]> = {
     { icon: Receipt, label: 'Bills List', to: '/app/bills' },
   ],
   receptionist: [
+    { icon: LayoutDashboard, label: 'Dashboard', to: '/app/reception' },
     { icon: UserCheck, label: 'Register Patient', to: '/app/register' },
-    { icon: ListOrdered, label: 'OPD Queue', to: '/app/queue' },
+    { icon: CalendarDays, label: 'Appointments', to: '/app/queue' },
+    { icon: DollarSign, label: 'Collect Payment', to: '/app/collect-payment' },
   ],
   patient: [
     { icon: Pill, label: 'My Prescriptions', to: '/app/patient-rx' },
     { icon: FileText, label: 'Discharge Summary', to: '/app/patient-discharge' },
+  ],
+  superadmin: [
+    { icon: LayoutDashboard, label: 'Dashboard', to: '/app/dashboard' },
+    { icon: Users, label: 'Patients', to: '/app/patients' },
+    { icon: ListOrdered, label: 'OPD Queue', to: '/app/queue' },
+    { icon: BarChart3, label: 'Analytics', to: '/app/analytics' },
+    { icon: Settings2, label: 'Settings', to: '/app/settings' },
   ],
 };
 
