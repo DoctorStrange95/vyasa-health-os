@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useAuthStore } from '../../store/authStore';
+import { useAuthStore } from '../../store/useAuthStore';
 import { Phone, MessageCircle, CheckCircle, XCircle, Clock, CalendarDays, Loader2, RefreshCw } from 'lucide-react';
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? 'https://vyasa-os-backend.onrender.com';
@@ -34,7 +34,7 @@ const STATUS_COLORS: Record<string, { bg: string; text: string; dot: string }> =
 };
 
 export default function BookingRequestsPage() {
-  const { accessToken } = useAuthStore();
+  const { token: accessToken } = useAuthStore();
   const [tab, setTab] = useState<FilterTab>('pending');
   const [requests, setRequests] = useState<BookingRequest[]>([]);
   const [loading, setLoading] = useState(true);

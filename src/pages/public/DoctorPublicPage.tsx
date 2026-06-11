@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { CheckCircle, Clock, MapPin, Phone, Mail, Globe, Share2, Copy, MessageCircle, Loader2 } from 'lucide-react';
+import { CheckCircle, Clock, MapPin, Phone, Mail, Globe, Copy, MessageCircle, Loader2 } from 'lucide-react';
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? 'https://vyasa-os-backend.onrender.com';
 
