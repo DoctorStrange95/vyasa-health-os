@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { User, Mail, Phone, Building2, Stethoscope, Edit3, Save, Shield, Key, Bell, CheckCircle2, Loader2 } from 'lucide-react';
+import { User, Mail, Phone, Building2, Stethoscope, Edit3, Save, Shield, Key, Bell, CheckCircle2, Loader2, Globe, Copy, ExternalLink, MessageCircle } from 'lucide-react';
 import { useAuthStore } from '@/store/useAuthStore';
+import { usePadStore } from '@/store/usePadStore';
 import { api, isApiEnabled } from '@/lib/api';
 import { cn, initials } from '@/lib/utils';
 
-type Tab = 'profile' | 'security' | 'notifications';
+type Tab = 'profile' | 'security' | 'notifications' | 'public_profile';
 
 const ROLE_LABELS: Record<string, string> = {
   clinic_admin: 'Solo Practice Doctor',
@@ -21,11 +22,23 @@ const ROLE_LABELS: Record<string, string> = {
 
 export default function ProfilePage() {
   const { user, approvalStatus } = useAuthStore();
+  const { settings: padSettings } = usePadStore();
   const [tab, setTab] = useState<Tab>('profile');
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // Public profile state
+  const [pubProfile, setPubProfile] = useState<{
+    profile_slug?: string; bio?: string; languages?: string;
+    accepting_patients?: boolean; public_profile_enabled?: boolean;
+    gbp_url?: string; years_experience?: number; consultation_fee?: number | null;
+  } | null>(null);
+  const [pubLoading, setPubLoading] = useState(false);
+  const [pubSaving, setPubSaving] = useState(false);
+  const [pubSaved, setPubSaved] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const [form, setForm] = useState({
     name: user?.name || '',
@@ -47,6 +60,49 @@ export default function ProfilePage() {
     systemUpdates: false,
     marketing: false,
   });
+
+  // Load public profile settings
+  useEffect(() => {
+    if (tab !== 'public_profile' || !isApiEnabled()) return;
+    setPubLoading(true);
+    api.get<typeof pubProfile>('/auth/me/public-profile')
+      .then(data => setPubProfile(data))
+      .catch(() => {})
+      .finally(() => setPubLoading(false));
+  }, [tab]);
+
+  async function handlePubSave() {
+    if (!pubProfile) return;
+    setPubSaving(true);
+    try {
+      const updated = await api.patch<typeof pubProfile>('/auth/me/public-profile', {
+        bio: pubProfile.bio ?? '',
+        languages: pubProfile.languages ?? '',
+        accepting_patients: pubProfile.accepting_patients ?? true,
+        public_profile_enabled: pubProfile.public_profile_enabled ?? true,
+        gbp_url: pubProfile.gbp_url ?? '',
+        years_experience: pubProfile.years_experience ?? 0,
+        consultation_fee: pubProfile.consultation_fee ?? null,
+      });
+      setPubProfile(updated);
+      setPubSaved(true);
+      setTimeout(() => setPubSaved(false), 3000);
+    } catch {
+      alert('Could not save. Please try again.');
+    } finally {
+      setPubSaving(false);
+    }
+  }
+
+  function copyLink(link: string) {
+    navigator.clipboard.writeText(link).catch(() => {
+      const ta = document.createElement('textarea');
+      ta.value = link; document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); document.body.removeChild(ta);
+    });
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
 
   // Load full profile from backend
   useEffect(() => {
@@ -138,8 +194,9 @@ export default function ProfilePage() {
           { id: 'profile', label: 'Profile', icon: User },
           { id: 'security', label: 'Security', icon: Shield },
           { id: 'notifications', label: 'Notifications', icon: Bell },
+          ...(['clinic_admin', 'doctor'].includes(user?.role ?? '') ? [{ id: 'public_profile' as const, label: 'Public Profile', icon: Globe }] : []),
         ] as const).map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
+          <button key={t.id} onClick={() => setTab(t.id as Tab)}
             className={cn('tab-btn flex items-center gap-2', tab === t.id && 'active')}>
             <t.icon className="w-4 h-4" />{t.label}
           </button>
@@ -255,6 +312,125 @@ export default function ProfilePage() {
           </div>
         </div>
       )}
+
+      {/* Public Profile tab */}
+      {tab === 'public_profile' && (() => {
+        const slug = pubProfile?.profile_slug ?? (user?.name ?? '').toLowerCase().replace(/^dr\.?\s+/i,'').replace(/[^a-z0-9\s]/g,'').trim().replace(/\s+/g,'-');
+        const siteBase = window.location.hostname === 'localhost' ? `${window.location.protocol}//${window.location.host}` : 'https://vyasa-health-os.pages.dev';
+        const bookingLink = `${siteBase}/dr/${slug}`;
+        return (
+          <div className="space-y-4">
+            {/* Booking link card */}
+            <div className="rounded-2xl p-5 text-white" style={{ background: 'linear-gradient(135deg, #0a1628 0%, #1B4F8A 100%)' }}>
+              <div className="text-xs font-bold uppercase tracking-widest opacity-60 mb-2">Your Booking Link</div>
+              <div className="text-sm font-mono font-semibold break-all mb-4 opacity-95">{bookingLink}</div>
+              <div className="flex gap-2 flex-wrap">
+                <button onClick={() => copyLink(bookingLink)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/15 hover:bg-white/25 transition-colors">
+                  {copied ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copied ? 'Copied!' : 'Copy Link'}
+                </button>
+                <a href={bookingLink} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/15 hover:bg-white/25 transition-colors">
+                  <ExternalLink className="w-3.5 h-3.5" /> Preview
+                </a>
+                <a href={`https://wa.me/?text=${encodeURIComponent(`Book an appointment with Dr. ${padSettings.doctorName || user?.name}: ${bookingLink}`)}`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#25D366] hover:bg-[#1ebe58] transition-colors">
+                  <MessageCircle className="w-3.5 h-3.5" /> Share on WhatsApp
+                </a>
+              </div>
+            </div>
+
+            <div className="card p-6 space-y-5">
+              <div className="flex items-center justify-between">
+                <h2 className="font-semibold text-slate-800">Public Profile Settings</h2>
+                {pubLoading && <Loader2 className="w-4 h-4 animate-spin text-slate-400" />}
+                {pubSaved && <span className="flex items-center gap-1.5 text-emerald-600 text-sm font-medium"><CheckCircle2 className="w-4 h-4" /> Saved</span>}
+              </div>
+
+              {/* Visibility toggles */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="border border-slate-200 rounded-xl p-4">
+                  <div className="text-sm font-semibold text-slate-700 mb-2">Profile Visibility</div>
+                  <div className="flex gap-3">
+                    {[{v:true,l:'Public'},{v:false,l:'Hidden'}].map(o=>(
+                      <label key={String(o.v)} className="flex items-center gap-1.5 cursor-pointer text-sm">
+                        <input type="radio" name="pub-enabled" checked={(pubProfile?.public_profile_enabled ?? true) === o.v}
+                          onChange={() => setPubProfile(p => ({...p, public_profile_enabled: o.v}))} className="accent-teal-500" />
+                        {o.l}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div className="border border-slate-200 rounded-xl p-4">
+                  <div className="text-sm font-semibold text-slate-700 mb-2">Accepting Patients</div>
+                  <div className="flex gap-3">
+                    {[{v:true,l:'Yes'},{v:false,l:'No'}].map(o=>(
+                      <label key={String(o.v)} className="flex items-center gap-1.5 cursor-pointer text-sm">
+                        <input type="radio" name="pub-accepting" checked={(pubProfile?.accepting_patients ?? true) === o.v}
+                          onChange={() => setPubProfile(p => ({...p, accepting_patients: o.v}))} className="accent-teal-500" />
+                        {o.l}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="label">Consultation Fee (₹)</label>
+                  <input type="number" className="input" placeholder="e.g. 500"
+                    value={pubProfile?.consultation_fee ?? ''}
+                    onChange={e => setPubProfile(p => ({...p, consultation_fee: e.target.value ? Number(e.target.value) : null}))} />
+                </div>
+                <div>
+                  <label className="label">Years of Experience</label>
+                  <input type="number" className="input" placeholder="e.g. 10"
+                    value={pubProfile?.years_experience ?? ''}
+                    onChange={e => setPubProfile(p => ({...p, years_experience: Number(e.target.value)}))} />
+                </div>
+              </div>
+
+              <div>
+                <label className="label">Languages Spoken</label>
+                <input type="text" className="input" placeholder="e.g. Hindi, English, Bengali"
+                  value={pubProfile?.languages ?? ''}
+                  onChange={e => setPubProfile(p => ({...p, languages: e.target.value}))} />
+              </div>
+
+              <div>
+                <label className="label">Bio / About (shown to patients)</label>
+                <textarea rows={3} className="input resize-none" placeholder="Brief professional summary patients will read…"
+                  value={pubProfile?.bio ?? ''}
+                  onChange={e => setPubProfile(p => ({...p, bio: e.target.value}))} />
+              </div>
+
+              <div>
+                <label className="label">Google Business Profile URL</label>
+                <input type="url" className="input" placeholder="https://g.co/kgs/..."
+                  value={pubProfile?.gbp_url ?? ''}
+                  onChange={e => setPubProfile(p => ({...p, gbp_url: e.target.value}))} />
+                <p className="text-xs text-slate-400 mt-1">
+                  Setup: business.google.com → Add website: <code className="bg-slate-100 px-1 rounded">{bookingLink}</code>
+                </p>
+              </div>
+
+              {!isApiEnabled() && (
+                <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-700">
+                  Connect to the live backend to save public profile settings.
+                </div>
+              )}
+
+              <button onClick={handlePubSave} disabled={pubSaving || !isApiEnabled()}
+                className="btn-primary w-full">
+                {pubSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
+                {pubSaving ? 'Saving…' : 'Save & Publish Profile'}
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Notifications tab */}
       {tab === 'notifications' && (

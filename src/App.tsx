@@ -34,6 +34,8 @@ const SettingsPage = lazy(() => import('@/pages/shared/SettingsPage'));
 const NursePatientsPage = lazy(() => import('@/pages/nurse/NursePatientsPage'));
 const SchedulerPage = lazy(() => import('@/pages/doctor/SchedulerPage'));
 const PublicBookingPage = lazy(() => import('@/pages/public/PublicBookingPage'));
+const DoctorPublicPage = lazy(() => import('@/pages/public/DoctorPublicPage'));
+const BookingRequestsPage = lazy(() => import('@/pages/doctor/BookingRequestsPage'));
 const ReceptionistDashboard = lazy(() => import('@/pages/receptionist/ReceptionistDashboard'));
 const RegisterPatientPage = lazy(() => import('@/pages/receptionist/RegisterPatientPage'));
 const PrescriptionViewerPage = lazy(() => import('@/pages/receptionist/PrescriptionViewerPage'));
@@ -88,6 +90,7 @@ export default function App() {
           <Route path="/join" element={<JoinPage />} />
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="/book/:clinicId" element={<Suspense fallback={<div className="flex items-center justify-center h-screen"><Loader2 className="w-10 h-10 animate-spin text-teal-500" /></div>}><PublicBookingPage /></Suspense>} />
+          <Route path="/dr/:slug" element={<Suspense fallback={<div className="flex items-center justify-center h-screen"><Loader2 className="w-10 h-10 animate-spin text-teal-500" /></div>}><DoctorPublicPage /></Suspense>} />
 
           <Route path="/app" element={<RequireAuth><AppLayout /></RequireAuth>}>
             {/* Role-aware home redirect */}
@@ -123,6 +126,7 @@ export default function App() {
             <Route path="pad-settings" element={<Suspense fallback={<Spinner />}><PadSettingsPage /></Suspense>} />
             <Route path="settings" element={<Suspense fallback={<Spinner />}><SettingsPage /></Suspense>} />
             <Route path="schedule" element={<Suspense fallback={<Spinner />}><SchedulerPage /></Suspense>} />
+            <Route path="bookings" element={<Suspense fallback={<Spinner />}><BookingRequestsPage /></Suspense>} />
 
             {/* Pharmacy */}
             <Route path="pharmacy" element={<Suspense fallback={<Spinner />}><PharmacyPage /></Suspense>} />
