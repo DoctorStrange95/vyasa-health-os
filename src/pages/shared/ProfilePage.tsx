@@ -34,7 +34,9 @@ export default function ProfilePage() {
     profile_slug?: string; bio?: string; languages?: string;
     accepting_patients?: boolean; public_profile_enabled?: boolean;
     gbp_url?: string; years_experience?: number; consultation_fee?: number | null;
+    profile_photo_url?: string;
   } | null>(null);
+  const [photoUploading, setPhotoUploading] = useState(false);
   const [pubLoading, setPubLoading] = useState(false);
   const [pubSaving, setPubSaving] = useState(false);
   const [pubSaved, setPubSaved] = useState(false);
@@ -83,6 +85,7 @@ export default function ProfilePage() {
         gbp_url: pubProfile.gbp_url ?? '',
         years_experience: pubProfile.years_experience ?? 0,
         consultation_fee: pubProfile.consultation_fee ?? null,
+        profile_photo_url: pubProfile.profile_photo_url ?? '',
       });
       setPubProfile(updated);
       setPubSaved(true);
@@ -92,6 +95,20 @@ export default function ProfilePage() {
     } finally {
       setPubSaving(false);
     }
+  }
+
+  function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { alert('Photo must be under 2MB'); return; }
+    setPhotoUploading(true);
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const dataUrl = ev.target?.result as string;
+      setPubProfile(p => ({ ...p, profile_photo_url: dataUrl }));
+      setPhotoUploading(false);
+    };
+    reader.readAsDataURL(file);
   }
 
   function copyLink(link: string) {
@@ -322,31 +339,81 @@ export default function ProfilePage() {
           <div className="space-y-4">
             {/* Booking link card */}
             <div className="rounded-2xl p-5 text-white" style={{ background: 'linear-gradient(135deg, #0a1628 0%, #1B4F8A 100%)' }}>
-              <div className="text-xs font-bold uppercase tracking-widest opacity-60 mb-2">Your Booking Link</div>
-              <div className="text-sm font-mono font-semibold break-all mb-4 opacity-95">{bookingLink}</div>
-              <div className="flex gap-2 flex-wrap">
-                <button onClick={() => copyLink(bookingLink)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/15 hover:bg-white/25 transition-colors">
-                  {copied ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                  {copied ? 'Copied!' : 'Copy Link'}
-                </button>
-                <a href={bookingLink} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/15 hover:bg-white/25 transition-colors">
-                  <ExternalLink className="w-3.5 h-3.5" /> Preview
-                </a>
-                <a href={`https://wa.me/?text=${encodeURIComponent(`Book an appointment with Dr. ${padSettings.doctorName || user?.name}: ${bookingLink}`)}`}
-                  target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#25D366] hover:bg-[#1ebe58] transition-colors">
-                  <MessageCircle className="w-3.5 h-3.5" /> Share on WhatsApp
-                </a>
+              <div className="flex items-start gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-bold uppercase tracking-widest opacity-60 mb-2">Your Patient Booking Link</div>
+                  <div className="text-sm font-mono font-semibold break-all mb-4 opacity-95 bg-white/10 rounded-lg px-3 py-2">{bookingLink}</div>
+                  <div className="flex gap-2 flex-wrap">
+                    <button onClick={() => copyLink(bookingLink)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/15 hover:bg-white/25 transition-colors">
+                      {copied ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      {copied ? 'Copied!' : 'Copy Link'}
+                    </button>
+                    <a href={bookingLink} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/15 hover:bg-white/25 transition-colors">
+                      <ExternalLink className="w-3.5 h-3.5" /> Preview
+                    </a>
+                    <a href={`https://wa.me/?text=${encodeURIComponent(`Book an appointment with Dr. ${padSettings.doctorName || user?.name}: ${bookingLink}`)}`}
+                      target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#25D366] hover:bg-[#1ebe58] transition-colors">
+                      <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
+                    </a>
+                  </div>
+                  <p className="text-xs mt-3 opacity-50">Add this link to your Google Business Profile so patients can book directly from Google Maps.</p>
+                </div>
+                {/* QR Code */}
+                <div className="flex-shrink-0 text-center">
+                  <div className="bg-white rounded-xl p-1.5">
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(bookingLink)}&bgcolor=ffffff&color=0a1628&margin=4`}
+                      alt="QR Code"
+                      width={100} height={100}
+                      className="rounded-lg"
+                    />
+                  </div>
+                  <p className="text-xs opacity-60 mt-1.5">Scan to book</p>
+                  <a
+                    href={`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(bookingLink)}&bgcolor=ffffff&color=0a1628&margin=10&format=png`}
+                    download={`dr-${slug}-qr.png`}
+                    className="text-xs opacity-75 hover:opacity-100 underline mt-0.5 block"
+                  >Download</a>
+                </div>
               </div>
             </div>
 
             <div className="card p-6 space-y-5">
               <div className="flex items-center justify-between">
                 <h2 className="font-semibold text-slate-800">Public Profile Settings</h2>
-                {pubLoading && <Loader2 className="w-4 h-4 animate-spin text-slate-400" />}
-                {pubSaved && <span className="flex items-center gap-1.5 text-emerald-600 text-sm font-medium"><CheckCircle2 className="w-4 h-4" /> Saved</span>}
+                <div className="flex items-center gap-3">
+                  {pubLoading && <Loader2 className="w-4 h-4 animate-spin text-slate-400" />}
+                  {pubSaved && <span className="flex items-center gap-1.5 text-emerald-600 text-sm font-medium"><CheckCircle2 className="w-4 h-4" /> Saved</span>}
+                </div>
+              </div>
+
+              {/* Profile photo */}
+              <div>
+                <label className="label">Profile Photo</label>
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 rounded-2xl bg-slate-100 border-2 border-dashed border-slate-300 flex items-center justify-center overflow-hidden flex-shrink-0">
+                    {pubProfile?.profile_photo_url ? (
+                      <img src={pubProfile.profile_photo_url} alt="Profile" className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-2xl font-bold text-slate-400">{initials(user?.name || 'DR')}</span>
+                    )}
+                  </div>
+                  <div>
+                    <label className="btn-secondary text-xs cursor-pointer inline-flex items-center gap-1.5">
+                      {photoUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                      {photoUploading ? 'Uploading…' : 'Upload Photo'}
+                      <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} disabled={photoUploading} />
+                    </label>
+                    <p className="text-xs text-slate-400 mt-1">JPG/PNG, max 2MB. Shown on your public booking page.</p>
+                    {pubProfile?.profile_photo_url && (
+                      <button onClick={() => setPubProfile(p => ({ ...p, profile_photo_url: '' }))}
+                        className="text-xs text-red-500 hover:text-red-700 mt-1 block">Remove photo</button>
+                    )}
+                  </div>
+                </div>
               </div>
 
               {/* Visibility toggles */}
