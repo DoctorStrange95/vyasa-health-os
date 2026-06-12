@@ -8,14 +8,21 @@ import {
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? 'https://vyasa-os-backend.onrender.com';
 
+interface PublicClinic {
+  id: string; name: string; address: string; phone: string; timings: string;
+  state?: string; city?: string; pincode?: string;
+  lat?: number | null; lng?: number | null; hasSchedule?: boolean;
+}
+
 interface DoctorProfile {
   id: number; name: string; specialty: string; qualification: string;
   regNumber: string; bio: string; languages: string; acceptingPatients: boolean;
   gbpUrl: string; yearsExperience: number; consultationFee: number | null;
   profileSlug: string; profilePhotoUrl: string;
   education: string; services: string; awards: string;
+  advancePayment?: boolean; advanceAmount?: number | null; paymentQrUrl?: string;
   clinicName: string; clinicAddress: string; clinicPhone: string; clinicEmail: string; timings: string;
-  clinics: { id: string; name: string; address: string; phone: string; timings: string }[];
+  clinics: PublicClinic[];
 }
 
 interface SlotDay { date: string; slots: string[]; totalSlots: number; bookedCount: number; }
@@ -57,32 +64,49 @@ export default function DoctorPublicPage() {
   const [notFound, setNotFound] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const [step, setStep] = useState<'select-date' | 'select-time' | 'details' | 'done'>('select-date');
+  const [step, setStep] = useState<'select-clinic' | 'select-date' | 'select-time' | 'details' | 'payment' | 'done'>('select-date');
+  const [selectedClinic, setSelectedClinic] = useState<PublicClinic | null>(null);
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTime, setSelectedTime] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState({ name: '', phone: '', age: '', reason: '' });
+  const [form, setForm] = useState({ name: '', phone: '', email: '', age: '', reason: '' });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [slotError, setSlotError] = useState('');
+
+  function fetchSlots(clinicId?: string) {
+    setLoadingSlots(true);
+    const q = clinicId ? `&clinic_id=${encodeURIComponent(clinicId)}` : '';
+    return fetch(`${API_BASE}/public/doctor/${slug}/slots?days=14&interval=15${q}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { setSlotDays(d?.days ?? []); })
+      .catch(() => setSlotDays([]))
+      .finally(() => setLoadingSlots(false));
+  }
 
   useEffect(() => {
     if (!slug) { setNotFound(true); setLoadingProfile(false); return; }
     fetch(`${API_BASE}/public/doctor/${slug}`)
       .then(r => { if (!r.ok) throw new Error(); return r.json(); })
-      .then(data => {
+      .then((data: DoctorProfile) => {
         setDoctor(data);
         document.title = `Dr. ${data.name} — Book Appointment | Vyasa Health`;
         if (data.acceptingPatients) {
-          setLoadingSlots(true);
-          return fetch(`${API_BASE}/public/doctor/${slug}/slots?days=14&interval=15`)
-            .then(r => r.ok ? r.json() : null)
-            .then(d => { if (d?.days) setSlotDays(d.days); })
-            .catch(() => {})
-            .finally(() => setLoadingSlots(false));
+          // Chambers a patient can book: those with a weekly schedule set.
+          const bookable = (data.clinics ?? []).filter(c => c.hasSchedule);
+          if (bookable.length > 1) {
+            // Patient picks the chamber (by location) first
+            setStep('select-clinic');
+          } else {
+            const only = bookable[0] ?? data.clinics?.[0] ?? null;
+            setSelectedClinic(only);
+            setStep('select-date');
+            return fetchSlots(only?.id);
+          }
         }
       })
       .catch(() => setNotFound(true))
       .finally(() => setLoadingProfile(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
 
   function copyLink() {
@@ -100,12 +124,22 @@ export default function DoctorPublicPage() {
     if (!form.name.trim()) e.name = 'Full name is required';
     const phone = form.phone.replace(/\D/g, '').slice(-10);
     if (phone.length !== 10) e.phone = 'Enter a valid 10-digit mobile number';
+    if (form.email.trim() && !/^\S+@\S+\.\S+$/.test(form.email.trim())) e.email = 'Enter a valid email';
     setErrors(e);
     return !Object.keys(e).length;
   }
 
-  async function handleSubmit() {
+  const advanceDue = Boolean(doctor?.advancePayment && doctor?.advanceAmount && doctor?.paymentQrUrl);
+
+  // From the details form: go to payment step if the doctor requires an advance,
+  // otherwise submit the booking directly.
+  function handleDetailsNext() {
     if (!validate()) return;
+    if (advanceDue) setStep('payment');
+    else handleSubmit();
+  }
+
+  async function handleSubmit() {
     setSubmitting(true); setSlotError('');
     try {
       const res = await fetch(`${API_BASE}/public/doctor/${slug}/book`, {
@@ -114,21 +148,19 @@ export default function DoctorPublicPage() {
         body: JSON.stringify({
           patient_name: form.name.trim(),
           patient_phone: form.phone.replace(/\D/g, '').slice(-10),
+          patient_email: form.email.trim() || undefined,
           patient_age: form.age ? Number(form.age) : undefined,
           reason: form.reason.trim(),
           preferred_date: selectedDate,
           preferred_time: selectedTime,
+          clinic_id: selectedClinic?.id,
         }),
       });
       if (res.status === 409) {
         const e = await res.json();
         setSlotError(e.error ?? 'Slot already taken. Please choose another time.');
         setStep('select-time');
-        setLoadingSlots(true);
-        fetch(`${API_BASE}/public/doctor/${slug}/slots?days=14&interval=15`)
-          .then(r => r.ok ? r.json() : null)
-          .then(d => { if (d?.days) setSlotDays(d.days); })
-          .finally(() => setLoadingSlots(false));
+        fetchSlots(selectedClinic?.id);
         return;
       }
       if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.error ?? 'Failed, try again.'); return; }
@@ -263,39 +295,100 @@ export default function DoctorPublicPage() {
         {/* ─── BOOKING CARD ──────────────────────────────────────────────── */}
         {doctor.acceptingPatients ? (
           <div style={{ background: 'white', borderRadius: 24, overflow: 'hidden', marginBottom: 14, boxShadow: '0 8px 40px rgba(15,32,64,0.15)' }}>
-            {step !== 'done' && (
-              <div style={{ background: `linear-gradient(135deg, ${NAVY} 0%, #1B4F8A 100%)`, padding: '16px 20px 14px' }}>
-                <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 10, fontWeight: 700, letterSpacing: '1px', margin: '0 0 12px', textTransform: 'uppercase' }}>Book an Appointment</p>
-                <div style={{ display: 'flex', alignItems: 'center' }}>
-                  {[['select-date', '1', 'Pick Date'], ['select-time', '2', 'Pick Time'], ['details', '3', 'Your Info']].map(([s, n, label], i) => {
-                    const steps = ['select-date', 'select-time', 'details'];
-                    const idx = steps.indexOf(step);
-                    const thisIdx = steps.indexOf(s as string);
-                    const isActive = step === s;
-                    const isDone = thisIdx < idx;
-                    return (
-                      <div key={s} style={{ display: 'flex', alignItems: 'center', flex: i < 2 ? 1 : 0 }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                          <div style={{ width: 28, height: 28, borderRadius: '50%', background: isDone ? '#10B981' : isActive ? TEAL : 'rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, color: isDone || isActive ? 'white' : 'rgba(255,255,255,0.3)', transition: 'all 0.2s' }}>
-                            {isDone ? <CheckCircle style={{ width: 14, height: 14 }} /> : n}
+            {step !== 'done' && (() => {
+              const multiClinic = (doctor.clinics ?? []).filter(c => c.hasSchedule).length > 1;
+              const wizardSteps: [string, string][] = [
+                ...(multiClinic ? [['select-clinic', 'Clinic'] as [string, string]] : []),
+                ['select-date', 'Date'], ['select-time', 'Time'], ['details', 'Your Info'],
+                ...(advanceDue ? [['payment', 'Payment'] as [string, string]] : []),
+              ];
+              const idx = wizardSteps.findIndex(([s]) => s === step);
+              return (
+                <div style={{ background: `linear-gradient(135deg, ${NAVY} 0%, #1B4F8A 100%)`, padding: '16px 20px 14px' }}>
+                  <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 10, fontWeight: 700, letterSpacing: '1px', margin: '0 0 12px', textTransform: 'uppercase' }}>Book an Appointment</p>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    {wizardSteps.map(([s, label], i) => {
+                      const isActive = step === s;
+                      const isDone = i < idx;
+                      return (
+                        <div key={s} style={{ display: 'flex', alignItems: 'center', flex: i < wizardSteps.length - 1 ? 1 : 0 }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                            <div style={{ width: 28, height: 28, borderRadius: '50%', background: isDone ? '#10B981' : isActive ? TEAL : 'rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, color: isDone || isActive ? 'white' : 'rgba(255,255,255,0.3)', transition: 'all 0.2s' }}>
+                              {isDone ? <CheckCircle style={{ width: 14, height: 14 }} /> : i + 1}
+                            </div>
+                            <span style={{ fontSize: 10, fontWeight: 600, color: isActive ? 'white' : isDone ? '#6ee7b7' : 'rgba(255,255,255,0.3)', letterSpacing: '0.3px', whiteSpace: 'nowrap' }}>{label}</span>
                           </div>
-                          <span style={{ fontSize: 10, fontWeight: 600, color: isActive ? 'white' : isDone ? '#6ee7b7' : 'rgba(255,255,255,0.3)', letterSpacing: '0.3px', whiteSpace: 'nowrap' }}>{label}</span>
+                          {i < wizardSteps.length - 1 && <div style={{ flex: 1, height: 2, background: isDone ? '#10B981' : 'rgba(255,255,255,0.12)', margin: '0 6px 14px', borderRadius: 2, transition: 'background 0.3s' }} />}
                         </div>
-                        {i < 2 && <div style={{ flex: 1, height: 2, background: isDone ? '#10B981' : 'rgba(255,255,255,0.12)', margin: '0 6px 14px', borderRadius: 2, transition: 'background 0.3s' }} />}
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             <div style={{ padding: '20px 20px 22px' }}>
+              {/* STEP 0 — Pick Clinic (only when the doctor has multiple chambers) */}
+              {step === 'select-clinic' && (
+                <>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, color: '#1e293b', margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <MapPin style={{ width: 16, height: 16, color: TEAL }} /> Choose a Clinic
+                  </h3>
+                  <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 14px' }}>Dr. {doctor.name} consults at multiple locations — pick the one nearest to you.</p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {(doctor.clinics ?? []).filter(c => c.hasSchedule).map(c => (
+                      <button key={c.id}
+                        onClick={() => { setSelectedClinic(c); setSelectedDate(''); setSelectedTime(''); setStep('select-date'); fetchSlots(c.id); }}
+                        style={{ textAlign: 'left', padding: '14px 16px', borderRadius: 14, border: '1.5px solid', borderColor: selectedClinic?.id === c.id ? TEAL : '#e2e8f0', background: selectedClinic?.id === c.id ? '#f0fdfa' : 'white', cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: '#0f2040' }}>{c.name}</span>
+                          <ChevronRight style={{ width: 16, height: 16, color: TEAL, flexShrink: 0 }} />
+                        </div>
+                        {(c.city || c.pincode) && (
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: '#f0fdfa', border: '1px solid #99f6e4', color: '#0f766e', fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 16, marginTop: 6 }}>
+                            <MapPin style={{ width: 10, height: 10 }} />
+                            {[c.city, c.state, c.pincode].filter(Boolean).join(', ')}
+                          </div>
+                        )}
+                        {c.address && <p style={{ fontSize: 12, color: '#64748b', margin: '6px 0 0', lineHeight: 1.5 }}>{c.address}</p>}
+                        {c.timings && <p style={{ fontSize: 11, color: '#94a3b8', margin: '4px 0 0' }}>{c.timings}</p>}
+                        {(c.lat != null && c.lng != null) ? (
+                          <span style={{ display: 'inline-block', fontSize: 11, color: TEAL, fontWeight: 700, marginTop: 6 }}
+                            onClick={e => { e.stopPropagation(); window.open(`https://maps.google.com/?q=${c.lat},${c.lng}`, '_blank'); }}>
+                            View on map ↗
+                          </span>
+                        ) : c.address ? (
+                          <span style={{ display: 'inline-block', fontSize: 11, color: TEAL, fontWeight: 700, marginTop: 6 }}
+                            onClick={e => { e.stopPropagation(); window.open(`https://maps.google.com/?q=${encodeURIComponent(c.address)}`, '_blank'); }}>
+                            View on map ↗
+                          </span>
+                        ) : null}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+
               {/* STEP 1 — Date */}
               {step === 'select-date' && (
                 <>
-                  <h3 style={{ fontSize: 15, fontWeight: 700, color: '#1e293b', margin: '0 0 14px', display: 'flex', alignItems: 'center', gap: 7 }}>
-                    <Calendar style={{ width: 16, height: 16, color: TEAL }} /> Select a Date
-                  </h3>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                    {(doctor.clinics ?? []).filter(c => c.hasSchedule).length > 1 && (
+                      <button onClick={() => setStep('select-clinic')} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '6px 9px', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#64748b' }}>
+                        <ChevronLeft style={{ width: 16, height: 16 }} />
+                      </button>
+                    )}
+                    <div>
+                      <h3 style={{ fontSize: 15, fontWeight: 700, color: '#1e293b', margin: 0, display: 'flex', alignItems: 'center', gap: 7 }}>
+                        <Calendar style={{ width: 16, height: 16, color: TEAL }} /> Select a Date
+                      </h3>
+                      {selectedClinic && (
+                        <p style={{ fontSize: 12, color: '#64748b', margin: '2px 0 0' }}>
+                          at <strong>{selectedClinic.name}</strong>{selectedClinic.city ? ` · ${selectedClinic.city}` : ''}
+                        </p>
+                      )}
+                    </div>
+                  </div>
                   {loadingSlots ? (
                     <div style={{ display: 'flex', justifyContent: 'center', padding: '28px 0' }}>
                       <Loader2 style={{ width: 26, height: 26, color: TEAL, animation: 'spin 1s linear infinite' }} />
@@ -390,6 +483,12 @@ export default function DoctorPublicPage() {
                         style={{ width: '100%', border: `1.5px solid ${errors.phone ? '#EF4444' : '#e2e8f0'}`, borderRadius: 12, padding: '11px 14px', fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} />
                       {errors.phone && <p style={{ color: '#EF4444', fontSize: 11, margin: '4px 0 0' }}>{errors.phone}</p>}
                     </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#6b7280', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.7px' }}>Email <span style={{ color: '#cbd5e1', textTransform: 'none' }}>(for booking confirmation)</span></label>
+                      <input value={form.email} onChange={e => setForm(f => ({...f, email: e.target.value}))} placeholder="you@example.com" type="email" inputMode="email"
+                        style={{ width: '100%', border: `1.5px solid ${errors.email ? '#EF4444' : '#e2e8f0'}`, borderRadius: 12, padding: '11px 14px', fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                      {errors.email && <p style={{ color: '#EF4444', fontSize: 11, margin: '4px 0 0' }}>{errors.email}</p>}
+                    </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                       <div>
                         <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#6b7280', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.7px' }}>Age</label>
@@ -402,12 +501,49 @@ export default function DoctorPublicPage() {
                           style={{ width: '100%', border: '1.5px solid #e2e8f0', borderRadius: 12, padding: '11px 14px', fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} />
                       </div>
                     </div>
-                    <button onClick={handleSubmit} disabled={submitting}
+                    <button onClick={handleDetailsNext} disabled={submitting}
                       style={{ background: submitting ? '#94a3b8' : `linear-gradient(135deg, ${TEAL}, #0891b2)`, color: 'white', border: 'none', borderRadius: 14, padding: '14px', fontSize: 15, fontWeight: 700, cursor: submitting ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontFamily: 'inherit', marginTop: 2, transition: 'all 0.2s', boxShadow: submitting ? 'none' : '0 4px 16px rgba(13,148,136,0.3)' }}>
                       {submitting ? <Loader2 style={{ width: 18, height: 18, animation: 'spin 1s linear infinite' }} /> : <ChevronRight style={{ width: 18, height: 18 }} />}
-                      {submitting ? 'Booking…' : 'Confirm Appointment'}
+                      {submitting ? 'Booking…' : advanceDue ? `Continue to Payment (₹${doctor.advanceAmount})` : 'Confirm Appointment'}
                     </button>
                   </div>
+                </>
+              )}
+
+              {/* STEP — Advance Payment (only when the doctor requires it) */}
+              {step === 'payment' && (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                    <button onClick={() => setStep('details')} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '6px 9px', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#64748b' }}>
+                      <ChevronLeft style={{ width: 16, height: 16 }} />
+                    </button>
+                    <div>
+                      <h3 style={{ fontSize: 15, fontWeight: 700, color: '#1e293b', margin: 0 }}>Advance Payment</h3>
+                      <p style={{ fontSize: 12, color: TEAL, margin: '2px 0 0', fontWeight: 600 }}>
+                        {fmtDayLabel(selectedDate)} · {fmtTime12(selectedTime)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div style={{ textAlign: 'center', background: '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: 16, padding: '20px 16px', marginBottom: 14 }}>
+                    <p style={{ fontSize: 13, color: '#475569', margin: '0 0 4px' }}>Dr. {doctor.name} requires an advance of</p>
+                    <p style={{ fontSize: 28, fontWeight: 900, color: '#0f2040', margin: '0 0 14px' }}>₹{doctor.advanceAmount}</p>
+                    {doctor.paymentQrUrl && (
+                      <img src={doctor.paymentQrUrl} alt="Scan to pay via UPI"
+                        style={{ width: 200, height: 200, objectFit: 'contain', background: 'white', borderRadius: 12, border: '1px solid #e2e8f0', padding: 8 }} />
+                    )}
+                    <p style={{ fontSize: 12, color: '#64748b', margin: '12px 0 0' }}>Scan with any UPI app — GPay, PhonePe, Paytm</p>
+                  </div>
+
+                  <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 12, padding: '10px 14px', fontSize: 12, color: '#92400E', marginBottom: 14, lineHeight: 1.6 }}>
+                    After paying, tap the button below. The clinic will verify your payment when confirming the appointment — keep your payment screenshot handy.
+                  </div>
+
+                  <button onClick={handleSubmit} disabled={submitting}
+                    style={{ width: '100%', background: submitting ? '#94a3b8' : `linear-gradient(135deg, ${TEAL}, #0891b2)`, color: 'white', border: 'none', borderRadius: 14, padding: '14px', fontSize: 15, fontWeight: 700, cursor: submitting ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontFamily: 'inherit', boxShadow: submitting ? 'none' : '0 4px 16px rgba(13,148,136,0.3)' }}>
+                    {submitting ? <Loader2 style={{ width: 18, height: 18, animation: 'spin 1s linear infinite' }} /> : <CheckCircle style={{ width: 18, height: 18 }} />}
+                    {submitting ? 'Booking…' : "I've Paid — Confirm Booking"}
+                  </button>
                 </>
               )}
 
@@ -428,7 +564,7 @@ export default function DoctorPublicPage() {
                         <Phone style={{ width: 14, height: 14 }} /> Call Clinic
                       </a>
                     )}
-                    <button onClick={() => { setStep('select-date'); setSelectedDate(''); setSelectedTime(''); setForm({ name: '', phone: '', age: '', reason: '' }); }}
+                    <button onClick={() => { setStep('select-date'); setSelectedDate(''); setSelectedTime(''); setForm({ name: '', phone: '', email: '', age: '', reason: '' }); fetchSlots(selectedClinic?.id); }}
                       style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'white', color: '#475569', border: '1.5px solid #e2e8f0', borderRadius: 12, padding: '10px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                       Book Another Slot
                     </button>

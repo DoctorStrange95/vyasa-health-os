@@ -47,6 +47,7 @@ export default function ProfilePage() {
     profile_photo_url?: string;
     education?: string; services?: string; awards?: string;
     state?: string; city?: string;
+    advance_payment?: boolean; advance_amount?: number | null; payment_qr_url?: string;
   } | null>(null);
   const [photoUploading, setPhotoUploading] = useState(false);
   const [pubLoading, setPubLoading] = useState(false);
@@ -103,6 +104,9 @@ export default function ProfilePage() {
         awards: pubProfile.awards ?? '',
         state: pubProfile.state ?? '',
         city: pubProfile.city ?? '',
+        advance_payment: pubProfile.advance_payment ?? false,
+        advance_amount: pubProfile.advance_amount ?? null,
+        payment_qr_url: pubProfile.payment_qr_url ?? '',
       });
       setPubProfile(updated);
       setPubSaved(true);
@@ -475,6 +479,64 @@ export default function ProfilePage() {
                     value={pubProfile?.years_experience ?? ''}
                     onChange={e => setPubProfile(p => ({...p, years_experience: Number(e.target.value)}))} />
                 </div>
+              </div>
+
+              {/* Advance payment */}
+              <div className="rounded-xl border border-slate-200 p-4 space-y-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-800">Advance Payment for Bookings</div>
+                    <div className="text-xs text-slate-500 mt-0.5">Ask patients to pay an advance via your UPI QR while booking. You verify payments manually.</div>
+                  </div>
+                  <div className="flex gap-3 flex-shrink-0">
+                    {[{l:'On',v:true},{l:'Off',v:false}].map(o => (
+                      <label key={o.l} className="flex items-center gap-1.5 text-sm cursor-pointer">
+                        <input type="radio" name="adv-pay" checked={(pubProfile?.advance_payment ?? false) === o.v}
+                          onChange={() => setPubProfile(p => ({...p, advance_payment: o.v}))} className="accent-teal-500" />
+                        {o.l}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                {pubProfile?.advance_payment && (
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="label">Advance Amount (₹) *</label>
+                      <input type="number" className="input" placeholder="e.g. 200"
+                        value={pubProfile?.advance_amount ?? ''}
+                        onChange={e => setPubProfile(p => ({...p, advance_amount: e.target.value ? Number(e.target.value) : null}))} />
+                      <p className="text-xs text-slate-400 mt-1">Shown to patients in the booking flow.</p>
+                    </div>
+                    <div>
+                      <label className="label">Payment QR Code (UPI) *</label>
+                      <div className="flex items-center gap-3">
+                        {pubProfile?.payment_qr_url ? (
+                          <img src={pubProfile.payment_qr_url} alt="Payment QR" className="w-16 h-16 rounded-lg border border-slate-200 object-contain bg-white" />
+                        ) : (
+                          <div className="w-16 h-16 rounded-lg border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-300 text-[10px] text-center">No QR</div>
+                        )}
+                        <div className="space-y-1">
+                          <label className="btn-secondary btn-sm cursor-pointer inline-block">
+                            Upload QR
+                            <input type="file" accept="image/*" className="hidden" onChange={e => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              if (file.size > 1024 * 1024) { alert('QR image must be under 1MB'); return; }
+                              const reader = new FileReader();
+                              reader.onload = ev => setPubProfile(p => ({ ...p, payment_qr_url: ev.target?.result as string }));
+                              reader.readAsDataURL(file);
+                            }} />
+                          </label>
+                          {pubProfile?.payment_qr_url && (
+                            <button type="button" className="block text-xs text-red-500 hover:underline"
+                              onClick={() => setPubProfile(p => ({...p, payment_qr_url: ''}))}>Remove</button>
+                          )}
+                        </div>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-1">Screenshot of your GPay / PhonePe / Paytm QR.</p>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">

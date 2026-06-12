@@ -7,7 +7,9 @@ interface BookingRequest {
   id: number;
   patient_name: string;
   patient_phone: string;
+  patient_email?: string;
   patient_age: number | null;
+  clinic_name?: string | null;
   reason: string;
   preferred_date: string | null;
   preferred_time: string | null;
@@ -166,6 +168,14 @@ export default function BookingRequestsPage() {
                       <a href={`tel:${req.patient_phone}`} className="text-sm text-teal-600 font-medium hover:underline">
                         {req.patient_phone}
                       </a>
+                      {req.patient_email && (
+                        <div className="text-xs text-slate-400 mt-0.5">{req.patient_email}</div>
+                      )}
+                      {req.clinic_name && (
+                        <span className="inline-flex items-center gap-1 mt-1 text-[11px] font-semibold text-teal-700 bg-teal-50 border border-teal-100 rounded-full px-2 py-0.5">
+                          {req.clinic_name}
+                        </span>
+                      )}
                     </div>
                     <span style={{ background: colors.bg, color: colors.text }}
                       className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full flex-shrink-0">

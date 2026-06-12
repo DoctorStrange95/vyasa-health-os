@@ -18,6 +18,9 @@ export interface Clinic {
   id: string;
   name: string;
   address: string;
+  state?: string;
+  city?: string;
+  pincode?: string;
   lat?: number;
   lng?: number;
   phone?: string;

@@ -719,9 +719,14 @@ function ClinicModal({ clinic: init, onSave, onClose }: {
         const data = await res.json();
         const a = data.address ?? {};
         const parts = [a.road, a.suburb ?? a.neighbourhood, a.city ?? a.town ?? a.village, a.postcode].filter(Boolean);
-        set('address', parts.join(', '));
-        set('lat', lat);
-        set('lng', lon);
+        setC(prev => ({
+          ...prev,
+          address: parts.join(', '),
+          lat, lng: lon,
+          state: a.state ?? prev.state ?? '',
+          city: a.city ?? a.town ?? a.village ?? prev.city ?? '',
+          pincode: a.postcode ?? prev.pincode ?? '',
+        }));
       } finally {
         setLocLoading(false);
       }
@@ -803,6 +808,22 @@ function ClinicModal({ clinic: init, onSave, onClose }: {
               </button>
             </div>
             {c.lat && <p className="text-[11px] text-teal-600 mt-1">📍 {c.lat.toFixed(5)}, {c.lng?.toFixed(5)}</p>}
+          </div>
+
+          {/* State / City / Pincode — patients search & pick chambers by location */}
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="label">State</label>
+              <input className="input" value={c.state ?? ''} onChange={e => set('state', e.target.value)} placeholder="West Bengal" />
+            </div>
+            <div>
+              <label className="label">City</label>
+              <input className="input" value={c.city ?? ''} onChange={e => set('city', e.target.value)} placeholder="Kolkata" />
+            </div>
+            <div>
+              <label className="label">Pincode</label>
+              <input className="input" value={c.pincode ?? ''} onChange={e => set('pincode', e.target.value)} placeholder="700059" inputMode="numeric" maxLength={6} />
+            </div>
           </div>
 
           {/* Phone + fee */}
