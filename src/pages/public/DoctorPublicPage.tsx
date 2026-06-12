@@ -130,6 +130,8 @@ export default function DoctorPublicPage() {
   }
 
   const advanceDue = Boolean(doctor?.advancePayment && doctor?.advanceAmount && doctor?.paymentQrUrl);
+  // Online booking is only real when at least one clinic has a published schedule
+  const bookingOpen = Boolean(doctor?.acceptingPatients && (doctor?.clinics ?? []).some(c => c.hasSchedule));
 
   // From the details form: go to payment step if the doctor requires an advance,
   // otherwise submit the booking directly.
@@ -216,14 +218,14 @@ export default function DoctorPublicPage() {
               <span style={{ color: 'rgba(255,255,255,0.65)', fontWeight: 700, fontSize: 12, letterSpacing: '1.2px' }}>VYASA INTEGRATED HEALTHCARE</span>
             </div>
             <span style={{
-              background: doctor.acceptingPatients ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
-              border: `1px solid ${doctor.acceptingPatients ? 'rgba(16,185,129,0.4)' : 'rgba(239,68,68,0.4)'}`,
-              color: doctor.acceptingPatients ? '#6ee7b7' : '#fca5a5',
+              background: bookingOpen ? 'rgba(16,185,129,0.15)' : doctor.acceptingPatients ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)',
+              border: `1px solid ${bookingOpen ? 'rgba(16,185,129,0.4)' : doctor.acceptingPatients ? 'rgba(245,158,11,0.4)' : 'rgba(239,68,68,0.4)'}`,
+              color: bookingOpen ? '#6ee7b7' : doctor.acceptingPatients ? '#fcd34d' : '#fca5a5',
               fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 20,
               display: 'flex', alignItems: 'center', gap: 5,
             }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: doctor.acceptingPatients ? '#10B981' : '#EF4444', display: 'inline-block' }} />
-              {doctor.acceptingPatients ? 'Accepting Patients' : 'Not Accepting'}
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: bookingOpen ? '#10B981' : doctor.acceptingPatients ? '#F59E0B' : '#EF4444', display: 'inline-block' }} />
+              {bookingOpen ? 'Accepting Patients' : doctor.acceptingPatients ? 'Bookings Opening Soon' : 'Not Accepting'}
             </span>
           </div>
 
@@ -290,8 +292,26 @@ export default function DoctorPublicPage() {
       {/* ─── CONTENT (overlaps hero) ──────────────────────────────────────── */}
       <div style={{ maxWidth: 580, margin: '-56px auto 0', padding: '0 16px 60px', position: 'relative' }}>
 
+        {/* ─── NO SCHEDULE YET — accepting flag on but nothing bookable ──── */}
+        {doctor.acceptingPatients && !bookingOpen && (
+          <div style={{ background: 'white', borderRadius: 20, padding: '24px 20px', marginBottom: 14, textAlign: 'center', boxShadow: '0 4px 24px rgba(15,32,64,0.1)' }}>
+            <div style={{ width: 52, height: 52, borderRadius: 14, background: '#FFFBEB', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
+              <Calendar style={{ width: 24, height: 24, color: '#D97706' }} />
+            </div>
+            <p style={{ fontSize: 15, fontWeight: 700, color: '#92400E', margin: '0 0 5px' }}>Online booking opening soon</p>
+            <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 14px', lineHeight: 1.6 }}>
+              Dr. {doctor.name} hasn't published an appointment schedule yet.<br />Please contact the clinic directly to schedule a visit.
+            </p>
+            {doctor.clinicPhone && (
+              <a href={`tel:${doctor.clinicPhone}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: TEAL, color: 'white', borderRadius: 12, padding: '10px 18px', fontSize: 13, fontWeight: 700, textDecoration: 'none' }}>
+                <Phone style={{ width: 14, height: 14 }} /> Call Clinic
+              </a>
+            )}
+          </div>
+        )}
+
         {/* ─── BOOKING CARD ──────────────────────────────────────────────── */}
-        {doctor.acceptingPatients ? (
+        {bookingOpen ? (
           <div style={{ background: 'white', borderRadius: 24, overflow: 'hidden', marginBottom: 14, boxShadow: '0 8px 40px rgba(15,32,64,0.15)' }}>
             {step !== 'done' && (() => {
               const multiClinic = (doctor.clinics ?? []).filter(c => c.hasSchedule).length > 1;
@@ -571,7 +591,7 @@ export default function DoctorPublicPage() {
               )}
             </div>
           </div>
-        ) : (
+        ) : !doctor.acceptingPatients ? (
           /* Not accepting */
           <div style={{ background: 'white', borderRadius: 20, padding: '20px 20px', marginBottom: 14, textAlign: 'center', boxShadow: '0 4px 24px rgba(15,32,64,0.1)' }}>
             <div style={{ width: 52, height: 52, borderRadius: 14, background: '#FEF2F2', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
@@ -580,7 +600,7 @@ export default function DoctorPublicPage() {
             <p style={{ fontSize: 15, fontWeight: 700, color: '#7C3AED', margin: '0 0 5px' }}>Not Accepting New Patients</p>
             <p style={{ fontSize: 13, color: '#64748b', margin: 0 }}>Please check back later or contact the clinic directly.</p>
           </div>
-        )}
+        ) : null}
 
         {/* ─── ABOUT ─────────────────────────────────────────────────────── */}
         {doctor.bio && (
