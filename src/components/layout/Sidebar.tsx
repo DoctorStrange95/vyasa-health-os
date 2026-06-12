@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Users, UserPlus, Brain, Pill, FlaskConical,
   Bell, LogOut, FileText, ListOrdered, Network, User,
   Activity, ClipboardList, Package, TestTube,
-  DollarSign, Receipt, UserCheck, Stethoscope, BedDouble,
+  DollarSign, Receipt, UserCheck, BedDouble,
   BarChart3, Link2, ScrollText, Gauge, ChevronLeft, Settings2, CalendarDays, ClipboardCheck, ShieldCheck
 } from 'lucide-react';
 import type { Role } from '@/types';

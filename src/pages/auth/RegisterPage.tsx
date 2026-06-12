@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Stethoscope, Eye, EyeOff, Loader2, ArrowLeft, CheckCircle2, ChevronRight } from 'lucide-react';
+import { Eye, EyeOff, Loader2, ArrowLeft, CheckCircle2, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type Mode = 'choose' | 'doctor' | 'hospital';
