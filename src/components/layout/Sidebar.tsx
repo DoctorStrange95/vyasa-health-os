@@ -120,13 +120,11 @@ export function Sidebar() {
     >
       {/* Logo */}
       <div className="h-16 flex items-center gap-3 px-4 border-b border-white/10 flex-shrink-0">
-        <div className="w-8 h-8 rounded-lg bg-teal-500 flex items-center justify-center flex-shrink-0">
-          <Stethoscope className="w-4.5 h-4.5 text-white" />
-        </div>
+        <img src="/logo.svg" alt="Vyasa" className="w-8 h-8 rounded-lg flex-shrink-0" />
         {/* Always show text on mobile; hide on desktop when collapsed */}
         <div className={cn('min-w-0', collapsed && 'lg:hidden')}>
           <div className="text-white font-bold text-base leading-tight tracking-tight">Vyasa</div>
-          <div className="text-teal-400 text-[10px] font-medium uppercase tracking-widest">Health OS</div>
+          <div className="text-teal-400 text-[10px] font-medium uppercase tracking-widest">Integrated Healthcare</div>
         </div>
         {/* Desktop collapse toggle */}
         <button

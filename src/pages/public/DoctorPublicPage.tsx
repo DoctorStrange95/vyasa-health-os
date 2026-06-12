@@ -187,7 +187,7 @@ export default function DoctorPublicPage() {
       </div>
       <h2 style={{ fontSize: 20, fontWeight: 800, color: '#1e293b', margin: '4px 0 0' }}>Profile not found</h2>
       <p style={{ color: '#64748b', fontSize: 14, maxWidth: 280 }}>This link may be incorrect or the doctor's profile has been disabled.</p>
-      <p style={{ color: '#cbd5e1', fontSize: 12, marginTop: 12 }}>Powered by Vyasa Health OS</p>
+      <p style={{ color: '#cbd5e1', fontSize: 12, marginTop: 12 }}>Powered by Vyasa Integrated Healthcare</p>
     </div>
   );
 
@@ -212,10 +212,8 @@ export default function DoctorPublicPage() {
           {/* Brand bar */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ width: 30, height: 30, borderRadius: 8, background: TEAL, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-              </div>
-              <span style={{ color: 'rgba(255,255,255,0.65)', fontWeight: 700, fontSize: 12, letterSpacing: '1.2px' }}>VYASA HEALTH OS</span>
+              <img src="/logo.svg" alt="Vyasa" style={{ width: 30, height: 30, borderRadius: 8 }} />
+              <span style={{ color: 'rgba(255,255,255,0.65)', fontWeight: 700, fontSize: 12, letterSpacing: '1.2px' }}>VYASA INTEGRATED HEALTHCARE</span>
             </div>
             <span style={{
               background: doctor.acceptingPatients ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
@@ -774,7 +772,7 @@ export default function DoctorPublicPage() {
         </div>
 
         <p style={{ textAlign: 'center', fontSize: 12, color: '#cbd5e1', paddingBottom: 8 }}>
-          Powered by <a href="https://vyasaa.com" style={{ color: '#0d9488', fontWeight: 700, textDecoration: 'none' }}>Vyasa Health OS</a>
+          Powered by <a href="https://vyasaa.com" style={{ color: '#0d9488', fontWeight: 700, textDecoration: 'none' }}>Vyasa Integrated Healthcare</a>
         </p>
       </div>
 

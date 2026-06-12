@@ -152,10 +152,11 @@ export default function LoginPage() {
         <div className="relative flex flex-col h-full p-12">
           {/* Logo */}
           <div className="flex items-center gap-3 mb-auto">
-            <div style={{ width: 40, height: 40, borderRadius: 12, background: '#0d9488', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 16px rgba(13,148,136,0.4)' }}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            <img src="/logo.svg" alt="Vyasa" style={{ width: 40, height: 40, borderRadius: 12, boxShadow: '0 4px 16px rgba(13,148,136,0.4)' }} />
+            <div>
+              <div style={{ color: 'white', fontSize: 22, fontWeight: 800, letterSpacing: '-0.5px', lineHeight: 1.1 }}>Vyasa</div>
+              <div style={{ color: '#2dd4bf', fontSize: 10, fontWeight: 600, letterSpacing: '2px', textTransform: 'uppercase' }}>Integrated Healthcare</div>
             </div>
-            <span style={{ color: 'white', fontSize: 22, fontWeight: 800, letterSpacing: '-0.5px' }}>Vyasa</span>
           </div>
 
           {/* Headline */}
@@ -210,10 +211,8 @@ export default function LoginPage() {
 
           {/* Mobile logo */}
           <div className="lg:hidden flex items-center gap-2 mb-8 justify-center">
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: '#0d9488', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-            </div>
-            <span style={{ color: '#0f2040', fontSize: 20, fontWeight: 800 }}>Vyasa Health OS</span>
+            <img src="/logo.svg" alt="Vyasa" style={{ width: 36, height: 36, borderRadius: 10 }} />
+            <span style={{ color: '#0f2040', fontSize: 20, fontWeight: 800 }}>Vyasa Integrated Healthcare</span>
           </div>
 
           {justRegistered && (
