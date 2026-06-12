@@ -70,7 +70,7 @@ export default function AdmitPage() {
   ];
 
   return (
-    <div className="p-6 max-w-3xl">
+    <div className="p-0 md:p-6 max-w-3xl">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-900">Register New Patient</h1>
         <p className="text-sm text-slate-500 mt-0.5">Register the patient — you will be taken to consultation immediately after</p>
@@ -96,8 +96,8 @@ export default function AdmitPage() {
         {step === 'personal' && (
           <div className="card p-6 space-y-4">
             <h2 className="font-semibold text-slate-800 mb-4">Patient Information</h2>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="sm:col-span-2">
                 <label className="label">Full Name *</label>
                 <input value={form.name} onChange={e => set('name', e.target.value)} className="input" placeholder="Patient full name" required />
               </div>
@@ -129,7 +129,7 @@ export default function AdmitPage() {
                 <label className="label">Known Allergies</label>
                 <input value={form.allergies} onChange={e => set('allergies', e.target.value)} className="input" placeholder="Penicillin, Sulfa… (comma separated)" />
               </div>
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <label className="label">Address</label>
                 <input value={form.address} onChange={e => set('address', e.target.value)} className="input" placeholder="Full address" />
               </div>
@@ -146,12 +146,12 @@ export default function AdmitPage() {
         {step === 'clinical' && (
           <div className="card p-6 space-y-4">
             <h2 className="font-semibold text-slate-800 mb-4">Clinical Details</h2>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="sm:col-span-2">
                 <label className="label">Chief Complaint *</label>
                 <input value={form.chiefComplaint} onChange={e => set('chiefComplaint', e.target.value)} className="input" placeholder="Primary reason for admission" required />
               </div>
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <label className="label">Provisional Diagnosis *</label>
                 <input value={form.diagnosis} onChange={e => set('diagnosis', e.target.value)} className="input" placeholder="e.g. Acute MI, Pneumonia" required />
               </div>
@@ -179,14 +179,14 @@ export default function AdmitPage() {
                   {WARD_OPTIONS.map(w => <option key={w}>{w}</option>)}
                 </select>
               </div>
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <label className="label">Assign Bed {availableBeds.length === 0 && <span className="text-amber-600 text-xs">(no beds available)</span>}</label>
                 <select value={form.bedId} onChange={e => set('bedId', e.target.value)} className="input">
                   <option value="">No bed assigned yet</option>
                   {availableBeds.map(b => <option key={b.id} value={b.id}>{b.ward} — Bed {b.number} ({b.type})</option>)}
                 </select>
               </div>
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <label className="label">History & Presenting Complaint</label>
                 <textarea value={form.history} onChange={e => set('history', e.target.value)}
                   rows={3} className="input resize-none" placeholder="Brief history, duration of symptoms…" />

@@ -383,7 +383,7 @@ export function QuickRegisterModal() {
 
               <div>
                 <label className="label">Payment Mode</label>
-                <div className="grid grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {(['cash', 'upi', 'card', 'insurance'] as PaymentMode[]).map(mode => (
                     <button key={mode} type="button" onClick={() => setPayMode(mode)}
                       className={cn(

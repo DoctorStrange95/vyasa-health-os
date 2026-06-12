@@ -102,7 +102,7 @@ export default function PrescriptionsPage() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-0 md:p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -115,7 +115,7 @@ export default function PrescriptionsPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4">
         {[
           { label: 'Active Rx', value: statCounts.active, icon: Pill, color: 'text-teal-600 bg-teal-50' },
           { label: 'Written Today', value: statCounts.today, icon: Calendar, color: 'text-blue-600 bg-blue-50' },

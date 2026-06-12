@@ -230,7 +230,7 @@ export default function RegisterPatientPage() {
           </div>
 
           {/* Phone + Blood Group */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="label">Phone <span className="text-red-500">*</span></label>
               <input

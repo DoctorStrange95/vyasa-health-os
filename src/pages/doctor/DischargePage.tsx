@@ -54,7 +54,7 @@ export default function DischargePage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-0 md:p-6 space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Discharge Patients</h1>
         <p className="text-sm text-slate-500 mt-0.5">Process patient discharges and generate discharge summaries</p>
@@ -127,7 +127,7 @@ export default function DischargePage() {
               <div><span className="text-slate-400">Attending</span><div className="font-medium">{selected.attendingDoctor || 'You'}</div></div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="label">Discharge Type *</label>
                 <select value={form.dischargeType} onChange={e => setF('dischargeType', e.target.value)} className="input">

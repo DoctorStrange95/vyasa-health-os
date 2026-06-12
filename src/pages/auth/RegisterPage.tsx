@@ -387,7 +387,7 @@ function HospitalForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: ()
           <Field label="Street Address">
             <input className="input" placeholder="123, MG Road" value={form.address} onChange={e => set('address', e.target.value)} />
           </Field>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Field label="City">
               <input className="input" placeholder="Mumbai" value={form.city} onChange={e => set('city', e.target.value)} />
             </Field>

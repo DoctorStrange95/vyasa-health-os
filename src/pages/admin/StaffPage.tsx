@@ -269,7 +269,7 @@ function AddStaffModal({ open, onClose }: { open: boolean; onClose: () => void }
 
         <div>
           <label className="label">Role *</label>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {ALL_ROLES.map(r => (
               <button
                 key={r}
@@ -369,7 +369,7 @@ function InviteLinkModal({ open, onClose }: { open: boolean; onClose: () => void
 
         <div>
           <label className="label">Select Role for Invite</label>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {ALL_ROLES.map(r => (
               <button
                 key={r}

@@ -160,7 +160,7 @@ export default function JoinPage() {
               <input className={cn('input', errors.name && 'border-red-400')} placeholder="e.g. Priya Sharma" value={form.name} onChange={e => set('name', e.target.value)} />
               {errors.name && <p className="text-xs text-red-500 mt-1">{errors.name}</p>}
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="label">Email *</label>
                 <input type="email" className={cn('input', errors.email && 'border-red-400')} placeholder="you@email.com" value={form.email} onChange={e => set('email', e.target.value)} />
@@ -177,7 +177,7 @@ export default function JoinPage() {
           {/* Professional */}
           <div className="card p-5 space-y-4">
             <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Professional Details</h3>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {depts.length > 0 && (
                 <div>
                   <label className="label">Department</label>
@@ -201,7 +201,7 @@ export default function JoinPage() {
           {/* Password */}
           <div className="card p-5 space-y-4">
             <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Set Password</h3>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="label">Password *</label>
                 <div className="relative">

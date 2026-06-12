@@ -811,7 +811,7 @@ function ClinicModal({ clinic: init, onSave, onClose }: {
           </div>
 
           {/* State / City / Pincode — patients search & pick chambers by location */}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="label">State</label>
               <input className="input" value={c.state ?? ''} onChange={e => set('state', e.target.value)} placeholder="West Bengal" />
@@ -1089,7 +1089,7 @@ export default function SettingsPage() {
   function setTab(t: Tab) { setSearchParams({ tab: t }); }
 
   return (
-    <div className="p-4 md:p-6 space-y-5">
+    <div className="p-0 md:p-6 space-y-5">
       <div>
         <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
           <Settings className="w-6 h-6 text-teal-500" /> Settings
@@ -1097,7 +1097,7 @@ export default function SettingsPage() {
         <p className="text-sm text-slate-500 mt-0.5">Rx pad, staff, and clinic configuration</p>
       </div>
 
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             className={cn('flex items-center gap-3 p-4 rounded-2xl border-2 text-left transition-all',

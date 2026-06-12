@@ -86,7 +86,7 @@ export default function LabOrdersPage() {
   );
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-0 md:p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Lab Orders</h1>
@@ -98,7 +98,7 @@ export default function LabOrdersPage() {
       </div>
 
       {/* Status summary cards */}
-      <div className="grid grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {Object.entries(STATUS_CONFIG).map(([status, cfg]) => (
           <button key={status} onClick={() => setStatusFilter(statusFilter === status ? 'all' : status)}
             className={cn('card p-3 text-left transition-all hover:shadow-md',
@@ -126,7 +126,7 @@ export default function LabOrdersPage() {
       </div>
 
       {/* Orders table */}
-      <div className="card overflow-hidden">
+      <div className="card overflow-x-auto">
         <table className="data-table">
           <thead>
             <tr>

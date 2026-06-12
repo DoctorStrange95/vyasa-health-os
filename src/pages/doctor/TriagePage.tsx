@@ -102,7 +102,7 @@ export default function TriagePage() {
   function reset() { setResult(null); setSymptoms(''); setVitals({ hr: '', bp: '', temp: '', spo2: '' }); setSelectedPatient(''); }
 
   return (
-    <div className="p-6 max-w-4xl space-y-6">
+    <div className="p-0 md:p-6 max-w-4xl space-y-6">
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 rounded-xl bg-violet-100 flex items-center justify-center">
           <Brain className="w-5 h-5 text-violet-600" />
@@ -121,9 +121,9 @@ export default function TriagePage() {
         This tool provides clinical decision support only. All triage decisions must be confirmed by a qualified clinician.
       </div>
 
-      <div className="grid grid-cols-5 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 lg:gap-6">
         {/* Input form */}
-        <form onSubmit={handleTriage} className={cn('space-y-5', result ? 'col-span-2' : 'col-span-5 max-w-2xl')}>
+        <form onSubmit={handleTriage} className={cn('space-y-5', result ? 'lg:col-span-2' : 'lg:col-span-5 max-w-2xl')}>
           <div className="card p-5 space-y-4">
             <h2 className="font-semibold text-slate-800">Patient & Symptoms</h2>
 
@@ -174,7 +174,7 @@ e.g. Chest pain radiating to left arm for 2 hours, associated with sweating and 
 
         {/* Result */}
         {result && (
-          <div className="col-span-3 space-y-4">
+          <div className="lg:col-span-3 space-y-4">
             <div className={cn('card p-5 border-2', URGENCY_CONFIG[result.urgency].bg)}>
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-3">

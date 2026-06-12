@@ -59,3 +59,6 @@
 {"ts":"2026-06-05T08:46:43.483Z","cmd":"goto","args":"http://localhost:5173/login?registered=1","origin":"http://localhost:5173/login?registered=1","durationMs":163,"status":"ok","hasCookies":false,"mode":"launched"}
 {"ts":"2026-06-05T08:46:44.666Z","cmd":"screenshot","args":"/tmp/vyasa-login-registered.png","origin":"http://localhost:5173/login?registered=1","durationMs":95,"status":"ok","hasCookies":false,"mode":"launched"}
 {"ts":"2026-06-05T08:46:44.713Z","cmd":"snapshot","args":"-i","origin":"http://localhost:5173/login?registered=1","durationMs":9,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-12T16:38:36.070Z","cmd":"viewport","args":"375x812","origin":"about:blank","durationMs":6,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-12T16:38:36.188Z","cmd":"goto","args":"http://localhost:4173","origin":"http://localhost:4173/","durationMs":67,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-12T16:38:36.446Z","cmd":"screenshot","args":"/tmp/vy-login.png","origin":"http://localhost:4173/login","durationMs":148,"status":"ok","hasCookies":false,"mode":"launched"}

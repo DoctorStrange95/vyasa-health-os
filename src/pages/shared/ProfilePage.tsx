@@ -195,7 +195,7 @@ export default function ProfilePage() {
   const isApproved = approvalStatus === 'approved';
 
   return (
-    <div className="p-6 max-w-3xl space-y-6">
+    <div className="p-0 md:p-6 max-w-3xl space-y-6">
       {/* Header card */}
       <div className="card p-6">
         <div className="flex items-start gap-5">
@@ -262,7 +262,7 @@ export default function ProfilePage() {
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {[
               { label: 'Full Name', key: 'name', icon: User, type: 'text' },
               { label: 'Email', key: 'email', icon: Mail, type: 'email' },
@@ -439,7 +439,7 @@ export default function ProfilePage() {
               </div>
 
               {/* Visibility toggles */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="border border-slate-200 rounded-xl p-4">
                   <div className="text-sm font-semibold text-slate-700 mb-2">Profile Visibility</div>
                   <div className="flex gap-3">
@@ -539,7 +539,7 @@ export default function ProfilePage() {
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="label">State</label>
                   <select className="input"

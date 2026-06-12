@@ -40,14 +40,14 @@ export default function NetworkPage() {
   ];
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-0 md:p-6 space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Doctor Network</h1>
         <p className="text-sm text-slate-500 mt-0.5">Connect with specialists and send referrals</p>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
         {stats.map(s => (
           <div key={s.label} className="card p-4 text-center">
             <div className="text-2xl font-bold text-slate-900">{s.value}</div>

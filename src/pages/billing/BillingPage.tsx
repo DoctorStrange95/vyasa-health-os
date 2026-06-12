@@ -27,7 +27,7 @@ export default function BillingPage() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4 mb-6">
         <div className="stat-card">
           <div className="text-2xl font-black text-slate-900">₹{(mockBills.reduce((s, b) => s + +b.total, 0) / 1000).toFixed(0)}K</div>
           <div className="text-sm text-slate-600">Total Billed</div>
