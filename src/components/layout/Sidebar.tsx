@@ -7,7 +7,7 @@ import {
   Bell, LogOut, FileText, ListOrdered, Network, User,
   Activity, ClipboardList, Package, TestTube,
   DollarSign, Receipt, UserCheck, Stethoscope, BedDouble,
-  BarChart3, Link2, ScrollText, Gauge, ChevronLeft, Settings2, CalendarDays, ClipboardCheck
+  BarChart3, Link2, ScrollText, Gauge, ChevronLeft, Settings2, CalendarDays, ClipboardCheck, ShieldCheck
 } from 'lucide-react';
 import type { Role } from '@/types';
 
@@ -38,7 +38,6 @@ const NAV_ITEMS: Record<Role, NavItem[]> = {
     { icon: LayoutDashboard, label: 'Dashboard',        to: '/app/dashboard' },
     { icon: ListOrdered,     label: "Today's OPD",      to: '/app/queue' },
     { icon: Users,           label: 'My Patients',      to: '/app/patients' },
-    { icon: CalendarDays,    label: 'Scheduler',        to: '/app/schedule' },
     { icon: ClipboardCheck,  label: 'Booking Requests', to: '/app/bookings' },
     { icon: BarChart3,       label: 'Analytics',        to: '/app/analytics' },
     { icon: Settings2,       label: 'Settings',         to: '/app/settings' },
@@ -86,6 +85,7 @@ const NAV_ITEMS: Record<Role, NavItem[]> = {
     { icon: FileText, label: 'Discharge Summary', to: '/app/patient-discharge' },
   ],
   superadmin: [
+    { icon: ShieldCheck, label: 'Approvals & Users', to: '/app/admin' },
     { icon: LayoutDashboard, label: 'Dashboard', to: '/app/dashboard' },
     { icon: Users, label: 'Patients', to: '/app/patients' },
     { icon: ListOrdered, label: 'OPD Queue', to: '/app/queue' },

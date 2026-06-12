@@ -131,13 +131,13 @@ function PaymentModal({
 }: {
   appointment: AppointmentEntry;
   onClose: () => void;
-  onSave: (amountPaid: number, mode: 'Cash' | 'UPI' | 'Card', isAdvance: boolean) => void;
+  onSave: (amountPaid: number, mode: 'cash' | 'upi' | 'card', isAdvance: boolean) => void;
 }) {
   const totalFee = appointment.consultationFee ?? 0;
   const alreadyPaid = appointment.amountPaid ?? 0;
   const remaining = Math.max(0, totalFee - alreadyPaid);
 
-  const [mode, setMode] = useState<'Cash' | 'UPI' | 'Card'>('Cash');
+  const [mode, setMode] = useState<'cash' | 'upi' | 'card'>('cash');
   const [amount, setAmount] = useState(String(remaining || totalFee || ''));
   const [isAdvance, setIsAdvance] = useState(false);
 
@@ -233,14 +233,14 @@ function PaymentModal({
           <label className="label mb-2">Payment mode</label>
           <div className="grid grid-cols-3 gap-2">
             {([
-              { key: 'Cash', icon: Banknote },
-              { key: 'UPI', icon: MessageCircle },
-              { key: 'Card', icon: CreditCard },
-            ] as const).map(({ key, icon: Icon }) => (
+              { key: 'cash' as const, label: 'Cash', icon: Banknote },
+              { key: 'upi' as const, label: 'UPI', icon: MessageCircle },
+              { key: 'card' as const, label: 'Card', icon: CreditCard },
+            ]).map(({ key, label, icon: Icon }) => (
               <button key={key} onClick={() => setMode(key)}
                 className={`flex flex-col items-center gap-1 py-2 rounded-xl border text-xs font-medium transition-colors ${mode === key ? 'bg-teal-600 border-teal-600 text-white' : 'border-gray-300 text-gray-600 hover:border-teal-400'}`}>
                 <Icon className="w-4 h-4" />
-                {key}
+                {label}
               </button>
             ))}
           </div>
@@ -311,7 +311,7 @@ export default function PrescriptionViewerPage() {
     window.open(url, '_blank', 'noopener');
   }
 
-  function handleCollectPayment(amountPaid: number, mode: 'Cash' | 'UPI' | 'Card', _isAdvance: boolean) {
+  function handleCollectPayment(amountPaid: number, mode: 'cash' | 'upi' | 'card', _isAdvance: boolean) {
     if (!paymentApt) return;
     const prevPaid = paymentApt.amountPaid ?? 0;
     updateAppointment(paymentApt.id, {
@@ -345,8 +345,6 @@ export default function PrescriptionViewerPage() {
 
           <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
             {filtered.map(p => {
-              const patientVisits = visits[p.id] ?? [];
-              const latestVisit = patientVisits[0];
               const isSelected = selectedVisit?.patient.id === p.id;
               const apt = todayApts.find(a => a.patientId === p.id);
               const isPaid = apt && (apt.amountPaid ?? 0) > 0;

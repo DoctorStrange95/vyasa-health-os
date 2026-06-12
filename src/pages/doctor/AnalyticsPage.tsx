@@ -7,7 +7,7 @@ import {
 import { useAppStore } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePadStore } from '@/store/usePadStore';
-import { cn } from '@/lib/utils';
+import { cn, localDate } from '@/lib/utils';
 
 type Period = 'week' | 'month' | 'quarter';
 
@@ -119,7 +119,7 @@ function DonutChart({ slices }: { slices: { label: string; value: number; color:
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function AnalyticsPage() {
-  const { patients, visits, prescriptions, queue } = useAppStore();
+  const { patients, visits, prescriptions, queue, appointments } = useAppStore();
   const { user } = useAuthStore();
   const { clinics } = usePadStore();
   const [period, setPeriod] = useState<Period>('month');
@@ -169,10 +169,20 @@ export default function AnalyticsPage() {
     const count = allVisits.filter(v => {
       const d = new Date(v.date); return d >= mo && d < next;
     }).length;
-    // Supplement with demo-like baseline if no visits recorded yet
-    const demo = [45, 52, 49, 63, 71, 58][i];
-    return { label: MONTH_NAMES[mo.getMonth()], count: count || demo };
+    return { label: MONTH_NAMES[mo.getMonth()], count };
   });
+
+  // Appointment stats
+  const todayStr = localDate();
+  const filteredApts = useMemo(() =>
+    selectedClinicId === 'all' ? appointments : appointments.filter(a => a.clinicId === selectedClinicId),
+  [appointments, selectedClinicId]);
+  const aptScheduled  = filteredApts.filter(a => a.date >= todayStr && (a.status === 'scheduled' || a.status === 'confirmed')).length;
+  const aptCompleted  = filteredApts.filter(a => a.status === 'completed').length;
+  const aptNoShow     = filteredApts.filter(a => a.status === 'no-show').length;
+  const aptCancelled  = filteredApts.filter(a => a.status === 'cancelled').length;
+  const aptTotal      = aptCompleted + aptNoShow + aptCancelled + aptScheduled;
+  const seenRate      = (aptCompleted + aptNoShow) > 0 ? Math.round((aptCompleted / (aptCompleted + aptNoShow)) * 100) : 0;
 
   // Top diagnoses from actual patient data + visits
   const diagnosisMap: Record<string, number> = {};
@@ -265,23 +275,47 @@ export default function AnalyticsPage() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <KpiCard icon={Stethoscope} label="Consultations Today" value={todayPatients || todayQueue}
           sub={`${todayQueue} in queue`} iconBg="bg-teal-50 text-teal-600" />
-        <KpiCard icon={Calendar} label="This Week" value={weekVisits || 18}
-          sub="Consultations" delta={12} iconBg="bg-blue-50 text-blue-600" />
-        <KpiCard icon={BarChart3} label="This Month" value={monthVisits || 71}
-          sub={`${prevMonthVisits || 58} last month`} delta={monthDelta || 22}
+        <KpiCard icon={Calendar} label="This Week" value={weekVisits}
+          sub="Visit records" iconBg="bg-blue-50 text-blue-600" />
+        <KpiCard icon={BarChart3} label="This Month" value={monthVisits}
+          sub={prevMonthVisits > 0 ? `${prevMonthVisits} last month` : 'No prior data'} delta={monthDelta || undefined}
           iconBg="bg-violet-50 text-violet-600" />
         <KpiCard icon={Users} label="Total Patients" value={totalPatients}
-          sub={`${newThisMonth} new this month`} delta={newThisMonth > 0 ? 8 : 0}
+          sub={`${newThisMonth} new this month`}
           iconBg="bg-amber-50 text-amber-600" />
       </div>
+
+      {/* ── Appointment Insights ─────────────────────────────────────────────── */}
+      {aptTotal > 0 && (
+        <div className="card p-5">
+          <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+            <Calendar className="w-4 h-4 text-teal-600" />
+            Appointment Insights
+          </h3>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {[
+              { label: 'Upcoming Scheduled', value: aptScheduled, color: 'text-teal-700', bg: 'bg-teal-50', desc: 'Future appointments' },
+              { label: 'Seen / Completed',   value: aptCompleted, color: 'text-emerald-700', bg: 'bg-emerald-50', desc: 'Appointments completed' },
+              { label: 'No Show',            value: aptNoShow,    color: 'text-amber-700',  bg: 'bg-amber-50', desc: 'Patients who didn\'t come' },
+              { label: 'Show Rate',          value: `${seenRate}%`, color: 'text-blue-700', bg: 'bg-blue-50', desc: `${aptCompleted} of ${aptCompleted + aptNoShow} seen` },
+            ].map(m => (
+              <div key={m.label} className={`rounded-xl p-4 text-center ${m.bg}`}>
+                <div className={`text-2xl font-black mb-0.5 ${m.color}`}>{m.value}</div>
+                <div className="text-xs font-semibold text-slate-700">{m.label}</div>
+                <div className="text-[10px] text-slate-400 mt-0.5">{m.desc}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── Row 2: Practice Vitals ──────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { icon: Clock,      label: 'Avg Consult Time', value: '12 min',  sub: 'per patient',          iconBg: 'bg-teal-50 text-teal-600' },
-          { icon: Activity,   label: 'Avg OPD / Day',    value: period === 'week' ? Math.ceil((weekVisits || 18) / 7) : Math.ceil((monthVisits || 71) / 30),  sub: 'consultations',            iconBg: 'bg-emerald-50 text-emerald-600' },
-          { icon: Pill,       label: 'Avg Rx / Visit',   value: avgRxPerVisit, sub: 'drugs prescribed', iconBg: 'bg-blue-50 text-blue-600' },
-          { icon: Share2,     label: 'Referral Rate',    value: `${referralRate || 8}%`, sub: 'patients referred', iconBg: 'bg-violet-50 text-violet-600' },
+          { icon: Clock,    label: 'Avg OPD / Day',  value: period === 'week' ? (weekVisits > 0 ? Math.ceil(weekVisits / 7) : 0) : (monthVisits > 0 ? Math.ceil(monthVisits / 30) : 0), sub: 'consultations', iconBg: 'bg-teal-50 text-teal-600' },
+          { icon: Activity, label: 'Total Visits',   value: allVisits.length, sub: 'all time records', iconBg: 'bg-emerald-50 text-emerald-600' },
+          { icon: Pill,     label: 'Avg Rx / Visit', value: avgRxPerVisit, sub: 'drugs prescribed', iconBg: 'bg-blue-50 text-blue-600' },
+          { icon: Share2,   label: 'Referral Rate',  value: `${referralRate}%`, sub: `${referrals} referrals made`, iconBg: 'bg-violet-50 text-violet-600' },
         ].map(k => (
           <div key={k.label} className="card p-4 flex items-center gap-3">
             <div className={cn('w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0', k.iconBg)}>
@@ -357,10 +391,12 @@ export default function AnalyticsPage() {
               <h3 className="font-bold text-slate-800">OPD Trend</h3>
               <p className="text-xs text-slate-400">Monthly consultations — last 6 months</p>
             </div>
-            <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-700 text-xs font-semibold px-2.5 py-1 rounded-full">
-              <ArrowUp className="w-3 h-3" />
-              {monthDelta || 22}% vs last month
-            </div>
+            {monthDelta !== 0 && (
+              <div className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${monthDelta > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
+                {monthDelta > 0 ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
+                {Math.abs(monthDelta)}% vs last month
+              </div>
+            )}
           </div>
           <div className="flex items-end gap-2 h-28">
             {last6Months.map((m) => (
@@ -392,17 +428,17 @@ export default function AnalyticsPage() {
         <div className="card p-5">
           <h3 className="font-bold text-slate-800 mb-4">Patient Status</h3>
           <DonutChart slices={[
-            { label: 'OPD', value: opdCount || 45, color: 'fill-teal-500' },
-            { label: 'IPD', value: ipdCount || 8, color: 'fill-blue-500' },
-            { label: 'Discharged', value: dischargedCount || 18, color: 'fill-slate-300' },
+            { label: 'OPD', value: opdCount, color: 'fill-teal-500' },
+            { label: 'IPD', value: ipdCount, color: 'fill-blue-500' },
+            { label: 'Discharged', value: dischargedCount, color: 'fill-slate-300' },
           ]} />
           <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-2 gap-2">
             <div className="text-center">
-              <div className="text-lg font-black text-teal-600">{newThisMonth || 12}</div>
+              <div className="text-lg font-black text-teal-600">{newThisMonth}</div>
               <div className="text-[10px] text-slate-500">New this month</div>
             </div>
             <div className="text-center">
-              <div className="text-lg font-black text-blue-600">{Math.max(totalPatients - newThisMonth, 0) || 33}</div>
+              <div className="text-lg font-black text-blue-600">{Math.max(totalPatients - newThisMonth, 0)}</div>
               <div className="text-[10px] text-slate-500">Returning</div>
             </div>
           </div>
@@ -430,25 +466,8 @@ export default function AnalyticsPage() {
               ))}
             </div>
           ) : (
-            <div className="space-y-3">
-              {[
-                ['Hypertension', 45, 100],
-                ['Diabetes Type 2', 38, 84],
-                ['URTI / Cold', 28, 62],
-                ['Fever (Viral)', 22, 49],
-                ['Arthritis / Joint Pain', 16, 36],
-                ['Gastritis / GERD', 12, 27],
-              ].map(([name, count, pct], i) => (
-                <div key={name as string}>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-slate-700 font-medium">{name}</span>
-                    <span className="text-slate-500">{count} patients</span>
-                  </div>
-                  <div className="h-2 rounded-full bg-slate-100">
-                    <div className={cn('h-full rounded-full', BAR_COLORS[i])} style={{ width: `${pct}%` }} />
-                  </div>
-                </div>
-              ))}
+            <div className="py-8 text-center text-slate-400 text-sm">
+              No diagnosis data yet. Start consultations to see trends.
             </div>
           )}
         </div>
@@ -458,9 +477,9 @@ export default function AnalyticsPage() {
           <div className="card p-5">
             <h3 className="font-bold text-slate-800 mb-3">Gender Split</h3>
             <DonutChart slices={[
-              { label: 'Male', value: male || 28, color: 'fill-blue-500' },
-              { label: 'Female', value: female || 27, color: 'fill-rose-400' },
-              { label: 'Other', value: other || 0, color: 'fill-slate-300' },
+              { label: 'Male',   value: male,  color: 'fill-blue-500' },
+              { label: 'Female', value: female, color: 'fill-rose-400' },
+              { label: 'Other',  value: other,  color: 'fill-slate-300' },
             ]} />
           </div>
 
@@ -468,7 +487,7 @@ export default function AnalyticsPage() {
             <h3 className="font-bold text-slate-800 mb-3">Age Groups</h3>
             <BarChart
               labels={ageGroups.map(a => a.label)}
-              values={ageGroups.map(a => a.count || [2, 8, 18, 15, 12][ageGroups.indexOf(a)])}
+              values={ageGroups.map(a => a.count)}
               color="bg-teal-500"
               height={64}
             />
@@ -486,7 +505,7 @@ export default function AnalyticsPage() {
           {[
             { label: 'Follow-up Compliance', value: '68%', desc: 'Patients who returned', good: true },
             { label: 'Avg Wait Time', value: '14 min', desc: 'Before consultation', good: true },
-            { label: 'Admission Rate', value: `${ipdCount > 0 ? Math.round((ipdCount / totalPatients) * 100) : 6}%`, desc: 'OPD to IPD conversions', good: false },
+            { label: 'Admission Rate', value: totalPatients > 0 ? `${Math.round((ipdCount / totalPatients) * 100)}%` : '0%', desc: 'OPD to IPD conversions', good: false },
             { label: 'Completed Today', value: `${todayPatients || queue.filter(q=>q.status==='completed').length}`, desc: 'Consultations done', good: true },
           ].map(m => (
             <div key={m.label} className="bg-slate-50 rounded-xl p-4 text-center">
@@ -516,11 +535,12 @@ export default function AnalyticsPage() {
             </thead>
             <tbody className="divide-y divide-slate-50">
               {[
-                { metric: 'Total OPD', curr: monthVisits || 71, prev: prevMonthVisits || 58 },
-                { metric: 'New Patients', curr: newThisMonth || 12, prev: 8 },
-                { metric: 'Total IPD', curr: ipdCount, prev: ipdCount > 0 ? ipdCount - 1 : 2 },
-                { metric: 'Referrals Made', curr: referrals || 4, prev: 3 },
-                { metric: 'Rx Written', curr: Object.values(prescriptions).flat().length || 68, prev: 55 },
+                { metric: 'Total OPD',     curr: monthVisits,                                    prev: prevMonthVisits },
+                { metric: 'New Patients',  curr: newThisMonth,                                   prev: filteredPatients.filter(p => { const d = new Date(p.admitDate ?? ''); return d >= daysAgo(60) && d < monthStart; }).length },
+                { metric: 'Total IPD',     curr: ipdCount,                                       prev: 0 },
+                { metric: 'Referrals',     curr: referrals,                                      prev: allVisits.filter(v => v.referral?.specialty && new Date(v.date) >= daysAgo(60) && new Date(v.date) < monthStart).length },
+                { metric: 'Rx Written',    curr: Object.values(prescriptions).flat().length,     prev: 0 },
+                { metric: 'Appts Booked',  curr: filteredApts.filter(a => { const d = new Date(a.createdAt ?? ''); return d >= monthStart; }).length, prev: filteredApts.filter(a => { const d = new Date(a.createdAt ?? ''); return d >= daysAgo(60) && d < monthStart; }).length },
               ].map(row => {
                 const change = row.prev > 0 ? Math.round(((row.curr - row.prev) / row.prev) * 100) : 0;
                 return (

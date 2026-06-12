@@ -9,7 +9,7 @@ import {
   CheckCircle2, Pencil, Search, UserPlus, X, ArrowRight, Phone,
   ChevronRight, Building2, ChevronDown, Edit2, Calendar, CalendarDays, Settings2, BarChart3, DollarSign
 } from 'lucide-react';
-import { formatDateTime, cn } from '@/lib/utils';
+import { formatDateTime, cn, localDate } from '@/lib/utils';
 import type { Patient } from '@/types';
 
 // ─── Today's Clinic Widget ─────────────────────────────────────────────────────
@@ -19,7 +19,7 @@ function TodayClinicWidget() {
   const { clinics } = usePadStore();
   const [open, setOpen] = useState(false);
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = localDate();
   const avail = todayAvailability?.date === todayStr ? todayAvailability : null;
   const todayCount = queue.filter(q => q.status !== 'no-show').length;
 
@@ -364,7 +364,7 @@ function QuickRxModal({ onClose }: { onClose: () => void }) {
 
 export default function DashboardPage() {
   const { user } = useAuthStore();
-  const { patients, alerts, queue, beds, vitals, appointments, bills } = useAppStore();
+  const { patients, alerts, queue, vitals, appointments, bills } = useAppStore();
   const [showRxModal, setShowRxModal] = useState(false);
 
   const myPatients = patients.filter(p => p.attendingDoctorId === user?.id);
@@ -372,13 +372,13 @@ export default function DashboardPage() {
   const opd = myPatients.filter(p => p.status === 'OPD');
   const critical = myPatients.filter(p => p.priority === 'Critical');
   const unackAlerts = alerts.filter(a => !a.acknowledged);
-  const availBeds = beds.filter(b => b.status === 'available').length;
   const waitingQueue = queue.filter(q => q.status === 'waiting' || q.status === 'in-progress');
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = localDate();
   const todayAppointments = appointments
     .filter(a => a.date === todayStr && a.status !== 'cancelled')
     .sort((a, b) => a.time > b.time ? 1 : -1);
+  const upcomingCount = appointments.filter(a => a.date >= todayStr && a.status === 'scheduled').length;
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
@@ -437,12 +437,12 @@ export default function DashboardPage() {
         />
         <StatCard
           icon={<Activity className="w-5 h-5 text-emerald-500" />}
-          label="Beds Available"
-          value={availBeds}
-          sub={`${beds.length} total beds`}
+          label="Upcoming Appts"
+          value={upcomingCount}
+          sub={`${todayAppointments.length} today`}
           subColor="text-slate-500"
           bg="bg-emerald-50"
-          to="/app/beds"
+          to="/app/schedule"
         />
       </div>
 
@@ -639,7 +639,7 @@ export default function DashboardPage() {
 
           {/* Revenue snapshot — only when billing data exists */}
           {bills.length > 0 && (() => {
-            const todayStr = new Date().toISOString().slice(0, 10);
+            const todayStr = localDate();
             const todayBills = bills.filter(b => b.createdAt.slice(0, 10) === todayStr);
             const todayRevenue = todayBills.filter(b => b.status === 'paid').reduce((s, b) => s + b.total, 0);
             const pendingRevenue = bills.filter(b => b.status === 'pending').reduce((s, b) => s + b.total, 0);

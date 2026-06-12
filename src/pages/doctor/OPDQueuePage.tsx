@@ -1,23 +1,10 @@
-import { useState } from 'react';
-import { Clock, UserCheck, Users, Stethoscope, CalendarDays, Plus, ChevronRight, Building2, AlertTriangle, User2, UserPlus } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { Clock, UserCheck, Users, Stethoscope, Plus, ChevronRight, Building2, AlertTriangle, User2, UserPlus, CalendarCheck } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAppStore } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
-import { usePadStore } from '@/store/usePadStore';
-import { cn } from '@/lib/utils';
-import type { QueueEntry, QueueStatus, AppointmentEntry, Patient } from '@/types';
-
-function getDays() {
-  return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() + i);
-    return {
-      date: d,
-      label: i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : d.toLocaleDateString('en-IN', { weekday: 'short' }),
-      dateStr: d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
-    };
-  });
-}
+import { cn, localDate } from '@/lib/utils';
+import type { QueueEntry, QueueStatus } from '@/types';
 
 const STATUS_CONFIG: Record<QueueStatus, { label: string; color: string; dot: string }> = {
   'waiting':     { label: 'Waiting',    color: 'bg-amber-100 text-amber-700',  dot: 'bg-amber-400' },
@@ -26,55 +13,30 @@ const STATUS_CONFIG: Record<QueueStatus, { label: string; color: string; dot: st
   'no-show':     { label: 'No Show',    color: 'bg-red-100 text-red-500',      dot: 'bg-red-400' },
 };
 
-type ScheduleSlot = { name: string; reason: string; time: string; patientId: string };
-
-function getSchedule(
-  appointments: AppointmentEntry[],
-  patients: Patient[],
-  clinicId?: string,
-): Record<string, ScheduleSlot[]> {
-  const days = getDays();
-  const admittedIds = new Set(patients.filter(p => p.status === 'IPD').map(p => p.id));
-  const schedule: Record<string, ScheduleSlot[]> = {};
-  days.forEach(day => {
-    const key = day.date.toDateString();
-    const dateStr = day.date.toISOString().slice(0, 10);
-    schedule[key] = appointments
-      .filter(a =>
-        a.date === dateStr &&
-        a.status !== 'cancelled' &&
-        !admittedIds.has(a.patientId) &&
-        (!clinicId || a.clinicId === clinicId)
-      )
-      .sort((a, b) => a.time.localeCompare(b.time))
-      .map(a => ({ name: a.patientName, reason: a.reason, time: a.time, patientId: a.patientId }));
-  });
-  return schedule;
-}
-
 export default function OPDQueuePage() {
-  const { queue, patients, appointments, todayAvailability, setQueue, staff, assignNurse, showToast, openQuickRegister } = useAppStore();
+  const { queue, patients, appointments, todayAvailability, setQueue, staff, assignNurse, showToast, openQuickRegister, refreshAppointments } = useAppStore();
   const { user } = useAuthStore();
-  const { clinics } = usePadStore();
   const navigate = useNavigate();
-  const [activeDay, setActiveDay] = useState(0);
   const [showAddWalkin, setShowAddWalkin] = useState(false);
-  const [manualClinicId, setManualClinicId] = useState('all');
-  const days = getDays();
 
-  const todayDateStr = new Date().toISOString().slice(0, 10);
+  useEffect(() => { refreshAppointments(); }, []);
+
+  const todayDateStr = localDate();
   const avail = todayAvailability?.date === todayDateStr ? todayAvailability : null;
 
-  // Active clinic: use today's availability clinic, fallback to manual selector
-  const activeClinicId = avail?.clinicId ?? (manualClinicId === 'all' ? undefined : manualClinicId);
-  const schedule = getSchedule(appointments, patients, activeClinicId);
+  // Today's scheduled appointments (all clinics — receptionist may have booked from different session)
+  const admittedIds = useMemo(() => new Set(patients.filter(p => p.status === 'IPD').map(p => p.id)), [patients]);
+  const todayScheduled = useMemo(() =>
+    appointments
+      .filter(a => a.date === todayDateStr && a.status !== 'cancelled' && !admittedIds.has(a.patientId))
+      .sort((a, b) => a.time.localeCompare(b.time))
+      .map(a => ({ name: a.patientName, reason: a.reason, time: a.time, patientId: a.patientId, clinicName: a.clinicName })),
+  [appointments, todayDateStr, admittedIds]);
 
   const waiting    = queue.filter(q => q.status === 'waiting');
   const inProgress = queue.filter(q => q.status === 'in-progress');
   const done       = queue.filter(q => q.status === 'completed' || q.status === 'no-show');
   const total      = queue.length;
-  const todaySlots = schedule[days[activeDay].date.toDateString()] ?? [];
-  const weekTotal  = Object.values(schedule).flat().length;
   const atLimit = avail ? total >= avail.maxPatients : false;
 
   const nurses = staff.filter(s => s.role === 'nurse' && s.status === 'active');
@@ -163,10 +125,10 @@ export default function OPDQueuePage() {
       {/* Live stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: 'Today',     value: total,          icon: Users,      color: 'text-slate-800 bg-slate-100' },
-          { label: 'Waiting',   value: waiting.length, icon: Clock,      color: 'text-amber-600 bg-amber-50' },
-          { label: 'Completed', value: done.length,    icon: UserCheck,  color: 'text-emerald-600 bg-emerald-50' },
-          { label: 'This Week', value: weekTotal,      icon: CalendarDays, color: 'text-teal-600 bg-teal-50' },
+          { label: 'Queue Today', value: total,               icon: Users,         color: 'text-slate-800 bg-slate-100' },
+          { label: 'Waiting',     value: waiting.length,      icon: Clock,         color: 'text-amber-600 bg-amber-50' },
+          { label: 'Completed',   value: done.length,         icon: UserCheck,     color: 'text-emerald-600 bg-emerald-50' },
+          { label: 'Scheduled',   value: todayScheduled.length, icon: CalendarCheck, color: 'text-teal-600 bg-teal-50' },
         ].map(s => (
           <div key={s.label} className="card p-4 flex items-center gap-3">
             <div className={cn('w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0', s.color)}>
@@ -180,54 +142,20 @@ export default function OPDQueuePage() {
         ))}
       </div>
 
-      {/* 7-day calendar strip */}
+      {/* Today's scheduled appointments */}
       <div className="card p-4">
-        <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-          <div className="flex items-center gap-2">
-            <CalendarDays className="w-4 h-4 text-teal-600" />
-            <span className="font-semibold text-slate-800 text-sm">Schedule — Next 7 Days</span>
-            {avail && (
-              <span className="text-xs text-teal-600 font-medium bg-teal-50 px-2 py-0.5 rounded-full">{avail.clinicName}</span>
-            )}
-          </div>
-          {!avail && clinics.length > 0 && (
-            <select
-              value={manualClinicId}
-              onChange={e => setManualClinicId(e.target.value)}
-              className="input text-xs py-1 px-2 w-auto max-w-[180px]"
-            >
-              <option value="all">All Clinics</option>
-              {clinics.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          )}
-        </div>
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          {days.map((day, i) => {
-            const slots = schedule[day.date.toDateString()] ?? [];
-            return (
-              <button key={i} onClick={() => setActiveDay(i)}
-                className={cn('flex-shrink-0 flex flex-col items-center px-3 py-2.5 rounded-xl border-2 transition-all min-w-16',
-                  activeDay === i ? 'border-teal-500 bg-teal-500 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-teal-300')}>
-                <span className={cn('text-[10px] font-semibold uppercase', activeDay === i ? 'text-teal-100' : 'text-slate-400')}>{day.label}</span>
-                <span className={cn('text-lg font-bold leading-tight', activeDay === i ? 'text-white' : 'text-slate-800')}>{day.date.getDate()}</span>
-                <span className={cn('text-[10px]', activeDay === i ? 'text-teal-100' : 'text-slate-400')}>{day.dateStr.split(' ')[1]}</span>
-                {slots.length > 0 && (
-                  <span className={cn('mt-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full',
-                    activeDay === i ? 'bg-white/20 text-white' : 'bg-teal-100 text-teal-700')}>
-                    {slots.length}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+        <div className="flex items-center gap-2 mb-3">
+          <CalendarCheck className="w-4 h-4 text-teal-600" />
+          <span className="font-semibold text-slate-800 text-sm">Today's Scheduled</span>
+          {avail && <span className="text-xs text-teal-600 font-medium bg-teal-50 px-2 py-0.5 rounded-full">{avail.clinicName}</span>}
         </div>
 
-        <div className="mt-4 space-y-2">
-          {todaySlots.length === 0 ? (
+        <div className="space-y-2">
+          {todayScheduled.length === 0 ? (
             <div className="text-center py-6 text-slate-400 text-sm">
-              No OPD appointments scheduled for this day
+              No appointments scheduled for today
             </div>
-          ) : todaySlots.map((slot, i) => {
+          ) : todayScheduled.map((slot, i) => {
             const pt = patients.find(p => p.id === slot.patientId);
             const isIPD = pt?.status === 'IPD' || pt?.status === 'Critical';
             return (
@@ -242,30 +170,25 @@ export default function OPDQueuePage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-medium text-slate-800 text-sm">{slot.name}</span>
-                    {isIPD && (
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-600 text-white">
-                        IPD · {pt?.ward}
-                      </span>
-                    )}
-                    {pt?.status === 'OPD' && (
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-teal-100 text-teal-700">
-                        OPD
-                      </span>
-                    )}
+                    {isIPD && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-600 text-white">IPD · {pt?.ward}</span>}
+                    {!isIPD && pt?.status === 'OPD' && <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-teal-100 text-teal-700">OPD</span>}
                   </div>
-                  <div className="text-xs text-slate-500">{slot.reason} · {slot.time}</div>
+                  <div className="text-xs text-slate-500">{slot.reason} · {slot.time}{slot.clinicName ? ` · ${slot.clinicName}` : ''}</div>
                 </div>
-                <button
-                  onClick={() => navigate(`/app/consult/${slot.patientId}`)}
-                  className={cn('btn-sm flex-shrink-0', isIPD ? 'btn-secondary border-blue-300 text-blue-700' : 'btn-primary')}
-                >
-                  <Stethoscope className="w-3.5 h-3.5" />
-                  {isIPD ? 'Round Note' : 'Consult'}
-                </button>
+                {user?.role !== 'receptionist' && (
+                  <button
+                    onClick={() => navigate(`/app/consult/${slot.patientId}`)}
+                    className={cn('btn-sm flex-shrink-0', isIPD ? 'btn-secondary border-blue-300 text-blue-700' : 'btn-primary')}
+                  >
+                    <Stethoscope className="w-3.5 h-3.5" />
+                    {isIPD ? 'Round Note' : 'Consult'}
+                  </button>
+                )}
               </div>
             );
           })}
         </div>
+
       </div>
 
       {/* In progress */}

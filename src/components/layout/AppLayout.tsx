@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
@@ -7,11 +8,16 @@ import { ToastContainer } from '@/components/ui/Toast';
 import { QuickRegisterModal } from '@/components/QuickRegisterModal';
 import { useAppStore } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
+import { usePadStore } from '@/store/usePadStore';
 import { cn } from '@/lib/utils';
 
 export function AppLayout() {
   const { sidebarCollapsed, mobileSidebarOpen, closeMobileSidebar, quickRegisterOpen } = useAppStore();
   const { user } = useAuthStore();
+  const syncClinicsFromApi = usePadStore(s => s.syncClinicsFromApi);
+
+  // Hydrate real clinics (with schedules) from the backend on login
+  useEffect(() => { syncClinicsFromApi(); }, [syncClinicsFromApi]);
 
   // Roles that get a mobile bottom nav
   const hasMobileBottomNav = user && ['doctor', 'clinic_admin', 'nurse'].includes(user.role);

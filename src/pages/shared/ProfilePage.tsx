@@ -7,6 +7,16 @@ import { cn, initials } from '@/lib/utils';
 
 type Tab = 'profile' | 'security' | 'notifications' | 'public_profile';
 
+const INDIAN_STATES = [
+  'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat',
+  'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala', 'Madhya Pradesh',
+  'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha', 'Punjab',
+  'Rajasthan', 'Sikkim', 'Tamil Nadu', 'Telangana', 'Tripura', 'Uttar Pradesh',
+  'Uttarakhand', 'West Bengal', 'Andaman & Nicobar Islands', 'Chandigarh',
+  'Dadra & Nagar Haveli and Daman & Diu', 'Delhi', 'Jammu & Kashmir', 'Ladakh',
+  'Lakshadweep', 'Puducherry',
+];
+
 const ROLE_LABELS: Record<string, string> = {
   clinic_admin: 'Solo Practice Doctor',
   doctor: 'Doctor',
@@ -35,6 +45,8 @@ export default function ProfilePage() {
     accepting_patients?: boolean; public_profile_enabled?: boolean;
     gbp_url?: string; years_experience?: number; consultation_fee?: number | null;
     profile_photo_url?: string;
+    education?: string; services?: string; awards?: string;
+    state?: string; city?: string;
   } | null>(null);
   const [photoUploading, setPhotoUploading] = useState(false);
   const [pubLoading, setPubLoading] = useState(false);
@@ -86,12 +98,18 @@ export default function ProfilePage() {
         years_experience: pubProfile.years_experience ?? 0,
         consultation_fee: pubProfile.consultation_fee ?? null,
         profile_photo_url: pubProfile.profile_photo_url ?? '',
+        education: pubProfile.education ?? '',
+        services: pubProfile.services ?? '',
+        awards: pubProfile.awards ?? '',
+        state: pubProfile.state ?? '',
+        city: pubProfile.city ?? '',
       });
       setPubProfile(updated);
       setPubSaved(true);
       setTimeout(() => setPubSaved(false), 3000);
-    } catch {
-      alert('Could not save. Please try again.');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      alert(`Could not save: ${msg}`);
     } finally {
       setPubSaving(false);
     }
@@ -333,7 +351,7 @@ export default function ProfilePage() {
       {/* Public Profile tab */}
       {tab === 'public_profile' && (() => {
         const slug = pubProfile?.profile_slug ?? (user?.name ?? '').toLowerCase().replace(/^dr\.?\s+/i,'').replace(/[^a-z0-9\s]/g,'').trim().replace(/\s+/g,'-');
-        const siteBase = window.location.hostname === 'localhost' ? `${window.location.protocol}//${window.location.host}` : 'https://vyasa-health-os.pages.dev';
+        const siteBase = window.location.hostname === 'localhost' ? `${window.location.protocol}//${window.location.host}` : 'https://vyasaa.com';
         const bookingLink = `${siteBase}/dr/${slug}`;
         return (
           <div className="space-y-4">
@@ -459,6 +477,25 @@ export default function ProfilePage() {
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="label">State</label>
+                  <select className="input"
+                    value={pubProfile?.state ?? ''}
+                    onChange={e => setPubProfile(p => ({...p, state: e.target.value}))}>
+                    <option value="">Select state…</option>
+                    {INDIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="label">City</label>
+                  <input type="text" className="input" placeholder="e.g. Kolkata"
+                    value={pubProfile?.city ?? ''}
+                    onChange={e => setPubProfile(p => ({...p, city: e.target.value}))} />
+                </div>
+              </div>
+              <p className="text-xs text-slate-400 -mt-3">Patients searching the doctor directory by state/city will find you through this.</p>
+
               <div>
                 <label className="label">Languages Spoken</label>
                 <input type="text" className="input" placeholder="e.g. Hindi, English, Bengali"
@@ -471,6 +508,32 @@ export default function ProfilePage() {
                 <textarea rows={3} className="input resize-none" placeholder="Brief professional summary patients will read…"
                   value={pubProfile?.bio ?? ''}
                   onChange={e => setPubProfile(p => ({...p, bio: e.target.value}))} />
+              </div>
+
+              <div>
+                <label className="label">Education & Training</label>
+                <textarea rows={3} className="input resize-none"
+                  placeholder={'One per line, e.g.\nMBBS — Calcutta Medical College (2012)\nMD General Medicine — AIIMS New Delhi (2016)\nDNB Cardiology — Fortis Hospital (2019)'}
+                  value={pubProfile?.education ?? ''}
+                  onChange={e => setPubProfile(p => ({...p, education: e.target.value}))} />
+                <p className="text-xs text-slate-400 mt-1">Degree — College / Institute (Year). One per line. Shown on your public page.</p>
+              </div>
+
+              <div>
+                <label className="label">Services Offered</label>
+                <textarea rows={2} className="input resize-none"
+                  placeholder="Comma separated, e.g. General Consultation, ECG, Diabetes Management, Health Checkup, Vaccination"
+                  value={pubProfile?.services ?? ''}
+                  onChange={e => setPubProfile(p => ({...p, services: e.target.value}))} />
+                <p className="text-xs text-slate-400 mt-1">Shown as chips on your public page so patients know what you treat.</p>
+              </div>
+
+              <div>
+                <label className="label">Awards & Memberships (optional)</label>
+                <textarea rows={2} className="input resize-none"
+                  placeholder={'One per line, e.g.\nFellow, Indian Academy of Pediatrics\nBest Resident Award — AIIMS (2015)'}
+                  value={pubProfile?.awards ?? ''}
+                  onChange={e => setPubProfile(p => ({...p, awards: e.target.value}))} />
               </div>
 
               <div>

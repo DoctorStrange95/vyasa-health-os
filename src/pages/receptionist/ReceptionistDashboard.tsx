@@ -8,7 +8,7 @@ import {
 import { useAppStore } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePadStore } from '@/store/usePadStore';
-import { cn } from '@/lib/utils';
+import { cn, localDate } from '@/lib/utils';
 import type { AppointmentEntry } from '@/types';
 
 const STATUS_STYLE: Record<string, string> = {
@@ -34,7 +34,7 @@ export default function ReceptionistDashboard() {
   const [payAmount, setPayAmount] = useState('');
   const [payMode, setPayMode] = useState<'cash' | 'upi' | 'card'>('cash');
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDate();
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
 

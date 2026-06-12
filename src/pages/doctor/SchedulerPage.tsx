@@ -1,12 +1,12 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, UserPlus, Stethoscope, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAppStore } from '@/store/useAppStore';
 import { usePadStore } from '@/store/usePadStore';
-import { cn } from '@/lib/utils';
+import { cn, localDate } from '@/lib/utils';
 import type { AppointmentStatus } from '@/types';
 
-function todayStr() { return new Date().toISOString().slice(0, 10); }
+function todayStr() { return localDate(); }
 
 function addDays(base: Date, n: number) {
   const d = new Date(base);
@@ -22,7 +22,7 @@ function fmtTime(t: string) {
   return new Date(`2000-01-01T${t}`).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
 }
 
-function dateStr(d: Date) { return d.toISOString().slice(0, 10); }
+function dateStr(d: Date) { return localDate(d); }
 
 const STATUS_STYLES: Record<AppointmentStatus, { label: string; chip: string; dot: string }> = {
   scheduled:  { label: 'Scheduled',   chip: 'bg-teal-100 text-teal-700',    dot: 'bg-teal-500' },
@@ -33,10 +33,13 @@ const STATUS_STYLES: Record<AppointmentStatus, { label: string; chip: string; do
 };
 
 export default function SchedulerPage() {
-  const { appointments, updateAppointment, openQuickRegister, showToast, patients } = useAppStore();
+  const { appointments, updateAppointment, openQuickRegister, showToast, patients, refreshAppointments } = useAppStore();
   const { clinics } = usePadStore();
   const [selectedClinicId, setSelectedClinicId] = useState<string>('all');
   const [weekOffset, setWeekOffset] = useState(0);
+
+  // Pull fresh appointments from backend every time this page is opened
+  useEffect(() => { refreshAppointments(); }, []);
 
   // Start of current displayed week (Monday-aligned)
   const weekStart = useMemo(() => {

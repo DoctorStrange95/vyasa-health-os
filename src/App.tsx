@@ -17,6 +17,7 @@ const AlertsPage = lazy(() => import('@/pages/shared/AlertsPage'));
 const VitalsPage = lazy(() => import('@/pages/nurse/VitalsPage'));
 const PharmacyPage = lazy(() => import('@/pages/pharmacy/PharmacyPage'));
 const BedsPage = lazy(() => import('@/pages/admin/BedsPage'));
+const SuperAdminPage = lazy(() => import('@/pages/admin/SuperAdminPage'));
 const StaffPage = lazy(() => import('@/pages/admin/StaffPage'));
 const BillingPage = lazy(() => import('@/pages/billing/BillingPage'));
 const PlaceholderPage = lazy(() => import('@/pages/shared/PlaceholderPage'));
@@ -32,7 +33,6 @@ const ConsultPage = lazy(() => import('@/pages/doctor/ConsultPage'));
 const PadSettingsPage = lazy(() => import('@/pages/shared/PadSettingsPage'));
 const SettingsPage = lazy(() => import('@/pages/shared/SettingsPage'));
 const NursePatientsPage = lazy(() => import('@/pages/nurse/NursePatientsPage'));
-const SchedulerPage = lazy(() => import('@/pages/doctor/SchedulerPage'));
 const PublicBookingPage = lazy(() => import('@/pages/public/PublicBookingPage'));
 const DoctorPublicPage = lazy(() => import('@/pages/public/DoctorPublicPage'));
 const BookingRequestsPage = lazy(() => import('@/pages/doctor/BookingRequestsPage'));
@@ -49,17 +49,26 @@ function Spinner() {
 }
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
-  const { user } = useAuthStore();
-  const { isDemo } = useAuthStore();
+  const { user, isDemo } = useAuthStore();
   const { patients, loadDemo } = useAppStore();
 
-  // Restore demo/sample data after page refresh (in-memory store is cleared on reload)
-  // Also seed sample data for clinic_admin real logins so the app isn't empty
   useEffect(() => {
-    if (patients.length === 0 && user && (isDemo || ['clinic_admin', 'doctor', 'superadmin'].includes(user.role))) {
-      loadDemo(user.name, user.id);
+    if (!user) return;
+    if (isDemo) {
+      // Demo mode only: restore sample data after a page refresh
+      if (patients.length === 0) loadDemo(user.name, user.id);
+      return;
     }
-  }, [isDemo, patients.length, loadDemo, user?.name, user?.role]);
+    // Real login: NEVER seed demo data. Purge demo remnants persisted from
+    // older sessions (demo ids: P001…, A1…), then pull real data from the backend.
+    const state = useAppStore.getState();
+    const hasDemoData =
+      state.patients.some(p => /^P\d{3}$/.test(p.id)) ||
+      state.alerts.some(a => /^A\d$/.test(a.id)) ||
+      state.queue.some(q => /^Q\d/.test(q.id ?? ''));
+    if (hasDemoData) state.resetStore();
+    state.syncFromBackend();
+  }, [isDemo, patients.length, loadDemo, user?.id, user?.name, user]);
 
   if (!user) return <Navigate to="/login" replace />;
   return <>{children}</>;
@@ -125,8 +134,9 @@ export default function App() {
             <Route path="consult/:patientId" element={<Suspense fallback={<Spinner />}><DoctorOnly><ConsultPage /></DoctorOnly></Suspense>} />
             <Route path="pad-settings" element={<Suspense fallback={<Spinner />}><PadSettingsPage /></Suspense>} />
             <Route path="settings" element={<Suspense fallback={<Spinner />}><SettingsPage /></Suspense>} />
-            <Route path="schedule" element={<Suspense fallback={<Spinner />}><SchedulerPage /></Suspense>} />
+            <Route path="schedule" element={<Navigate to="/app/bookings" replace />} />
             <Route path="bookings" element={<Suspense fallback={<Spinner />}><BookingRequestsPage /></Suspense>} />
+            <Route path="admin" element={<Suspense fallback={<Spinner />}><SuperAdminPage /></Suspense>} />
 
             {/* Pharmacy */}
             <Route path="pharmacy" element={<Suspense fallback={<Spinner />}><PharmacyPage /></Suspense>} />

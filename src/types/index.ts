@@ -7,6 +7,13 @@ export interface DaySchedule {
   maxPatients: number;
 }
 
+export interface ClinicBed {
+  id: string;
+  number: string;          // e.g. "1", "A-2", "ICU-1"
+  ward: string;            // e.g. "General", "ICU", "Private"
+  type?: string;           // General / ICU / Private / Semi-Private
+}
+
 export interface Clinic {
   id: string;
   name: string;
@@ -19,6 +26,7 @@ export interface Clinic {
   timings: string;       // auto-generated display string
   schedule: DaySchedule[];
   color?: string;
+  beds?: ClinicBed[];    // IPD beds configured for this clinic
 }
 
 export interface DoctorAvailability {

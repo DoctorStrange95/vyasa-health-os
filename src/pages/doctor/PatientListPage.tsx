@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, UserPlus, FileSpreadsheet, BedDouble, CheckCircle2 } from 'lucide-react';
+import { Search, UserPlus, FileSpreadsheet, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
+import { usePadStore } from '@/store/usePadStore';
 import { PriorityBadge, StatusBadge } from '@/components/ui/Badge';
+import { localDate } from '@/lib/utils';
 import type { PatientStatus } from '@/types';
 
 type Filter = 'all' | PatientStatus;
@@ -80,7 +82,7 @@ function exportToCSV(
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `vyasa-patients-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `vyasa-patients-${localDate()}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -88,11 +90,27 @@ function exportToCSV(
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function PatientListPage() {
-  const { patients, visits, vitals, openQuickRegister } = useAppStore();
+  const { patients, visits, vitals, appointments, openQuickRegister } = useAppStore();
   const { user } = useAuthStore();
+  const { clinics } = usePadStore();
   const isReceptionist = user?.role === 'receptionist';
+
+  // Lookup: patient → clinic name (direct clinicId first, then from appointments)
+  const patientClinic = (p: { id: string; clinicId?: string }): string => {
+    if (p.clinicId) {
+      const name = clinics.find(c => c.id === p.clinicId)?.name;
+      if (name) return name;
+    }
+    const apt = appointments
+      .filter(a => a.patientId === p.id)
+      .sort((a, b) => b.date.localeCompare(a.date))[0];
+    if (apt?.clinicName) return apt.clinicName;
+    if (apt?.clinicId) return clinics.find(c => c.id === apt.clinicId)?.name ?? '—';
+    return '—';
+  };
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
+  const [clinicFilter, setClinicFilter] = useState<string>('all');
 
   const filtered = patients.filter(p => {
     const matchSearch =
@@ -100,7 +118,8 @@ export default function PatientListPage() {
       p.mrn.toLowerCase().includes(search.toLowerCase()) ||
       (p.diagnosis || '').toLowerCase().includes(search.toLowerCase());
     const matchFilter = filter === 'all' || p.status === filter;
-    return matchSearch && matchFilter;
+    const matchClinic = clinicFilter === 'all' || p.clinicId === clinicFilter;
+    return matchSearch && matchFilter && matchClinic;
   });
 
   const counts: Record<string, number> = {
@@ -137,11 +156,6 @@ export default function PatientListPage() {
             <UserPlus className="w-4 h-4" />
             Register Patient
           </button>
-          {/* Secondary: full IPD admission form */}
-          <Link to="/app/admit" className="btn-secondary flex items-center gap-2 hidden sm:flex" title="Full admission form for IPD patients">
-            <BedDouble className="w-4 h-4" />
-            IPD Admit
-          </Link>
           {/* Mobile: export icon only */}
           <button
             onClick={() => exportToCSV(patients, visits, vitals)}
@@ -166,6 +180,18 @@ export default function PatientListPage() {
               className="input pl-9"
             />
           </div>
+          {clinics.length > 1 && (
+            <select
+              value={clinicFilter}
+              onChange={e => setClinicFilter(e.target.value)}
+              className="input text-sm py-1.5 px-3 w-auto min-w-[140px]"
+            >
+              <option value="all">All Clinics</option>
+              {clinics.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          )}
           <div className="flex gap-2 flex-wrap">
             {(['all', 'IPD', 'OPD', 'Critical', 'Discharged', 'Referred', 'Deceased'] as const).map(f => (
               <button
@@ -187,7 +213,7 @@ export default function PatientListPage() {
       <div className="md:hidden space-y-3">
         {filtered.map(p => {
           const lastVisit = (visits[p.id] ?? [])[0];
-          const todayStr = new Date().toISOString().slice(0, 10);
+          const todayStr = localDate();
           const consultedToday = (visits[p.id] ?? []).some(v => v.date.startsWith(todayStr));
           return (
             <div key={p.id} className="mobile-patient-card">
@@ -244,7 +270,9 @@ export default function PatientListPage() {
               <th>Age / Sex</th>
               <th>Status</th>
               <th>Location</th>
-              <th>Last Visit / Diagnosis</th>
+              <th>Last Visit</th>
+              <th>Complaint / Dx</th>
+              <th>Clinic</th>
               <th>Priority</th>
               <th>Doctor</th>
               <th></th>
@@ -253,7 +281,7 @@ export default function PatientListPage() {
           <tbody>
             {filtered.map(p => {
               const lastVisit = (visits[p.id] ?? [])[0];
-              const todayStr = new Date().toISOString().slice(0, 10);
+              const todayStr = localDate();
               const consultedToday = (visits[p.id] ?? []).some(v => v.date.startsWith(todayStr));
               return (
                 <tr key={p.id}>
@@ -286,16 +314,18 @@ export default function PatientListPage() {
                       </div>
                     ) : <span className="text-slate-400">OPD</span>}
                   </td>
-                  <td className="max-w-[200px]">
+                  <td>
                     {lastVisit ? (
                       <div>
-                        <div className="text-xs text-slate-400">{new Date(lastVisit.date).toLocaleDateString('en-IN')}</div>
-                        <div className="text-sm text-slate-700 truncate">{lastVisit.chiefComplaint || p.diagnosis || '—'}</div>
+                        <div className="text-xs font-medium text-slate-700">{new Date(lastVisit.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
+                        <div className="text-[10px] text-slate-400">{lastVisit.doctorName}</div>
                       </div>
-                    ) : (
-                      <div className="text-sm text-slate-500 truncate">{p.diagnosis || '—'}</div>
-                    )}
+                    ) : <span className="text-slate-400 text-xs">No visits</span>}
                   </td>
+                  <td className="max-w-[160px]">
+                    <div className="text-sm text-slate-700 truncate">{lastVisit?.diagnosis || lastVisit?.chiefComplaint || p.diagnosis || '—'}</div>
+                  </td>
+                  <td className="text-xs text-slate-600 whitespace-nowrap">{patientClinic(p)}</td>
                   <td><PriorityBadge priority={p.priority} /></td>
                   <td className="text-sm text-slate-600">{p.attendingDoctor || '—'}</td>
                   <td>

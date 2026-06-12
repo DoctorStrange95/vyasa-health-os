@@ -11,7 +11,7 @@ import { useAppStore } from '@/store/useAppStore';
 import { api, isApiEnabled } from '@/lib/api';
 import { Modal } from '@/components/ui/Modal';
 import { cn } from '@/lib/utils';
-import type { Role, Staff, Clinic } from '@/types';
+import type { Role, Staff, Clinic, ClinicBed } from '@/types';
 
 type Tab = 'rxpad' | 'staff' | 'clinics';
 
@@ -871,6 +871,59 @@ function ClinicModal({ clinic: init, onSave, onClose }: {
               ))}
             </div>
           </div>
+
+          {/* IPD Beds */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="label mb-0">IPD Beds (optional)</label>
+              <button type="button"
+                onClick={() => {
+                  const newBed: ClinicBed = { id: `bed-${Date.now()}`, number: String((c.beds?.length ?? 0) + 1), ward: 'General' };
+                  set('beds', [...(c.beds ?? []), newBed]);
+                }}
+                className="btn-secondary btn-sm text-xs">
+                <Plus className="w-3 h-3" /> Add Bed
+              </button>
+            </div>
+            {(!c.beds || c.beds.length === 0) ? (
+              <p className="text-xs text-slate-400">No beds configured. Add beds if this clinic has an IPD setup.</p>
+            ) : (
+              <div className="space-y-2">
+                {c.beds.map((bed, bi) => (
+                  <div key={bed.id} className="flex items-center gap-2">
+                    <span className="text-xs text-slate-400 w-6 text-right flex-shrink-0">#{bi + 1}</span>
+                    <input
+                      value={bed.number}
+                      onChange={e => set('beds', c.beds!.map((b, i) => i === bi ? { ...b, number: e.target.value } : b))}
+                      placeholder="Bed No."
+                      className="input text-sm py-1.5 w-20 flex-shrink-0"
+                    />
+                    <input
+                      value={bed.ward}
+                      onChange={e => set('beds', c.beds!.map((b, i) => i === bi ? { ...b, ward: e.target.value } : b))}
+                      placeholder="Ward"
+                      className="input text-sm py-1.5 flex-1"
+                    />
+                    <select
+                      value={bed.type ?? 'General'}
+                      onChange={e => set('beds', c.beds!.map((b, i) => i === bi ? { ...b, type: e.target.value } : b))}
+                      className="input text-sm py-1.5 w-32 flex-shrink-0"
+                    >
+                      <option>General</option>
+                      <option>ICU</option>
+                      <option>Private</option>
+                      <option>Semi-Private</option>
+                    </select>
+                    <button type="button"
+                      onClick={() => set('beds', c.beds!.filter((_, i) => i !== bi))}
+                      className="text-slate-300 hover:text-red-400 transition-colors flex-shrink-0">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="flex gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50 rounded-b-2xl">
@@ -955,7 +1008,7 @@ function ClinicsTab() {
                     })}
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="grid grid-cols-4 gap-2 text-center">
                     <div className="bg-slate-50 rounded-xl px-2 py-2">
                       <div className="text-sm font-bold text-slate-900">₹{c.fee}</div>
                       <div className="text-[10px] text-slate-400">Fee</div>
@@ -967,6 +1020,10 @@ function ClinicsTab() {
                     <div className="bg-slate-50 rounded-xl px-2 py-2">
                       <div className="text-sm font-bold text-slate-900">{openDays.length > 0 ? Math.max(...openDays.map(d => d.maxPatients)) : '—'}</div>
                       <div className="text-[10px] text-slate-400">Max cap</div>
+                    </div>
+                    <div className="bg-slate-50 rounded-xl px-2 py-2">
+                      <div className="text-sm font-bold text-slate-900">{c.beds?.length ?? 0}</div>
+                      <div className="text-[10px] text-slate-400">Beds</div>
                     </div>
                   </div>
                 </div>

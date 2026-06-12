@@ -1245,13 +1245,35 @@ export default function ConsultPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="label">Ward / Room *</label>
-                    <input value={admitForm.ward} onChange={e => setAdmitForm(f => ({ ...f, ward: e.target.value }))}
-                      placeholder="General Ward, ICU…" className="input" />
+                    {activeClinic?.beds && activeClinic.beds.length > 0 ? (
+                      <select value={admitForm.ward} onChange={e => setAdmitForm(f => ({ ...f, ward: e.target.value }))} className="input">
+                        <option value="">Select ward…</option>
+                        {[...new Set(activeClinic.beds.map(b => b.ward))].map(w => (
+                          <option key={w} value={w}>{w}</option>
+                        ))}
+                        <option value="__custom">Other…</option>
+                      </select>
+                    ) : (
+                      <input value={admitForm.ward} onChange={e => setAdmitForm(f => ({ ...f, ward: e.target.value }))}
+                        placeholder="General Ward, ICU…" className="input" />
+                    )}
                   </div>
                   <div>
                     <label className="label">Bed No.</label>
-                    <input value={admitForm.bed} onChange={e => setAdmitForm(f => ({ ...f, bed: e.target.value }))}
-                      placeholder="B-12" className="input" />
+                    {activeClinic?.beds && activeClinic.beds.length > 0 ? (
+                      <select value={admitForm.bed} onChange={e => setAdmitForm(f => ({ ...f, bed: e.target.value }))} className="input">
+                        <option value="">Select bed…</option>
+                        {activeClinic.beds
+                          .filter(b => !admitForm.ward || b.ward === admitForm.ward)
+                          .map(b => (
+                            <option key={b.id} value={b.number}>{b.number} — {b.ward}</option>
+                          ))}
+                        <option value="__custom">Other…</option>
+                      </select>
+                    ) : (
+                      <input value={admitForm.bed} onChange={e => setAdmitForm(f => ({ ...f, bed: e.target.value }))}
+                        placeholder="B-12" className="input" />
+                    )}
                   </div>
                 </div>
                 <div>

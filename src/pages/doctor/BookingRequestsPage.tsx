@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useAuthStore } from '../../store/useAuthStore';
-import { Phone, MessageCircle, CheckCircle, XCircle, Clock, CalendarDays, Loader2, RefreshCw } from 'lucide-react';
-
-const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? 'https://vyasa-os-backend.onrender.com';
+import { api } from '@/lib/api';
+import { Phone, MessageCircle, CheckCircle, XCircle, Clock, CalendarDays, Loader2, RefreshCw, ClipboardCheck } from 'lucide-react';
+import SchedulerPage from './SchedulerPage';
 
 interface BookingRequest {
   id: number;
@@ -33,8 +32,28 @@ const STATUS_COLORS: Record<string, { bg: string; text: string; dot: string }> =
   cancelled: { bg: '#FEF2F2', text: '#991B1B', dot: '#EF4444' },
 };
 
+type PageView = 'requests' | 'schedule';
+
+function ViewToggle({ view, setView, pendingCount }: { view: PageView; setView: (v: PageView) => void; pendingCount: number }) {
+  return (
+    <div className="flex gap-1 bg-slate-200/70 rounded-xl p-1 mb-6">
+      <button onClick={() => setView('requests')}
+        className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-bold transition-all ${view === 'requests' ? 'bg-white shadow text-teal-700' : 'text-slate-500 hover:text-slate-700'}`}>
+        <ClipboardCheck className="w-4 h-4" /> Requests
+        {pendingCount > 0 && (
+          <span className="bg-amber-400 text-white text-xs font-bold rounded-full px-1.5 py-0.5">{pendingCount}</span>
+        )}
+      </button>
+      <button onClick={() => setView('schedule')}
+        className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-bold transition-all ${view === 'schedule' ? 'bg-white shadow text-teal-700' : 'text-slate-500 hover:text-slate-700'}`}>
+        <CalendarDays className="w-4 h-4" /> My Schedule
+      </button>
+    </div>
+  );
+}
+
 export default function BookingRequestsPage() {
-  const { token: accessToken } = useAuthStore();
+  const [view, setView] = useState<PageView>('requests');
   const [tab, setTab] = useState<FilterTab>('pending');
   const [requests, setRequests] = useState<BookingRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,32 +64,24 @@ export default function BookingRequestsPage() {
     setLoading(true);
     try {
       const params = tab !== 'all' ? `?status=${tab}` : '';
-      const res = await fetch(`${API_BASE}/booking-requests${params}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      if (!res.ok) throw new Error();
-      setRequests(await res.json());
+      const rows = await api.get<BookingRequest[]>(`/booking-requests${params}`);
+      setRequests(rows);
     } catch {
       /* noop */
     } finally {
       setLoading(false);
     }
-  }, [tab, accessToken]);
+  }, [tab]);
 
   useEffect(() => { load(); }, [load]);
 
   async function updateStatus(id: number, status: string, notes?: string) {
     setUpdating(id);
     try {
-      const res = await fetch(`${API_BASE}/booking-requests/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-        body: JSON.stringify({ status, notes }),
-      });
-      if (res.ok) {
-        const updated = await res.json();
-        setRequests(prev => prev.map(r => r.id === id ? { ...r, ...updated } : r));
-      }
+      const updated = await api.patch<Partial<BookingRequest>>(`/booking-requests/${id}`, { status, notes });
+      setRequests(prev => prev.map(r => r.id === id ? { ...r, ...updated } : r));
+    } catch (e) {
+      alert(`Could not update booking: ${e instanceof Error ? e.message : 'unknown error'}`);
     } finally {
       setUpdating(null);
       setNotesModal(null);
@@ -86,8 +97,22 @@ export default function BookingRequestsPage() {
 
   const pendingCount = requests.filter(r => r.status === 'pending').length;
 
+  // Schedule view renders the full Scheduler inside this page
+  if (view === 'schedule') {
+    return (
+      <div>
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-4 sm:pt-6">
+          <ViewToggle view={view} setView={setView} pendingCount={pendingCount} />
+        </div>
+        <SchedulerPage />
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-3xl mx-auto p-4 sm:p-6">
+      <ViewToggle view={view} setView={setView} pendingCount={pendingCount} />
+
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>

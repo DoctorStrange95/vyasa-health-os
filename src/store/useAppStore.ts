@@ -70,6 +70,7 @@ interface AppState {
   loadDemo: (doctorName?: string, doctorId?: number) => void;
   resetStore: () => void;
   syncFromBackend: () => Promise<void>;
+  refreshAppointments: () => Promise<void>;
 }
 
 export interface Toast {
@@ -272,6 +273,14 @@ export const useAppStore = create<AppState>()(
     import('@/lib/api').then(({ isApiEnabled, api }) => {
       if (isApiEnabled()) api.patch(`/appointments/${id}`, patch).catch(console.warn);
     });
+  },
+  refreshAppointments: async () => {
+    const { isApiEnabled, api } = await import('@/lib/api');
+    if (!isApiEnabled()) return;
+    try {
+      const apts = await api.get<AppointmentEntry[]>('/appointments');
+      set({ appointments: apts });
+    } catch { /* silently ignore — stale data is acceptable */ }
   },
   addVisit: (v) => {
     set(s => ({

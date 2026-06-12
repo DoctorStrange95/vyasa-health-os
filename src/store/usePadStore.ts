@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Clinic, DaySchedule, FavDrug, FavPrescription, Medication } from '@/types';
+import { api, isApiEnabled } from '@/lib/api';
 
 export interface PadSettings {
   doctorName: string;
@@ -87,6 +88,7 @@ interface PadStore {
   addClinic: (c: Clinic) => void;
   updateClinic: (c: Clinic) => void;
   removeClinic: (id: string) => void;
+  syncClinicsFromApi: () => Promise<void>;
   recordPrescriptionUsage: (drugs: Partial<Medication>[], diagnosis: string) => void;
   saveFavBundle: (label: string, drugs: Partial<Medication>[], tags: string[]) => void;
   deleteFavBundle: (id: string) => void;
@@ -101,9 +103,30 @@ export const usePadStore = create<PadStore>()(
       favPrescriptions: [],
       setSettings: (s) => set(state => ({ settings: { ...state.settings, ...s } })),
       resetSettings: () => set({ settings: DEFAULT }),
-      addClinic: (c) => set(state => ({ clinics: [...state.clinics, c] })),
-      updateClinic: (c) => set(state => ({ clinics: state.clinics.map(x => x.id === c.id ? c : x) })),
-      removeClinic: (id) => set(state => ({ clinics: state.clinics.filter(x => x.id !== id) })),
+      addClinic: (c) => {
+        set(state => ({ clinics: [...state.clinics, c] }));
+        if (isApiEnabled()) api.post('/clinics', c).catch(() => {});
+      },
+      updateClinic: (c) => {
+        set(state => ({ clinics: state.clinics.map(x => x.id === c.id ? c : x) }));
+        // POST upserts on the backend, so it works for clinics not yet synced
+        if (isApiEnabled()) api.post('/clinics', c).catch(() => {});
+      },
+      removeClinic: (id) => {
+        set(state => ({ clinics: state.clinics.filter(x => x.id !== id) }));
+        if (isApiEnabled()) api.del(`/clinics/${id}`).catch(() => {});
+      },
+
+      // Pull the doctor's real clinics from the backend; replaces local/demo data
+      syncClinicsFromApi: async () => {
+        if (!isApiEnabled()) return;
+        try {
+          const rows = await api.get<Clinic[]>('/clinics');
+          if (Array.isArray(rows) && rows.length) {
+            set({ clinics: rows.map(r => ({ ...r, schedule: r.schedule ?? [] })) });
+          }
+        } catch { /* offline / demo — keep local clinics */ }
+      },
 
       recordPrescriptionUsage: (drugs, _diagnosis) => {
         const now = new Date().toISOString();
