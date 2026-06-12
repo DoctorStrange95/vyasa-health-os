@@ -75,7 +75,7 @@ export default function StaffPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="page-title">Staff Management</h1>
           <p className="page-subtitle">{staff.length} staff members · {pending.length} pending approval</p>

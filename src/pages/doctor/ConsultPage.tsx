@@ -497,9 +497,9 @@ export default function ConsultPage() {
             <div className="w-7 h-7 rounded-lg bg-navy-800 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
               {patient.name.charAt(0)}
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-auto">
               <div className="font-semibold text-slate-900 text-sm truncate leading-tight">{patient.name}</div>
-              <div className="text-[11px] text-slate-500 leading-tight">{patientAge}y · {patient.gender} · {patient.mrn}</div>
+              <div className="text-[11px] text-slate-500 leading-tight truncate">{patientAge}y · {patient.gender} · {patient.mrn}</div>
             </div>
             {/* Ward / clinic inline on mobile */}
             {isIPD ? (
@@ -509,7 +509,7 @@ export default function ConsultPage() {
               </div>
             ) : clinics.length > 0 && (
               <select value={selectedClinicId} onChange={e => setSelectedClinicId(e.target.value)}
-                className="ml-auto text-[11px] font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg px-1.5 py-0.5 outline-none cursor-pointer flex-shrink-0 max-w-28">
+                className="ml-auto hidden sm:block text-[11px] font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg px-1.5 py-0.5 outline-none cursor-pointer min-w-0 flex-shrink max-w-28">
                 {clinics.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             )}
@@ -538,6 +538,17 @@ export default function ConsultPage() {
             </button>
           </div>
         </div>
+
+        {/* Mobile clinic selector (header chip hides it below sm) */}
+        {!isIPD && clinics.length > 1 && (
+          <div className="sm:hidden px-3 pb-2 flex items-center gap-2">
+            <span className="text-[11px] text-slate-400 font-medium flex-shrink-0">Clinic</span>
+            <select value={selectedClinicId} onChange={e => setSelectedClinicId(e.target.value)}
+              className="flex-1 min-w-0 text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg px-2 py-1 outline-none">
+              {clinics.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+        )}
 
         {/* Progress bar */}
         <div className="px-4 pb-2 flex items-center gap-2">

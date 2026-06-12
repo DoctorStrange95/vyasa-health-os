@@ -16,7 +16,7 @@ export default function BillingPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="page-title">Billing</h1>
           <p className="page-subtitle">{mockBills.length} bills · {mockBills.filter(b => b.status === 'pending').length} pending</p>

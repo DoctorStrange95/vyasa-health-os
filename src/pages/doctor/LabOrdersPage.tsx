@@ -87,7 +87,7 @@ export default function LabOrdersPage() {
 
   return (
     <div className="p-0 md:p-6 space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Lab Orders</h1>
           <p className="text-sm text-slate-500 mt-0.5">Track and manage all laboratory investigations</p>

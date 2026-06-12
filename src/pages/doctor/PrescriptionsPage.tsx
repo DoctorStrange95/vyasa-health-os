@@ -104,7 +104,7 @@ export default function PrescriptionsPage() {
   return (
     <div className="p-0 md:p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Prescriptions</h1>
           <p className="text-sm text-slate-500 mt-0.5">Manage and write prescriptions for your patients</p>
@@ -163,7 +163,7 @@ export default function PrescriptionsPage() {
           const isExpanded = expandedRx === rx.id;
           return (
             <div key={rx.id} className="card overflow-hidden">
-              <div className="p-4 flex items-center gap-4 cursor-pointer hover:bg-slate-50"
+              <div className="p-4 flex flex-wrap items-center gap-3 sm:gap-4 cursor-pointer hover:bg-slate-50"
                 onClick={() => setExpandedRx(isExpanded ? null : rx.id)}>
                 <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center flex-shrink-0">
                   <Pill className="w-5 h-5 text-teal-600" />
@@ -181,7 +181,7 @@ export default function PrescriptionsPage() {
                     {rx.time && <span className="text-slate-400">{formatDate(rx.time)}</span>}
                   </div>
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="flex items-center gap-2 flex-shrink-0 w-full sm:w-auto justify-end">
                   <button className="btn-secondary btn-sm" onClick={e => { e.stopPropagation(); window.print(); }}>
                     <Printer className="w-3.5 h-3.5" /> Print
                   </button>
