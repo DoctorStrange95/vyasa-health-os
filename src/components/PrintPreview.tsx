@@ -172,8 +172,14 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
           <div style="font-size:8px;color:#94a3b8;margin-top:2px;">Scan to Book</div>
          </div>`
       : '';
-    const vyasaBrand = `
-      <div style="margin-top:24px;padding-top:8px;border-top:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+
+    // Fixed header/footer repeat on every printed page via position:fixed inside iframe
+    const printHeader = `
+      <div id="phdr" style="position:fixed;top:0;left:0;right:0;background:#fff;padding:10px 20px 8px;border-bottom:3px solid ${theme};display:flex;align-items:flex-start;justify-content:space-between;gap:16px;">
+        ${left}${right}
+      </div>`;
+    const printFooter = `
+      <div id="pftr" style="position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #e2e8f0;padding:6px 20px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
         ${qrHtml}
         <div style="flex:1;display:flex;align-items:center;justify-content:flex-end;gap:6px;">
           <img src="${window.location.origin}/logos/vyasa-logo.svg" width="14" height="14" alt="Vyasa" style="display:inline-block;vertical-align:middle;border-radius:3px;" />
@@ -183,21 +189,20 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
 
     return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Prescription</title>
       <style>
-        @page { margin: 12mm; }
+        @page { size: A4; margin: 0; }
         * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        body { font-family: Arial, Helvetica, sans-serif; color: #0f172a; margin: 0; padding: 24px; }
+        body { font-family: Arial, Helvetica, sans-serif; color: #0f172a; margin: 0; padding: 110px 24px 70px; }
+        #phdr, #pftr { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       </style></head>
       <body>
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;border-bottom:3px solid ${theme};padding-bottom:12px;margin-bottom:12px;">
-          ${left}${right}
-        </div>
+        ${printHeader}
+        ${printFooter}
         <div style="display:flex;flex-wrap:wrap;gap:8px 24px;background:#f1f5f9;border-radius:6px;padding:10px 14px;margin-bottom:12px;">
           ${ptCells}
         </div>
         ${body}
         ${signature}
         ${footer}
-        ${vyasaBrand}
       </body></html>`;
   }
 
