@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { sendEmail } from '@/lib/emailService';
 
 interface AdminUser {
   id: number; name: string; email: string; role: string;
@@ -83,7 +84,14 @@ export default function SuperAdminPage() {
   async function approve(id: number) {
     setActing(id);
     try {
+      const user = users.find(u => u.id === id);
       await api.post(`/admin/users/${id}/approve`, {});
+
+      // Send approval email
+      if (user) {
+        await sendEmail(user.email, 'DOCTOR_APPROVED', { doctorName: user.name });
+      }
+
       setUsers(prev => prev.map(u => u.id === id ? { ...u, approval_status: 'approved' } : u));
     } catch (e) { alert(e instanceof Error ? e.message : 'Failed'); }
     finally { setActing(null); }
@@ -92,11 +100,22 @@ export default function SuperAdminPage() {
   async function reject(id: number, reason: string) {
     setActing(id);
     try {
+      const user = users.find(u => u.id === id);
       await api.post(`/admin/users/${id}/reject`, { reason });
+
+      // Send rejection email
+      if (user) {
+        await sendEmail(user.email, 'DOCTOR_REJECTED', {
+          doctorName: user.name,
+          rejectionReason: reason
+        });
+      }
+
       setUsers(prev => prev.map(u => u.id === id ? { ...u, approval_status: 'rejected', rejection_reason: reason } : u));
     } catch (e) { alert(e instanceof Error ? e.message : 'Failed'); }
     finally { setActing(null); setRejectModal(null); }
   }
+
 
   async function showSessions(user: AdminUser) {
     setSessionsModal({ user, sessions: [], loading: true });

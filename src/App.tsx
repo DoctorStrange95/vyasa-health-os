@@ -35,6 +35,7 @@ const SettingsPage = lazy(() => import('@/pages/shared/SettingsPage'));
 const NursePatientsPage = lazy(() => import('@/pages/nurse/NursePatientsPage'));
 const PublicBookingPage = lazy(() => import('@/pages/public/PublicBookingPage'));
 const DoctorPublicPage = lazy(() => import('@/pages/public/DoctorPublicPage'));
+const DoctorsDirectoryPage = lazy(() => import('@/pages/public/DoctorsDirectoryPage'));
 const BookingRequestsPage = lazy(() => import('@/pages/doctor/BookingRequestsPage'));
 const ReceptionistDashboard = lazy(() => import('@/pages/receptionist/ReceptionistDashboard'));
 const RegisterPatientPage = lazy(() => import('@/pages/receptionist/RegisterPatientPage'));
@@ -100,6 +101,7 @@ export default function App() {
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="/book/:clinicId" element={<Suspense fallback={<div className="flex items-center justify-center h-screen"><Loader2 className="w-10 h-10 animate-spin text-teal-500" /></div>}><PublicBookingPage /></Suspense>} />
           <Route path="/dr/:slug" element={<Suspense fallback={<div className="flex items-center justify-center h-screen"><Loader2 className="w-10 h-10 animate-spin text-teal-500" /></div>}><DoctorPublicPage /></Suspense>} />
+          <Route path="/doctors" element={<Suspense fallback={<div className="flex items-center justify-center h-screen"><Loader2 className="w-10 h-10 animate-spin text-teal-500" /></div>}><DoctorsDirectoryPage /></Suspense>} />
 
           <Route path="/app" element={<RequireAuth><AppLayout /></RequireAuth>}>
             {/* Role-aware home redirect */}

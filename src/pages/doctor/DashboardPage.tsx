@@ -385,22 +385,33 @@ export default function DashboardPage() {
 
   return (
     <div>
-      {/* Greeting + Write Rx CTA */}
-      <div className="flex items-start justify-between gap-4 mb-6">
+      {/* Greeting + CTAs */}
+      <div className="flex items-start justify-between gap-4 mb-6 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">
             {greeting}, {user?.name?.split(' ').slice(0, 2).join(' ')} 👋
           </h1>
           <p className="text-slate-500 mt-1 text-sm">Here's your clinical overview for today.</p>
         </div>
-        <button
-          onClick={() => setShowRxModal(true)}
-          className="flex-shrink-0 flex items-center gap-2.5 bg-teal-600 hover:bg-teal-700 active:scale-95 text-white font-bold px-5 py-3 rounded-2xl shadow-lg shadow-teal-500/30 transition-all text-sm"
-        >
-          <Pencil className="w-4.5 h-4.5" />
-          <span className="hidden sm:inline">Write Rx</span>
-          <span className="sm:hidden">Rx</span>
-        </button>
+        <div className="flex gap-2 flex-shrink-0">
+          <a
+            href="https://apps.apple.com/in/app/vyasa-health/id1234567890"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 px-4 py-2 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-700 font-medium text-sm transition-colors"
+            title="Download Vyasa app from App Store"
+          >
+            📱 App
+          </a>
+          <button
+            onClick={() => setShowRxModal(true)}
+            className="flex-shrink-0 flex items-center gap-2.5 bg-teal-600 hover:bg-teal-700 active:scale-95 text-white font-bold px-5 py-3 rounded-2xl shadow-lg shadow-teal-500/30 transition-all text-sm"
+          >
+            <Pencil className="w-4.5 h-4.5" />
+            <span className="hidden sm:inline">Write Rx</span>
+            <span className="sm:hidden">Rx</span>
+          </button>
+        </div>
       </div>
 
       {/* Today's clinic check-in — only for clinic_admin */}

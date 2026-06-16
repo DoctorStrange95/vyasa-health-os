@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Loader2, ArrowLeft, CheckCircle2, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { INDIAN_MEDICAL_COUNCILS } from '@/lib/medicalCouncils';
 
 type Mode = 'choose' | 'doctor' | 'hospital';
 
@@ -158,7 +159,7 @@ function DoctorForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =
   const [done, setDone] = useState(false);
   const [form, setForm] = useState({
     name: '', email: '', phone: '', specialty: '',
-    mciNumber: '', regState: '', hospital: '', city: '', state: '',
+    mciNumber: '', medicalCouncil: '', regState: '', hospital: '', city: '', state: '',
     password: '', confirm: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -171,6 +172,7 @@ function DoctorForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =
     if (!form.email.includes('@')) e.email = 'Enter a valid email';
     if (form.phone.length < 10) e.phone = 'Enter a valid 10-digit number';
     if (!form.specialty) e.specialty = 'Required';
+    if (!form.medicalCouncil) e.medicalCouncil = 'Required';
     if (!form.mciNumber.trim()) e.mciNumber = 'Required';
     if (!form.regState) e.regState = 'Required';
     if (form.password.length < 8) e.password = 'At least 8 characters';
@@ -191,6 +193,7 @@ function DoctorForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =
         phone: form.phone,
         specialty: form.specialty,
         password: form.password,
+        medicalCouncil: form.medicalCouncil,
         licenseNumber: form.mciNumber,
         regState: form.regState,
         state: form.state,
@@ -247,8 +250,14 @@ function DoctorForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =
               {SPECIALTIES.map(s => <option key={s}>{s}</option>)}
             </select>
           </Field>
+          <Field label="Medical Council / Registration Body *" error={errors.medicalCouncil}>
+            <select className={cn('input', errors.medicalCouncil && 'border-red-400')} value={form.medicalCouncil} onChange={e => set('medicalCouncil', e.target.value)}>
+              <option value="">Select your medical council…</option>
+              {INDIAN_MEDICAL_COUNCILS.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="MCI / State Reg. No. *" error={errors.mciNumber}>
+            <Field label="NMC / MCI Registration Number *" error={errors.mciNumber}>
               <input className={cn('input', errors.mciNumber && 'border-red-400')} placeholder="e.g. MH-12345" value={form.mciNumber} onChange={e => set('mciNumber', e.target.value)} />
             </Field>
             <Field label="State of Registration (Medical Council) *" error={errors.regState}>
