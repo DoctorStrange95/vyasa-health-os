@@ -143,6 +143,103 @@ export default function ProfilePage() {
     setTimeout(() => setCopied(false), 2000);
   }
 
+  async function downloadBrandedQR(bookingLink: string, doctorName: string, slug: string) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1200;
+    canvas.height = 1400;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Background - light blue gradient
+    const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    gradient.addColorStop(0, '#f0f9ff');
+    gradient.addColorStop(1, '#e0f2fe');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Rounded rectangle helper
+    const roundRect = (x: number, y: number, w: number, h: number, r: number) => {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + w - r, y);
+      ctx.arcTo(x + w, y, x + w, y + r, r);
+      ctx.lineTo(x + w, y + h - r);
+      ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+      ctx.lineTo(x + r, y + h);
+      ctx.arcTo(x, y + h, x, y + h - r, r);
+      ctx.lineTo(x, y + r);
+      ctx.arcTo(x, y, x + r, y, r);
+      ctx.closePath();
+    };
+
+    // Vyasa header with logo area
+    ctx.fillStyle = '#0f2040';
+    roundRect(0, 0, canvas.width, 280, 0);
+    ctx.fill();
+
+    // Vyasa logo text
+    ctx.fillStyle = '#0d9488';
+    ctx.font = 'bold 60px Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Vyasa', canvas.width / 2, 120);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '28px Arial, sans-serif';
+    ctx.fillText('INTEGRATED HEALTHCARE', canvas.width / 2, 180);
+
+    // Main content area - white rounded box
+    ctx.fillStyle = '#ffffff';
+    roundRect(80, 320, canvas.width - 160, 900, 20);
+    ctx.fill();
+
+    // "Check us out on Vyasa" text
+    ctx.fillStyle = '#0f2040';
+    ctx.font = 'bold 48px Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Check us out on Vyasa', canvas.width / 2, 420);
+
+    // QR Code from URL
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=500x500&data=${encodeURIComponent(bookingLink)}&bgcolor=ffffff&color=0f2040&margin=10`;
+
+    // Draw QR code
+    const qrImage = new Image();
+    qrImage.crossOrigin = 'anonymous';
+    await new Promise((resolve) => {
+      qrImage.onload = () => {
+        ctx.drawImage(qrImage, canvas.width / 2 - 250, 480, 500, 500);
+        resolve(null);
+      };
+      qrImage.src = qrUrl;
+    });
+
+    // Doctor name at bottom
+    ctx.fillStyle = '#0f2040';
+    ctx.font = 'bold 36px Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(doctorName, canvas.width / 2, 1100);
+
+    // Instructions at very bottom
+    ctx.fillStyle = '#64748b';
+    ctx.font = '20px Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Scan to book appointment', canvas.width / 2, 1180);
+    ctx.fillText('Show this outside your clinic', canvas.width / 2, 1240);
+
+    // Convert to JPG and download
+    canvas.toBlob((blob) => {
+      if (blob) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Dr-${slug}-BookingQR.jpg`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+    }, 'image/jpeg', 0.95);
+  }
+
   // Load full profile from backend
   useEffect(() => {
     if (!isApiEnabled()) return;
@@ -393,11 +490,12 @@ export default function ProfilePage() {
                     />
                   </div>
                   <p className="text-xs opacity-60 mt-1.5">Scan to book</p>
-                  <a
-                    href={`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(bookingLink)}&bgcolor=ffffff&color=0a1628&margin=10&format=png`}
-                    download={`dr-${slug}-qr.png`}
-                    className="text-xs opacity-75 hover:opacity-100 underline mt-0.5 block"
-                  >Download</a>
+                  <button
+                    onClick={() => downloadBrandedQR(bookingLink, user?.name || 'Doctor', slug)}
+                    className="text-xs opacity-75 hover:opacity-100 underline mt-0.5 block hover:text-teal-600 font-medium"
+                  >
+                    Download JPG
+                  </button>
                 </div>
               </div>
             </div>
