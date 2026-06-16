@@ -213,15 +213,15 @@ export default function ProfilePage() {
     ctx.strokeStyle = '#1a2f4d';
     ctx.lineWidth = 4;
     ctx.beginPath();
-    ctx.moveTo(200, canvas.height - 70);
-    ctx.lineTo(canvas.width - 200, canvas.height - 70);
+    ctx.moveTo(200, canvas.height - 90);
+    ctx.lineTo(canvas.width - 200, canvas.height - 90);
     ctx.stroke();
 
-    // Bottom branding
+    // Bottom instructions
     ctx.fillStyle = '#0a1628';
-    ctx.font = 'bold 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.font = 'bold 22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('health.vyasaa.com', canvas.width / 2, canvas.height - 15);
+    ctx.fillText('Print & Display at Reception', canvas.width / 2, canvas.height - 20);
 
     // Convert to JPG and download
     canvas.toBlob((blob) => {
