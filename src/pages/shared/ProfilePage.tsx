@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
-import { User, Mail, Phone, Building2, Stethoscope, Edit3, Save, Shield, Key, Bell, CheckCircle2, Loader2, Globe, Copy, ExternalLink, MessageCircle } from 'lucide-react';
+import { User, Mail, Phone, Building2, Stethoscope, Edit3, Save, Shield, Key, Bell, CheckCircle2, Loader2, Globe, Copy, ExternalLink, MessageCircle, LogOut } from 'lucide-react';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePadStore } from '@/store/usePadStore';
 import { api, isApiEnabled } from '@/lib/api';
 import { cn, initials } from '@/lib/utils';
 
-type Tab = 'profile' | 'security' | 'notifications' | 'public_profile';
+type Tab = 'profile' | 'security' | 'notifications';
 
 const INDIAN_STATES = [
   'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat',
@@ -76,15 +76,15 @@ export default function ProfilePage() {
     marketing: false,
   });
 
-  // Load public profile settings
+  // Load public profile settings (always for doctor/clinic_admin roles)
   useEffect(() => {
-    if (tab !== 'public_profile' || !isApiEnabled()) return;
+    if (!['clinic_admin', 'doctor'].includes(user?.role ?? '') || !isApiEnabled()) return;
     setPubLoading(true);
     api.get<typeof pubProfile>('/auth/me/public-profile')
       .then(data => setPubProfile(data))
       .catch(() => {})
       .finally(() => setPubLoading(false));
-  }, [tab]);
+  }, [user?.role]);
 
   async function handlePubSave() {
     if (!pubProfile) return;
@@ -227,16 +227,15 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="tab-bar">
+      {/* Tabs - Simplified for mobile */}
+      <div className="tab-bar overflow-x-auto">
         {([
           { id: 'profile', label: 'Profile', icon: User },
           { id: 'security', label: 'Security', icon: Shield },
           { id: 'notifications', label: 'Notifications', icon: Bell },
-          ...(['clinic_admin', 'doctor'].includes(user?.role ?? '') ? [{ id: 'public_profile' as const, label: 'Public Profile', icon: Globe }] : []),
         ] as const).map(t => (
           <button key={t.id} onClick={() => setTab(t.id as Tab)}
-            className={cn('tab-btn flex items-center gap-2', tab === t.id && 'active')}>
+            className={cn('tab-btn flex items-center gap-2 whitespace-nowrap', tab === t.id && 'active')}>
             <t.icon className="w-4 h-4" />{t.label}
           </button>
         ))}
@@ -352,8 +351,8 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {/* Public Profile tab */}
-      {tab === 'public_profile' && (() => {
+      {/* Public Profile Section - Always visible, prominent on mobile */}
+      {(['clinic_admin', 'doctor'].includes(user?.role ?? '')) && (() => {
         const slug = pubProfile?.profile_slug ?? (user?.name ?? '').toLowerCase().replace(/^dr\.?\s+/i,'').replace(/[^a-z0-9\s]/g,'').trim().replace(/\s+/g,'-');
         const siteBase = window.location.hostname === 'localhost' ? `${window.location.protocol}//${window.location.host}` : 'https://vyasaa.com';
         const bookingLink = `${siteBase}/dr/${slug}`;
@@ -656,6 +655,20 @@ export default function ProfilePage() {
           </button>
         </div>
       )}
+
+      {/* Logout Button - Prominent on mobile */}
+      <div className="mt-8 pt-6 border-t border-slate-200 flex flex-col gap-3">
+        <p className="text-xs text-slate-400 px-1">Actions</p>
+        <button
+          onClick={() => {
+            const { logout } = useAuthStore.getState();
+            logout();
+          }}
+          className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 font-semibold transition-colors"
+        >
+          <LogOut className="w-4 h-4" /> Logout
+        </button>
+      </div>
     </div>
   );
 }
