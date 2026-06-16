@@ -154,34 +154,38 @@ export default function ProfilePage() {
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Teal top section with logo
-    ctx.fillStyle = '#0d9488';
-    ctx.fillRect(0, 0, canvas.width, 220);
+    // Navy/dark header with gradient
+    const headerGradient = ctx.createLinearGradient(0, 0, 0, 240);
+    headerGradient.addColorStop(0, '#0a1628');
+    headerGradient.addColorStop(1, '#1a2f4d');
+    ctx.fillStyle = headerGradient;
+    ctx.fillRect(0, 0, canvas.width, 240);
 
-    // Vyasa logo - medical cross with box
-    const logoX = 540;
-    const logoY = 70;
-    const logoSize = 80;
-    ctx.fillStyle = '#ffffff';
-    // Outer square
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 4;
-    ctx.strokeRect(logoX - logoSize / 2, logoY - logoSize / 2, logoSize, logoSize);
-    // Cross inside (vertical and horizontal)
-    ctx.fillRect(logoX - 8, logoY - logoSize / 3, 16, logoSize * 0.66);
-    ctx.fillRect(logoX - logoSize / 3, logoY - 8, logoSize * 0.66, 16);
+    // Load and draw Vyasa logo
+    const logoImg = new Image();
+    logoImg.crossOrigin = 'anonymous';
+    await new Promise((resolve) => {
+      logoImg.onload = () => {
+        // Draw logo with proper sizing
+        const logoSize = 140;
+        ctx.drawImage(logoImg, canvas.width / 2 - logoSize / 2, 50, logoSize, logoSize);
+        resolve(null);
+      };
+      logoImg.onerror = () => resolve(null);
+      logoImg.src = '/logos/vyasa-logo.svg';
+    });
 
-    // Vyasa text below logo
+    // "VYASA" text below logo
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 44px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.font = 'bold 36px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('VYASA', canvas.width / 2, 180);
+    ctx.fillText('VYASA', canvas.width / 2, 220);
 
     // Main section with padding
     const contentY = 280;
 
-    // QR Code from URL - larger and teal colored
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=${encodeURIComponent(bookingLink)}&bgcolor=ffffff&color=0d9488&margin=10`;
+    // QR Code from URL - larger
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=${encodeURIComponent(bookingLink)}&bgcolor=ffffff&color=0a1628&margin=10`;
 
     const qrImage = new Image();
     qrImage.crossOrigin = 'anonymous';
@@ -194,7 +198,7 @@ export default function ProfilePage() {
     });
 
     // Doctor name with "Dr" prefix - below QR
-    ctx.fillStyle = '#0f2040';
+    ctx.fillStyle = '#0a1628';
     ctx.font = 'bold 42px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(`Dr ${doctorName}`, canvas.width / 2, contentY + 700);
@@ -205,16 +209,16 @@ export default function ProfilePage() {
     ctx.textAlign = 'center';
     ctx.fillText('Scan to book your appointment', canvas.width / 2, contentY + 770);
 
-    // Footer line
-    ctx.strokeStyle = '#0d9488';
-    ctx.lineWidth = 3;
+    // Accent line
+    ctx.strokeStyle = '#1a2f4d';
+    ctx.lineWidth = 4;
     ctx.beginPath();
-    ctx.moveTo(60, canvas.height - 60);
-    ctx.lineTo(canvas.width - 60, canvas.height - 60);
+    ctx.moveTo(200, canvas.height - 70);
+    ctx.lineTo(canvas.width - 200, canvas.height - 70);
     ctx.stroke();
 
     // Bottom branding
-    ctx.fillStyle = '#0d9488';
+    ctx.fillStyle = '#0a1628';
     ctx.font = 'bold 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('health.vyasaa.com', canvas.width / 2, canvas.height - 15);
