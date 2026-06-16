@@ -146,7 +146,7 @@ export default function ProfilePage() {
   async function downloadBrandedQR(bookingLink: string, doctorName: string, slug: string, details?: { specialty?: string; experience?: number; qualification?: string; city?: string }) {
     const canvas = document.createElement('canvas');
     canvas.width = 1080;
-    canvas.height = 1350;
+    canvas.height = 1500;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
@@ -155,116 +155,120 @@ export default function ProfilePage() {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // Navy/dark header with gradient
-    const headerGradient = ctx.createLinearGradient(0, 0, 0, 240);
+    const headerGradient = ctx.createLinearGradient(0, 0, 0, 200);
     headerGradient.addColorStop(0, '#0a1628');
     headerGradient.addColorStop(1, '#1a2f4d');
     ctx.fillStyle = headerGradient;
-    ctx.fillRect(0, 0, canvas.width, 240);
+    ctx.fillRect(0, 0, canvas.width, 200);
 
-    // Load and draw Vyasa logo
+    // Load and draw Vyasa logo (smaller)
     const logoImg = new Image();
     logoImg.crossOrigin = 'anonymous';
     await new Promise((resolve) => {
       logoImg.onload = () => {
-        // Draw logo with proper sizing
-        const logoSize = 140;
-        ctx.drawImage(logoImg, canvas.width / 2 - logoSize / 2, 50, logoSize, logoSize);
+        const logoSize = 100;
+        ctx.drawImage(logoImg, 50, 50, logoSize, logoSize);
         resolve(null);
       };
       logoImg.onerror = () => resolve(null);
       logoImg.src = '/logos/vyasa-logo.svg';
     });
 
-    // "VYASA" text below logo
+    // "VYASA" text
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 36px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('VYASA', canvas.width / 2, 220);
+    ctx.font = 'bold 32px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('VYASA', 180, 110);
 
-    // Main section with padding
-    const contentY = 280;
+    // ===== DOCTOR PROFILE SECTION =====
+    let y = 250;
 
-    // Doctor details section
-    let detailsY = contentY + 30;
-
-    // Specialty
+    // Specialty badge - highlighted box
     if (details?.specialty) {
       ctx.fillStyle = '#0d9488';
+      ctx.fillRect(80, y - 20, canvas.width - 160, 45);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(details.specialty.toUpperCase(), canvas.width / 2, y + 8);
+      y += 80;
+    }
+
+    // Doctor Name - PROMINENT, TEAL COLOR
+    ctx.fillStyle = '#0d9488';
+    ctx.font = 'bold 64px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`Dr ${doctorName}`, canvas.width / 2, y);
+    y += 90;
+
+    // Qualification/Degree - BIGGER FONT BELOW NAME
+    if (details?.qualification) {
+      ctx.fillStyle = '#1a2f4d';
+      ctx.font = 'bold 32px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.textAlign = 'center';
+      const qualText = details.qualification.split(',')[0];
+      ctx.fillText(qualText, canvas.width / 2, y);
+      y += 50;
+    }
+
+    // Experience + Location - highlighted row
+    let expText = '';
+    if (details?.experience && details.experience > 0) {
+      expText = `${details.experience} Yrs Experience`;
+    }
+    const locText = details?.city ? `📍 ${details.city}` : '';
+    const infoText = [expText, locText].filter(Boolean).join('  •  ');
+
+    if (infoText) {
+      ctx.fillStyle = '#f0f9ff';
+      ctx.fillRect(50, y - 30, canvas.width - 100, 60);
+      ctx.strokeStyle = '#0d9488';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(50, y - 30, canvas.width - 100, 60);
+
+      ctx.fillStyle = '#0a1628';
       ctx.font = 'bold 22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(details.specialty, canvas.width / 2, detailsY);
-      detailsY += 40;
+      ctx.fillText(infoText, canvas.width / 2, y + 5);
+      y += 90;
     }
 
-    // Qualification/Education
-    if (details?.qualification) {
-      ctx.fillStyle = '#475569';
-      ctx.font = '18px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-      ctx.textAlign = 'center';
-      const qualText = details.qualification.split(',')[0]; // Get first qualification
-      ctx.fillText(qualText, canvas.width / 2, detailsY);
-      detailsY += 35;
-    }
+    // Divider line
+    ctx.strokeStyle = '#e2e8f0';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(100, y - 30);
+    ctx.lineTo(canvas.width - 100, y - 30);
+    ctx.stroke();
+    y += 20;
 
-    // Experience
-    if (details?.experience && details.experience > 0) {
-      ctx.fillStyle = '#64748b';
-      ctx.font = '16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(`${details.experience} years experience`, canvas.width / 2, detailsY);
-      detailsY += 30;
-    }
-
-    // City
-    if (details?.city) {
-      ctx.fillStyle = '#94a3b8';
-      ctx.font = '16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(details.city, canvas.width / 2, detailsY);
-    }
-
-    // QR Code from URL - larger
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=${encodeURIComponent(bookingLink)}&bgcolor=ffffff&color=0a1628&margin=10`;
+    // QR Code - CENTERED
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=650x650&data=${encodeURIComponent(bookingLink)}&bgcolor=ffffff&color=0a1628&margin=10`;
 
     const qrImage = new Image();
     qrImage.crossOrigin = 'anonymous';
     await new Promise((resolve) => {
       qrImage.onload = () => {
-        ctx.drawImage(qrImage, canvas.width / 2 - 300, contentY + 40, 600, 600);
+        ctx.drawImage(qrImage, canvas.width / 2 - 325, y, 650, 650);
         resolve(null);
       };
       qrImage.src = qrUrl;
     });
+    y += 680;
 
-    // Doctor name with "Dr" prefix - below QR
-    ctx.fillStyle = '#0a1628';
-    ctx.font = 'bold 42px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    // ===== CALL TO ACTION SECTION =====
+    // Action button style
+    ctx.fillStyle = '#0d9488';
+    ctx.fillRect(50, y, canvas.width - 100, 80);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 38px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(`Dr ${doctorName}`, canvas.width / 2, contentY + 700);
+    ctx.fillText('Scan to Book Online', canvas.width / 2, y + 30);
 
-    // Instructions
-    ctx.fillStyle = '#475569';
-    ctx.font = '28px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('Scan to book your appointment', canvas.width / 2, contentY + 770);
-
-    // Accent line
-    ctx.strokeStyle = '#1a2f4d';
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.moveTo(200, canvas.height - 100);
-    ctx.lineTo(canvas.width - 200, canvas.height - 100);
-    ctx.stroke();
-
-    // Bottom instructions for patients
-    ctx.fillStyle = '#0a1628';
-    ctx.font = 'bold 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('Scan to Book Online', canvas.width / 2, canvas.height - 45);
-
-    ctx.fillStyle = '#475569';
-    ctx.font = '20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.fillText('Get Instant Consultation', canvas.width / 2, canvas.height - 10);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 28px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.fillText('Get Instant Consultation', canvas.width / 2, y + 65);
 
     // Convert to JPG and download
     canvas.toBlob((blob) => {
