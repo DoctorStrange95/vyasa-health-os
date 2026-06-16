@@ -215,7 +215,13 @@ export const useAppStore = create<AppState>()(
         : [...s.patients, p]
     }));
     import('@/lib/api').then(({ isApiEnabled, api }) => {
-      if (isApiEnabled()) api.post('/patients', p).catch(console.warn);
+      if (isApiEnabled()) {
+        api.post('/patients', p).catch((e) => {
+          const err = e?.response?.data?.error || e?.message || 'Failed to save patient';
+          console.warn('Patient save error:', err);
+          get().showToast(`Patient sync failed: ${err}`, 'error');
+        });
+      }
     });
   },
   setAlerts: (a) => set({ alerts: a }),

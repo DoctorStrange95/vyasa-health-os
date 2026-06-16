@@ -101,7 +101,34 @@ export const usePadStore = create<PadStore>()(
       clinics: DEMO_CLINICS,
       favDrugs: [],
       favPrescriptions: [],
-      setSettings: (s) => set(state => ({ settings: { ...state.settings, ...s } })),
+      setSettings: (s) => {
+        set(state => {
+          const updated = { ...state.settings, ...s };
+          // Sync to backend
+          import('@/lib/api').then(({ isApiEnabled, api }) => {
+            if (isApiEnabled()) {
+              api.put('/clinics/pad', {
+                doctor_name: updated.doctorName,
+                degrees: updated.degrees,
+                specialty: updated.specialty,
+                reg_number: updated.regNumber,
+                address: updated.address,
+                phone: updated.phone,
+                email: updated.email,
+                timings: updated.timings,
+                clinic_name: updated.clinicName,
+                footer_note: updated.footerNote,
+                quote: updated.quote,
+                show_quote: updated.showQuote,
+                show_timings: updated.showTimings,
+                theme: updated.theme,
+                custom_fields: JSON.stringify(updated.customFields),
+              }).catch((e) => console.warn('PAD sync failed:', e));
+            }
+          });
+          return { settings: updated };
+        });
+      },
       resetSettings: () => set({ settings: DEFAULT }),
       addClinic: (c) => {
         set(state => ({ clinics: [...state.clinics, c] }));
