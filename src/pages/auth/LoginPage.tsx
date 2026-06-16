@@ -4,7 +4,6 @@ import { Eye, EyeOff, Loader2, UserPlus, CheckCircle2, WifiOff, ShieldCheck, X, 
 import { useGoogleLogin } from '@react-oauth/google';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useAppStore } from '@/store/useAppStore';
-import { cn } from '@/lib/utils';
 import { INDIAN_MEDICAL_COUNCILS, INDIAN_STATES } from '@/lib/medicalCouncils';
 import type { Role } from '@/types';
 
@@ -43,7 +42,6 @@ export default function LoginPage() {
   const [slowStart, setSlowStart] = useState(false);
   const [error, setError] = useState('');
   const [showDemo, setShowDemo] = useState(false);
-  const [attempt, setAttempt] = useState(0);
   const [showEmailForm, setShowEmailForm] = useState(false);
 
   const [googleNewUser, setGoogleNewUser] = useState<{ email: string; name: string } | null>(null);
@@ -84,7 +82,6 @@ export default function LoginPage() {
       await login(username, password, geoPos ?? undefined);
       afterLogin();
     } catch (err) {
-      setAttempt(a => a + 1);
       setError(err instanceof Error ? err.message : 'backend');
     } finally {
       clearTimeout(wakeTimer); setSlowStart(false); setLoading(false);
@@ -109,7 +106,6 @@ export default function LoginPage() {
         setGRegForm(f => ({ ...f, name: result.googleName }));
       } else { afterLogin(); }
     } catch (err) {
-      setAttempt(a => a + 1);
       setError(err instanceof Error ? err.message : 'backend');
     } finally { setGoogleLoading(false); }
   }
@@ -261,6 +257,42 @@ export default function LoginPage() {
                 {googleLoading ? 'Continuing with Google…' : 'Sign in with Google'}
               </button>
 
+              {/* ── ERROR MESSAGES (visible for Google + Email) ── */}
+              {error === 'backend' && (
+                <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 11, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <WifiOff style={{ width: 14, height: 14, color: '#D97706', flexShrink: 0 }} />
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#92400E' }}>Server is waking up…</span>
+                  </div>
+                  <p style={{ fontSize: 12, color: '#78350F', lineHeight: 1.5, margin: 0 }}>
+                    Backend is on Render's free tier — takes <strong>30–60 s</strong> to wake on first request.
+                  </p>
+                </div>
+              )}
+              {error && error !== 'backend' && (
+                <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 11, padding: '14px', marginBottom: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: error.includes('rejected') ? 14 : 0 }}>
+                    <div style={{ color: '#DC2626', fontSize: 20, fontWeight: 700, flexShrink: 0 }}>⚠️</div>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ fontSize: 13, color: '#DC2626', fontWeight: 700, margin: '0 0 6px', lineHeight: 1.4 }}>{error}</p>
+                      <p style={{ fontSize: 12, color: '#991B1B', margin: 0, lineHeight: 1.5 }}>
+                        {error.includes('rejected')
+                          ? 'Please update your information with correct details and reapply.'
+                          : 'Please correct the information and try again, or contact support at support@vyasaa.com'}
+                      </p>
+                    </div>
+                  </div>
+                  {error.includes('rejected') && (
+                    <Link to="/register"
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: '#DC2626', color: 'white', border: 'none', borderRadius: 9, padding: '10px 16px', fontSize: 13, fontWeight: 700, textDecoration: 'none', cursor: 'pointer', transition: 'all 0.2s', marginTop: 8 }}
+                      onMouseOver={e => { (e.currentTarget as HTMLAnchorElement).style.background = '#991B1B'; }}
+                      onMouseOut={e => { (e.currentTarget as HTMLAnchorElement).style.background = '#DC2626'; }}>
+                      ↻ Reapply with correct information
+                    </Link>
+                  )}
+                </div>
+              )}
+
               {/* Divider */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
                 <div style={{ flex: 1, height: 1, background: '#f1f5f9' }} />
@@ -302,29 +334,7 @@ export default function LoginPage() {
                     </div>
                   </div>
 
-                  {/* Errors */}
-                  {error === 'backend' && (
-                    <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 11, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <WifiOff style={{ width: 14, height: 14, color: '#D97706', flexShrink: 0 }} />
-                        <span style={{ fontSize: 13, fontWeight: 700, color: '#92400E' }}>Server is waking up…</span>
-                      </div>
-                      <p style={{ fontSize: 12, color: '#78350F', lineHeight: 1.5, margin: 0 }}>
-                        Backend is on Render's free tier — takes <strong>30–60 s</strong> to wake on first request.
-                      </p>
-                      {attempt >= 2 && <p style={{ fontSize: 12, color: '#78350F', margin: 0 }}>Still failing? Try <strong>demo mode</strong> below while waiting.</p>}
-                      <button type="button" onClick={handleLogin as any}
-                        style={{ background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 8, padding: '8px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', color: '#92400E', display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
-                        <Loader2 className={cn('w-3 h-3', loading && 'animate-spin')} />
-                        {loading ? 'Retrying…' : 'Retry'}
-                      </button>
-                    </div>
-                  )}
-                  {error && error !== 'backend' && (
-                    <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 11, padding: '10px 14px' }}>
-                      <p style={{ fontSize: 13, color: '#DC2626', fontWeight: 600, margin: 0 }}>{error}</p>
-                    </div>
-                  )}
+                  {/* Only show slow start message inside email form */}
                   {slowStart && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 10, padding: '9px 12px' }}>
                       <Loader2 style={{ width: 13, height: 13, color: '#3B82F6', animation: 'spin 1s linear infinite', flexShrink: 0 }} />

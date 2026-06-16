@@ -1,0 +1,21 @@
+{
+  "routes": [
+    {
+      "routePath": "/dr/:slug",
+      "mountPath": "/dr",
+      "method": "GET",
+      "module": [
+        "dr/[slug].js:onRequestGet"
+      ]
+    },
+    {
+      "routePath": "/sitemap.xml",
+      "mountPath": "/",
+      "method": "GET",
+      "module": [
+        "sitemap.xml.js:onRequestGet"
+      ]
+    }
+  ],
+  "baseURL": "/"
+}
