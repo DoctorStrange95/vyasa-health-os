@@ -204,20 +204,44 @@ export default function ProfilePage() {
     // Qualification/Degree - BIGGER FONT BELOW NAME
     if (details?.qualification) {
       ctx.fillStyle = '#1a2f4d';
-      ctx.font = 'bold 32px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.font = 'bold 28px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
       ctx.textAlign = 'center';
-      const qualText = details.qualification.split(',')[0];
-      ctx.fillText(qualText, canvas.width / 2, y);
-      y += 50;
+      const qualText = details.qualification.split(',')[0].trim();
+
+      // Handle long text by wrapping
+      if (qualText.length > 30) {
+        const words = qualText.split(' ');
+        let line1 = '';
+        let line2 = '';
+        let currentLine = '';
+
+        for (let i = 0; i < words.length; i++) {
+          const testLine = currentLine + (currentLine ? ' ' : '') + words[i];
+          if (testLine.length > 20 && !line1) {
+            line1 = currentLine;
+            currentLine = words[i];
+          } else {
+            currentLine = testLine;
+          }
+        }
+        line2 = currentLine;
+
+        ctx.fillText(line1 || qualText, canvas.width / 2, y);
+        if (line2 && line1) {
+          ctx.fillText(line2, canvas.width / 2, y + 35);
+          y += 85;
+        } else {
+          y += 50;
+        }
+      } else {
+        ctx.fillText(qualText, canvas.width / 2, y);
+        y += 50;
+      }
     }
 
-    // Experience + Location - highlighted row
-    let expText = '';
-    if (details?.experience && details.experience > 0) {
-      expText = `${details.experience} Yrs Experience`;
-    }
-    const locText = details?.city ? `📍 ${details.city}` : '';
-    const infoText = [expText, locText].filter(Boolean).join('  •  ');
+    // Experience - highlighted row (no city)
+    const expText = (details?.experience && details.experience > 0) ? `${details.experience} Years Experience` : '';
+    const infoText = expText;
 
     if (infoText) {
       ctx.fillStyle = '#f0f9ff';
