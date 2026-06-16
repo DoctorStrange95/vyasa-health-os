@@ -1109,6 +1109,14 @@ export default function ProfilePage() {
           </div>
         </div>
       )}
+
+      {/* ── Save toast ── */}
+      {(saved || pubSaved || pwSaved) && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-2.5 px-5 py-3 rounded-2xl bg-emerald-600 text-white shadow-xl text-sm font-semibold animate-in slide-in-from-bottom-4 fade-in duration-300">
+          <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+          {pwSaved ? 'Password changed successfully' : 'Profile saved'}
+        </div>
+      )}
     </div>
   );
 }
