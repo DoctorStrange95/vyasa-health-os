@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Users, UserCheck, Clock, ShieldCheck, Search, RefreshCw,
-  Loader2, CheckCircle2, XCircle, CalendarClock, Activity, ClipboardList, X
+  Loader2, CheckCircle2, XCircle, CalendarClock, Activity, ClipboardList, X, Trash2
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -114,6 +114,17 @@ export default function SuperAdminPage() {
       setUsers(prev => prev.map(u => u.id === id ? { ...u, approval_status: 'rejected', rejection_reason: reason } : u));
     } catch (e) { alert(e instanceof Error ? e.message : 'Failed'); }
     finally { setActing(null); setRejectModal(null); }
+  }
+
+  async function deleteDoctor(id: number) {
+    if (!confirm('Delete this doctor profile permanently?')) return;
+    setActing(id);
+    try {
+      await api.post(`/admin/users/${id}/delete`, {});
+      setUsers(prev => prev.filter(u => u.id !== id));
+      alert('Doctor profile deleted');
+    } catch (e) { alert(e instanceof Error ? e.message : 'Failed to delete'); }
+    finally { setActing(null); }
   }
 
 
@@ -276,6 +287,13 @@ export default function SuperAdminPage() {
                     <button onClick={() => setRejectModal({ id: u.id, name: u.name, reason: '' })} disabled={acting === u.id}
                       className="flex items-center justify-center gap-1.5 bg-white border border-red-200 text-red-600 hover:bg-red-50 text-sm font-bold rounded-lg px-4 py-2 disabled:opacity-50 flex-1 sm:flex-none">
                       <XCircle className="w-4 h-4" /> Reject
+                    </button>
+                  )}
+                  {u.approval_status === 'approved' && (
+                    <button onClick={() => deleteDoctor(u.id)} disabled={acting === u.id}
+                      className="flex items-center justify-center gap-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-sm font-bold rounded-lg px-4 py-2 disabled:opacity-50 flex-1 sm:flex-none">
+                      {acting === u.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                      Delete
                     </button>
                   )}
                 </div>
