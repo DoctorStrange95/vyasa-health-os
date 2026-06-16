@@ -158,7 +158,7 @@ function DoctorForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [form, setForm] = useState({
-    name: '', email: '', phone: '', specialty: '',
+    name: '', email: '', phone: '', specialty: '', degrees: '',
     mciNumber: '', medicalCouncil: '', regState: '', hospital: '', city: '', state: '',
     password: '', confirm: '',
   });
@@ -172,6 +172,7 @@ function DoctorForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =
     if (!form.email.includes('@')) e.email = 'Enter a valid email';
     if (form.phone.length < 10) e.phone = 'Enter a valid 10-digit number';
     if (!form.specialty) e.specialty = 'Required';
+    if (!form.degrees.trim()) e.degrees = 'Required';
     if (!form.medicalCouncil) e.medicalCouncil = 'Required';
     if (!form.mciNumber.trim()) e.mciNumber = 'Required';
     if (!form.regState) e.regState = 'Required';
@@ -192,6 +193,7 @@ function DoctorForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =
         email: form.email,
         phone: form.phone,
         specialty: form.specialty,
+        degrees: form.degrees,
         password: form.password,
         medicalCouncil: form.medicalCouncil,
         licenseNumber: form.mciNumber,
@@ -249,6 +251,9 @@ function DoctorForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =
               <option value="">Select specialty…</option>
               {SPECIALTIES.map(s => <option key={s}>{s}</option>)}
             </select>
+          </Field>
+          <Field label="Degrees / Qualifications *" error={errors.degrees}>
+            <input className={cn('input', errors.degrees && 'border-red-400')} placeholder="e.g. MBBS, MD" value={form.degrees} onChange={e => set('degrees', e.target.value)} />
           </Field>
           <Field label="Medical Council / Registration Body *" error={errors.medicalCouncil}>
             <select className={cn('input', errors.medicalCouncil && 'border-red-400')} value={form.medicalCouncil} onChange={e => set('medicalCouncil', e.target.value)}>
