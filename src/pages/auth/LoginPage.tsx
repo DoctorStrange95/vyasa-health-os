@@ -427,8 +427,9 @@ export default function LoginPage() {
                     placeholder="General Medicine" />
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Phone</label>
+                  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Phone *</label>
                   <input type="tel" value={gRegForm.phone} onChange={e => setGRegForm(f => ({ ...f, phone: e.target.value }))}
+                    required
                     style={{ width: '100%', border: '1.5px solid #e2e8f0', borderRadius: 11, padding: '11px 14px', fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
                     placeholder="+91 98765 43210" />
                 </div>
