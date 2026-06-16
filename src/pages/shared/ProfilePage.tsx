@@ -344,23 +344,33 @@ export default function ProfilePage() {
     try {
       if (isApiEnabled()) {
         await api.patch('/auth/me', {
+          name: form.name,
+          email: form.email,
           phone: form.phone,
           specialty: form.specialty,
           degrees: form.qualification,
           regNumber: form.regNumber,
+          clinic_name: form.hospital,
+          department: form.department,
+          bio: form.bio,
         });
       }
-      // Update Zustand user specialty
-      if (form.specialty) {
-        useAuthStore.setState(s => ({
-          user: s.user ? { ...s.user, specialty: form.specialty } : s.user
-        }));
-      }
+      // Update Zustand user with all changes
+      useAuthStore.setState(s => ({
+        user: s.user ? {
+          ...s.user,
+          name: form.name,
+          email: form.email,
+          specialty: form.specialty,
+          department: form.department,
+        } : s.user
+      }));
       setSaved(true);
       setEditing(false);
       setTimeout(() => setSaved(false), 3000);
-    } catch {
-      alert('Could not save. Please try again.');
+    } catch (error) {
+      const message = (error as any)?.response?.data?.error || (error as any)?.message || 'Could not save. Please try again.';
+      alert(message);
     } finally {
       setSaving(false);
     }
