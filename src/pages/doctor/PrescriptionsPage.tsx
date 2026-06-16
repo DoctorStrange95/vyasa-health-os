@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { FileText, Pill, Calendar, User, ChevronDown, ChevronUp, CheckCircle2, Lock, Eye, Pencil, X } from 'lucide-react';
+import { FileText, ChevronDown, ChevronUp, CheckCircle2, Lock, Eye, Pencil, X } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { cn, formatDate } from '@/lib/utils';
@@ -107,11 +107,6 @@ export default function PrescriptionsPage() {
 
   const activePt = selectedPatientForRx ? patients.find(p => p.id === selectedPatientForRx) : null;
 
-  const statCounts = {
-    active: allPrescriptions.filter(r => r.status === 'active').length,
-    today: allPrescriptions.filter(r => r.time?.startsWith(new Date().toISOString().slice(0, 10))).length,
-    patients: new Set(allPrescriptions.filter(r => r.status === 'active').map(r => r.patientId)).size,
-  };
 
   return (
     <div className="p-0 md:p-6 space-y-6">
@@ -134,24 +129,6 @@ export default function PrescriptionsPage() {
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4">
-        {[
-          { label: 'Active Rx', value: statCounts.active, icon: Pill, color: 'text-teal-600 bg-teal-50' },
-          { label: 'Written Today', value: statCounts.today, icon: Calendar, color: 'text-blue-600 bg-blue-50' },
-          { label: 'Patients on Rx', value: statCounts.patients, icon: User, color: 'text-violet-600 bg-violet-50' },
-        ].map(s => (
-          <div key={s.label} className="card p-4 flex items-center gap-4">
-            <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center', s.color)}>
-              <s.icon className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-slate-900">{s.value}</div>
-              <div className="text-xs text-slate-500">{s.label}</div>
-            </div>
-          </div>
-        ))}
-      </div>
 
       {/* Main Content - Two Column Layout */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
