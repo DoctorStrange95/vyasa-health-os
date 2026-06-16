@@ -145,85 +145,79 @@ export default function ProfilePage() {
 
   async function downloadBrandedQR(bookingLink: string, doctorName: string, slug: string) {
     const canvas = document.createElement('canvas');
-    canvas.width = 1200;
-    canvas.height = 1400;
+    canvas.width = 1080;
+    canvas.height = 1350;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Background - light blue gradient
-    const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
-    gradient.addColorStop(0, '#f0f9ff');
-    gradient.addColorStop(1, '#e0f2fe');
-    ctx.fillStyle = gradient;
+    // White background
+    ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Rounded rectangle helper
-    const roundRect = (x: number, y: number, w: number, h: number, r: number) => {
-      ctx.beginPath();
-      ctx.moveTo(x + r, y);
-      ctx.lineTo(x + w - r, y);
-      ctx.arcTo(x + w, y, x + w, y + r, r);
-      ctx.lineTo(x + w, y + h - r);
-      ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
-      ctx.lineTo(x + r, y + h);
-      ctx.arcTo(x, y + h, x, y + h - r, r);
-      ctx.lineTo(x, y + r);
-      ctx.arcTo(x, y, x + r, y, r);
-      ctx.closePath();
-    };
-
-    // Vyasa header with logo area
-    ctx.fillStyle = '#0f2040';
-    roundRect(0, 0, canvas.width, 280, 0);
-    ctx.fill();
-
-    // Vyasa logo text
+    // Teal top section with logo
     ctx.fillStyle = '#0d9488';
-    ctx.font = 'bold 60px Arial, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('Vyasa', canvas.width / 2, 120);
+    ctx.fillRect(0, 0, canvas.width, 220);
 
+    // Vyasa logo - medical cross with box
+    const logoX = 540;
+    const logoY = 70;
+    const logoSize = 80;
     ctx.fillStyle = '#ffffff';
-    ctx.font = '28px Arial, sans-serif';
-    ctx.fillText('INTEGRATED HEALTHCARE', canvas.width / 2, 180);
+    // Outer square
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(logoX - logoSize / 2, logoY - logoSize / 2, logoSize, logoSize);
+    // Cross inside (vertical and horizontal)
+    ctx.fillRect(logoX - 8, logoY - logoSize / 3, 16, logoSize * 0.66);
+    ctx.fillRect(logoX - logoSize / 3, logoY - 8, logoSize * 0.66, 16);
 
-    // Main content area - white rounded box
+    // Vyasa text below logo
     ctx.fillStyle = '#ffffff';
-    roundRect(80, 320, canvas.width - 160, 900, 20);
-    ctx.fill();
-
-    // "Check us out on Vyasa" text
-    ctx.fillStyle = '#0f2040';
-    ctx.font = 'bold 48px Arial, sans-serif';
+    ctx.font = 'bold 44px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('Check us out on Vyasa', canvas.width / 2, 420);
+    ctx.fillText('VYASA', canvas.width / 2, 180);
 
-    // QR Code from URL
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=500x500&data=${encodeURIComponent(bookingLink)}&bgcolor=ffffff&color=0f2040&margin=10`;
+    // Main section with padding
+    const contentY = 280;
 
-    // Draw QR code
+    // QR Code from URL - larger and teal colored
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=${encodeURIComponent(bookingLink)}&bgcolor=ffffff&color=0d9488&margin=10`;
+
     const qrImage = new Image();
     qrImage.crossOrigin = 'anonymous';
     await new Promise((resolve) => {
       qrImage.onload = () => {
-        ctx.drawImage(qrImage, canvas.width / 2 - 250, 480, 500, 500);
+        ctx.drawImage(qrImage, canvas.width / 2 - 300, contentY + 40, 600, 600);
         resolve(null);
       };
       qrImage.src = qrUrl;
     });
 
-    // Doctor name at bottom
+    // Doctor name with "Dr" prefix - below QR
     ctx.fillStyle = '#0f2040';
-    ctx.font = 'bold 36px Arial, sans-serif';
+    ctx.font = 'bold 42px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(doctorName, canvas.width / 2, 1100);
+    ctx.fillText(`Dr ${doctorName}`, canvas.width / 2, contentY + 700);
 
-    // Instructions at very bottom
-    ctx.fillStyle = '#64748b';
-    ctx.font = '20px Arial, sans-serif';
+    // Instructions
+    ctx.fillStyle = '#475569';
+    ctx.font = '28px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('Scan to book appointment', canvas.width / 2, 1180);
-    ctx.fillText('Show this outside your clinic', canvas.width / 2, 1240);
+    ctx.fillText('Scan to book your appointment', canvas.width / 2, contentY + 770);
+
+    // Footer line
+    ctx.strokeStyle = '#0d9488';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(60, canvas.height - 60);
+    ctx.lineTo(canvas.width - 60, canvas.height - 60);
+    ctx.stroke();
+
+    // Bottom branding
+    ctx.fillStyle = '#0d9488';
+    ctx.font = 'bold 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('health.vyasaa.com', canvas.width / 2, canvas.height - 15);
 
     // Convert to JPG and download
     canvas.toBlob((blob) => {
