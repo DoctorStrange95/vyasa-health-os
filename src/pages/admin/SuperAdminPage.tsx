@@ -240,7 +240,8 @@ export default function SuperAdminPage() {
                       {u.approval_status}
                     </span>
                   </div>
-                  <div className="text-sm text-slate-500 mt-1">{u.email}{u.phone ? ` · ${u.phone}` : ''}</div>
+                  <div className="text-sm text-slate-600 mt-1">{u.email}</div>
+                  {u.phone && <div className="text-sm text-teal-600 font-semibold mt-0.5">📱 {u.phone}</div>}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1 mt-2 text-xs text-slate-600">
                     {u.specialty && <div><span className="text-slate-400">Specialty:</span> <span className="font-semibold">{u.specialty}</span></div>}
                     {(u.license_number || u.reg_number) && (

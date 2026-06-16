@@ -5,6 +5,7 @@ import { useGoogleLogin } from '@react-oauth/google';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useAppStore } from '@/store/useAppStore';
 import { cn } from '@/lib/utils';
+import { INDIAN_MEDICAL_COUNCILS, INDIAN_STATES } from '@/lib/medicalCouncils';
 import type { Role } from '@/types';
 
 type Portal = 'staff' | 'patient';
@@ -46,7 +47,7 @@ export default function LoginPage() {
   const [showEmailForm, setShowEmailForm] = useState(false);
 
   const [googleNewUser, setGoogleNewUser] = useState<{ email: string; name: string } | null>(null);
-  const [gRegForm, setGRegForm] = useState({ name: '', specialty: '', degrees: '', phone: '', licenseNumber: '' });
+  const [gRegForm, setGRegForm] = useState({ name: '', specialty: '', degrees: '', phone: '', medicalCouncil: '', licenseNumber: '', registrationState: '' });
 
   const { login, loginWithGoogle, completeGoogleRegister, loginAsDemo } = useAuthStore();
   const { loadDemo } = useAppStore();
@@ -438,6 +439,30 @@ export default function LoginPage() {
                   style={{ width: '100%', border: '1.5px solid #e2e8f0', borderRadius: 11, padding: '11px 14px', fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
                   placeholder="MBBS, MD" />
               </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Medical Council / Registration Body *</label>
+                <select value={gRegForm.medicalCouncil} onChange={e => setGRegForm(f => ({ ...f, medicalCouncil: e.target.value }))}
+                  required
+                  style={{ width: '100%', border: '1.5px solid #e2e8f0', borderRadius: 11, padding: '11px 14px', fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box', background: 'white' }}>
+                  <option value="">Select your medical council...</option>
+                  {INDIAN_MEDICAL_COUNCILS.map(council => (
+                    <option key={council.id} value={council.id}>{council.name}</option>
+                  ))}
+                </select>
+              </div>
+              {gRegForm.medicalCouncil && (
+                <div>
+                  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.5px' }}>State of Registration (Medical Council) *</label>
+                  <select value={gRegForm.registrationState} onChange={e => setGRegForm(f => ({ ...f, registrationState: e.target.value }))}
+                    required
+                    style={{ width: '100%', border: '1.5px solid #e2e8f0', borderRadius: 11, padding: '11px 14px', fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box', background: 'white' }}>
+                    <option value="">Which state issued it?</option>
+                    {INDIAN_STATES.map(state => (
+                      <option key={state} value={state}>{state}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div>
                 <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.5px' }}>MCI / State Council License No. *</label>
                 <input type="text" value={gRegForm.licenseNumber} onChange={e => setGRegForm(f => ({ ...f, licenseNumber: e.target.value }))}
