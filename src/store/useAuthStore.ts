@@ -57,6 +57,7 @@ const DEMO_STAFF: Record<Role, StaffUser> = {
 interface BackendAuthResponse {
   accessToken: string;
   refreshToken: string;
+  googlePicture?: string;
   user: {
     id: number; name: string; email: string; role: string;
     clinicId: string; specialty?: string; degrees?: string;
@@ -134,6 +135,10 @@ export const useAuthStore = create<AuthState>()(
           isDemo: false,
           approvalStatus: (r.user.approvalStatus ?? 'approved') as AuthState['approvalStatus'],
         });
+        // Save Google profile picture to public profile if returned and user has none yet
+        if (r.googlePicture) {
+          api.patch('/auth/me/public-profile', { profile_photo_url: r.googlePicture }).catch(() => {});
+        }
         import('./useAppStore').then(({ useAppStore }) =>
           useAppStore.getState().syncFromBackend()
         );

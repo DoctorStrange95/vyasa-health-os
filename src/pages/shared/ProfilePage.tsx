@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { User, Mail, Phone, Building2, Stethoscope, Edit3, Save, Shield, Key, Bell, CheckCircle2, Loader2, Globe, Copy, ExternalLink, MessageCircle, LogOut } from 'lucide-react';
+import { User, Mail, Phone, Building2, Stethoscope, Edit3, Save, Shield, Key, Bell, CheckCircle2, Loader2, Globe, Copy, ExternalLink, MessageCircle, LogOut, Eye, EyeOff } from 'lucide-react';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePadStore } from '@/store/usePadStore';
 import { api, isApiEnabled } from '@/lib/api';
@@ -55,6 +55,13 @@ export default function ProfilePage() {
   const [pubSaved, setPubSaved] = useState(false);
   const [copied, setCopied] = useState(false);
   const [qrPreview, setQrPreview] = useState<string | null>(null);
+
+  // Change password state
+  const [pwForm, setPwForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [pwSaving, setPwSaving] = useState(false);
+  const [pwSaved, setPwSaved] = useState(false);
+  const [pwError, setPwError] = useState('');
+  const [showPw, setShowPw] = useState({ current: false, new: false, confirm: false });
 
   const [form, setForm] = useState({
     name: user?.name || '',
@@ -376,16 +383,75 @@ export default function ProfilePage() {
     }
   }
 
+  async function handleChangePassword() {
+    setPwError('');
+    if (!pwForm.newPassword || !pwForm.currentPassword) {
+      setPwError('All fields are required.');
+      return;
+    }
+    if (pwForm.newPassword !== pwForm.confirmPassword) {
+      setPwError('New passwords do not match.');
+      return;
+    }
+    if (pwForm.newPassword.length < 6) {
+      setPwError('New password must be at least 6 characters.');
+      return;
+    }
+    setPwSaving(true);
+    try {
+      await api.patch('/auth/me/change-password', {
+        currentPassword: pwForm.currentPassword,
+        newPassword: pwForm.newPassword,
+      });
+      setPwSaved(true);
+      setPwForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      setTimeout(() => setPwSaved(false), 3000);
+    } catch (err) {
+      const msg = (err as any)?.response?.data?.error || (err as any)?.message || 'Could not change password.';
+      setPwError(msg);
+    } finally {
+      setPwSaving(false);
+    }
+  }
+
   const isApproved = approvalStatus === 'approved';
+  const isDoctor = ['clinic_admin', 'doctor'].includes(user?.role ?? '');
+
+  const slug = pubProfile?.profile_slug ?? (user?.name ?? '').toLowerCase().replace(/^dr\.?\s+/i,'').replace(/[^a-z0-9\s]/g,'').trim().replace(/\s+/g,'-');
+  const siteBase = window.location.hostname === 'localhost' ? `${window.location.protocol}//${window.location.host}` : 'https://vyasaa.com';
+  const bookingLink = `${siteBase}/dr/${slug}`;
+
+  const SaveCancelButtons = () => (
+    <div className="flex gap-2">
+      <button onClick={() => setEditing(false)} className="btn-secondary btn-sm">Cancel</button>
+      <button onClick={handleSave} disabled={saving} className="btn-primary btn-sm">
+        {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+        {saving ? 'Saving…' : 'Save'}
+      </button>
+    </div>
+  );
 
   return (
-    <div className="p-0 md:p-6 max-w-3xl space-y-6">
-      {/* Header card */}
+    <div className="p-0 md:p-6 max-w-3xl space-y-6 pb-24 md:pb-6">
+      {/* ── Header card ── */}
       <div className="card p-6">
         <div className="flex items-start gap-5">
-          <div className="w-20 h-20 rounded-2xl bg-navy-800 flex items-center justify-center text-white text-2xl font-bold flex-shrink-0">
-            {initials(user?.name || 'U')}
+          {/* Profile photo / initials */}
+          <div className="flex-shrink-0">
+            {pubProfile?.profile_photo_url ? (
+              <img
+                src={pubProfile.profile_photo_url}
+                alt={user?.name ?? 'Profile'}
+                className="w-20 h-20 rounded-2xl object-cover"
+              />
+            ) : (
+              <div className="w-20 h-20 rounded-2xl bg-teal-600 flex items-center justify-center text-white text-2xl font-bold">
+                {initials(user?.name || 'U')}
+              </div>
+            )}
           </div>
+
+          {/* Name / role / meta */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-xl font-bold text-slate-900">{user?.name}</h1>
@@ -403,6 +469,23 @@ export default function ProfilePage() {
               {user?.email && <span className="flex items-center gap-1"><Mail className="w-3.5 h-3.5" />{user.email}</span>}
             </div>
           </div>
+
+          {/* QR code — top-right, only for doctors */}
+          {isDoctor && (
+            <div className="flex-shrink-0 hidden sm:block">
+              <a href={bookingLink} target="_blank" rel="noopener noreferrer"
+                className="inline-block bg-white rounded-xl p-1 border border-slate-200 hover:shadow-md transition-shadow">
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${encodeURIComponent(bookingLink)}&bgcolor=ffffff&color=0a1628&margin=2`}
+                  alt="Booking QR"
+                  width={80} height={80}
+                  className="rounded-lg"
+                />
+              </a>
+              <p className="text-[10px] text-slate-400 text-center mt-1">Scan to book</p>
+            </div>
+          )}
+
           {saved && (
             <div className="flex items-center gap-1.5 text-emerald-600 text-sm font-medium">
               <CheckCircle2 className="w-4 h-4" /> Saved
@@ -411,7 +494,7 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* Tabs - Simplified for mobile */}
+      {/* ── Tabs ── */}
       <div className="tab-bar overflow-x-auto">
         {([
           { id: 'profile', label: 'Profile', icon: User },
@@ -425,409 +508,502 @@ export default function ProfilePage() {
         ))}
       </div>
 
-      {/* Profile tab */}
+      {/* ── Profile tab ── */}
       {tab === 'profile' && (
-        <div className="card p-6 space-y-5">
-          <div className="flex items-center justify-between">
-            <h2 className="font-semibold text-slate-800">Personal Information</h2>
-            {loading ? <Loader2 className="w-4 h-4 animate-spin text-slate-400" /> : !editing ? (
-              <button onClick={() => setEditing(true)} className="btn-secondary btn-sm">
-                <Edit3 className="w-3.5 h-3.5" /> Edit
-              </button>
-            ) : (
-              <div className="flex gap-2">
-                <button onClick={() => setEditing(false)} className="btn-secondary btn-sm">Cancel</button>
-                <button onClick={handleSave} disabled={saving} className="btn-primary btn-sm">
-                  {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                  {saving ? 'Saving…' : 'Save'}
+        <div className="space-y-6">
+          {/* Personal Information card */}
+          <div className="card p-6 space-y-5">
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold text-slate-800">Personal Information</h2>
+              {loading ? <Loader2 className="w-4 h-4 animate-spin text-slate-400" /> : !editing ? (
+                <button onClick={() => setEditing(true)} className="btn-secondary btn-sm">
+                  <Edit3 className="w-3.5 h-3.5" /> Edit
                 </button>
-              </div>
-            )}
-          </div>
+              ) : (
+                <SaveCancelButtons />
+              )}
+            </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {[
-              { label: 'Full Name', key: 'name', icon: User, type: 'text' },
-              { label: 'Email', key: 'email', icon: Mail, type: 'email' },
-              { label: 'Phone', key: 'phone', icon: Phone, type: 'tel', placeholder: '+91 98765 43210' },
-              { label: 'Clinic / Hospital', key: 'hospital', icon: Building2, type: 'text', placeholder: 'e.g. City Clinic' },
-              { label: 'Department', key: 'department', icon: Building2, type: 'text' },
-              { label: 'Specialty', key: 'specialty', icon: Stethoscope, type: 'text', placeholder: 'e.g. General Medicine' },
-              { label: 'Qualification', key: 'qualification', icon: User, type: 'text', placeholder: 'MBBS, MD…' },
-              { label: 'Reg. Number (MCI/NMC)', key: 'regNumber', icon: Shield, type: 'text', placeholder: 'MH-12345' },
-            ].map(({ label, key, icon: Icon, type, placeholder }) => (
-              <div key={key}>
-                <label className="label">{label}</label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {[
+                { label: 'Full Name', key: 'name', icon: User, type: 'text' },
+                { label: 'Email', key: 'email', icon: Mail, type: 'email' },
+                { label: 'Phone', key: 'phone', icon: Phone, type: 'tel', placeholder: '+91 98765 43210' },
+                { label: 'Clinic / Hospital', key: 'hospital', icon: Building2, type: 'text', placeholder: 'e.g. City Clinic' },
+                { label: 'Department', key: 'department', icon: Building2, type: 'text' },
+                { label: 'Specialty', key: 'specialty', icon: Stethoscope, type: 'text', placeholder: 'e.g. General Medicine' },
+                { label: 'Qualification', key: 'qualification', icon: User, type: 'text', placeholder: 'MBBS, MD…' },
+                { label: 'Reg. Number (MCI/NMC)', key: 'regNumber', icon: Shield, type: 'text', placeholder: 'MH-12345' },
+              ].map(({ label, key, icon: Icon, type, placeholder }) => (
+                <div key={key}>
+                  <label className="label">{label}</label>
+                  {editing ? (
+                    <input
+                      type={type}
+                      value={(form as any)[key]}
+                      onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+                      placeholder={placeholder || label}
+                      className="input w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                      disabled={key === 'email'}
+                    />
+                  ) : (
+                    <div className="flex items-center gap-2 text-sm text-slate-700 py-2 border-b border-slate-100">
+                      <Icon className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                      <span>{(form as any)[key] || <span className="text-slate-400 italic">Not set</span>}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+              <div className="col-span-2">
+                <label className="label">Bio / About</label>
                 {editing ? (
-                  <input type={type} value={(form as any)[key]}
-                    onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
-                    placeholder={placeholder || label} className="input"
-                    disabled={key === 'email'} />
+                  <textarea
+                    value={form.bio}
+                    onChange={e => setForm(f => ({ ...f, bio: e.target.value }))}
+                    rows={3}
+                    className="input w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 resize-none"
+                    placeholder="Brief professional bio…"
+                  />
                 ) : (
-                  <div className="flex items-center gap-2 text-sm text-slate-700 py-2 border-b border-slate-100">
-                    <Icon className="w-4 h-4 text-slate-400 flex-shrink-0" />
-                    <span>{(form as any)[key] || <span className="text-slate-400 italic">Not set</span>}</span>
+                  <div className="text-sm text-slate-700 py-2 border-b border-slate-100">
+                    {form.bio || <span className="text-slate-400 italic">No bio added</span>}
                   </div>
                 )}
               </div>
-            ))}
-            <div className="col-span-2">
-              <label className="label">Bio / About</label>
-              {editing ? (
-                <textarea value={form.bio} onChange={e => setForm(f => ({ ...f, bio: e.target.value }))}
-                  rows={3} className="input resize-none" placeholder="Brief professional bio…" />
-              ) : (
-                <div className="text-sm text-slate-700 py-2 border-b border-slate-100">
-                  {form.bio || <span className="text-slate-400 italic">No bio added</span>}
-                </div>
-              )}
             </div>
           </div>
-        </div>
-      )}
 
-      {/* Security tab */}
-      {tab === 'security' && (
-        <div className="card p-6 space-y-5">
-          <h2 className="font-semibold text-slate-800">Security Settings</h2>
-          <div className="space-y-4">
-            <div className="border border-slate-200 rounded-xl p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center">
-                    <Key className="w-4 h-4 text-slate-600" />
+          {/* Public Profile section — only for doctors, inside Profile tab */}
+          {isDoctor && (() => {
+            return (
+              <div className="space-y-4">
+                {/* Booking link card */}
+                <div className="rounded-2xl p-5 text-white" style={{ background: 'linear-gradient(135deg, #0a1628 0%, #1B4F8A 100%)' }}>
+                  <div className="flex items-start gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-bold uppercase tracking-widest opacity-60 mb-2">Your Patient Booking Link</div>
+                      <div className="text-sm font-mono font-semibold break-all mb-4 opacity-95 bg-white/10 rounded-lg px-3 py-2">{bookingLink}</div>
+                      <div className="flex gap-2 flex-wrap">
+                        <button onClick={() => copyLink(bookingLink)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/15 hover:bg-white/25 transition-colors">
+                          {copied ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                          {copied ? 'Copied!' : 'Copy Link'}
+                        </button>
+                        <a href={bookingLink} target="_blank" rel="noopener noreferrer"
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/15 hover:bg-white/25 transition-colors">
+                          <ExternalLink className="w-3.5 h-3.5" /> Preview
+                        </a>
+                        <a href={`https://wa.me/?text=${encodeURIComponent(`Book an appointment with Dr. ${padSettings.doctorName || user?.name}: ${bookingLink}`)}`}
+                          target="_blank" rel="noopener noreferrer"
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#25D366] hover:bg-[#1ebe58] transition-colors">
+                          <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
+                        </a>
+                      </div>
+                      <p className="text-xs mt-3 opacity-50">Add this link to your Google Business Profile so patients can book directly from Google Maps.</p>
+                    </div>
+                    {/* QR Code */}
+                    <div className="flex-shrink-0 text-center">
+                      <a href={bookingLink} target="_blank" rel="noopener noreferrer"
+                        className="inline-block bg-white rounded-xl p-1.5 hover:shadow-lg transition-shadow duration-200 cursor-pointer">
+                        <img
+                          src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(bookingLink)}&bgcolor=ffffff&color=0a1628&margin=4`}
+                          alt="QR Code - Click to open booking page"
+                          width={100} height={100}
+                          className="rounded-lg hover:opacity-80 transition-opacity"
+                        />
+                      </a>
+                      <p className="text-xs opacity-60 mt-1.5">Scan or click to book</p>
+                      <div className="flex flex-col gap-1.5 mt-2">
+                        <button
+                          onClick={() => downloadBrandedQR(bookingLink, user?.name || 'Doctor', slug, {
+                            specialty: form.specialty,
+                            experience: pubProfile?.years_experience,
+                            qualification: form.qualification,
+                            city: pubProfile?.city
+                          }, true)}
+                          className="text-xs opacity-75 hover:opacity-100 underline hover:text-teal-600 font-medium"
+                        >
+                          Preview
+                        </button>
+                        <button
+                          onClick={() => downloadBrandedQR(bookingLink, user?.name || 'Doctor', slug, {
+                            specialty: form.specialty,
+                            experience: pubProfile?.years_experience,
+                            qualification: form.qualification,
+                            city: pubProfile?.city
+                          }, false)}
+                          className="text-xs opacity-75 hover:opacity-100 underline hover:text-teal-600 font-medium"
+                        >
+                          Download JPG
+                        </button>
+                      </div>
+                    </div>
                   </div>
+                </div>
+
+                <div className="card p-6 space-y-5">
+                  <div className="flex items-center justify-between">
+                    <h2 className="font-semibold text-slate-800">Public Profile Settings</h2>
+                    <div className="flex items-center gap-3">
+                      {pubLoading && <Loader2 className="w-4 h-4 animate-spin text-slate-400" />}
+                      {pubSaved && <span className="flex items-center gap-1.5 text-emerald-600 text-sm font-medium"><CheckCircle2 className="w-4 h-4" /> Saved</span>}
+                    </div>
+                  </div>
+
+                  {/* Profile photo */}
                   <div>
-                    <div className="font-medium text-slate-800">Password</div>
-                    <div className="text-xs text-slate-500">Last changed: Never</div>
+                    <label className="label">Profile Photo</label>
+                    <div className="flex items-center gap-4">
+                      <div className="w-16 h-16 rounded-2xl bg-slate-100 border-2 border-dashed border-slate-300 flex items-center justify-center overflow-hidden flex-shrink-0">
+                        {pubProfile?.profile_photo_url ? (
+                          <img src={pubProfile.profile_photo_url} alt="Profile" className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-2xl font-bold text-slate-400">{initials(user?.name || 'DR')}</span>
+                        )}
+                      </div>
+                      <div>
+                        <label className="btn-secondary text-xs cursor-pointer inline-flex items-center gap-1.5">
+                          {photoUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                          {photoUploading ? 'Uploading…' : 'Upload Photo'}
+                          <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} disabled={photoUploading} />
+                        </label>
+                        <p className="text-xs text-slate-400 mt-1">JPG/PNG, max 2MB. Shown on your public booking page.</p>
+                        {pubProfile?.profile_photo_url && (
+                          <button onClick={() => setPubProfile(p => ({ ...p, profile_photo_url: '' }))}
+                            className="text-xs text-red-500 hover:text-red-700 mt-1 block">Remove photo</button>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <button className="btn-secondary btn-sm">Change Password</button>
-              </div>
-            </div>
 
-            <div className="border border-slate-200 rounded-xl p-4">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-emerald-50 flex items-center justify-center">
-                  <svg viewBox="0 0 24 24" className="w-4 h-4"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
-                </div>
-                <div>
-                  <div className="font-medium text-slate-800">Google Account</div>
-                  <div className="text-xs text-emerald-600 font-medium">Connected · {user?.email}</div>
-                </div>
-              </div>
-            </div>
+                  {/* Visibility toggles */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="border border-slate-200 rounded-xl p-4">
+                      <div className="text-sm font-semibold text-slate-700 mb-2">Profile Visibility</div>
+                      <div className="flex gap-3">
+                        {[{v:true,l:'Public'},{v:false,l:'Hidden'}].map(o=>(
+                          <label key={String(o.v)} className="flex items-center gap-1.5 cursor-pointer text-sm">
+                            <input type="radio" name="pub-enabled" checked={(pubProfile?.public_profile_enabled ?? true) === o.v}
+                              onChange={() => setPubProfile(p => ({...p, public_profile_enabled: o.v}))} className="accent-teal-500" />
+                            {o.l}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="border border-slate-200 rounded-xl p-4">
+                      <div className="text-sm font-semibold text-slate-700 mb-2">Accepting Patients</div>
+                      <div className="flex gap-3">
+                        {[{v:true,l:'Yes'},{v:false,l:'No'}].map(o=>(
+                          <label key={String(o.v)} className="flex items-center gap-1.5 cursor-pointer text-sm">
+                            <input type="radio" name="pub-accepting" checked={(pubProfile?.accepting_patients ?? true) === o.v}
+                              onChange={() => setPubProfile(p => ({...p, accepting_patients: o.v}))} className="accent-teal-500" />
+                            {o.l}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
 
-            {isApproved && (
-              <div className="border border-emerald-200 rounded-xl p-4 bg-emerald-50">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-emerald-100 flex items-center justify-center">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  </div>
-                  <div>
-                    <div className="font-medium text-emerald-800">Account Verified</div>
-                    <div className="text-xs text-emerald-600">License verified — full prescription access granted</div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Public Profile Section - Always visible, prominent on mobile */}
-      {(['clinic_admin', 'doctor'].includes(user?.role ?? '')) && (() => {
-        const slug = pubProfile?.profile_slug ?? (user?.name ?? '').toLowerCase().replace(/^dr\.?\s+/i,'').replace(/[^a-z0-9\s]/g,'').trim().replace(/\s+/g,'-');
-        const siteBase = window.location.hostname === 'localhost' ? `${window.location.protocol}//${window.location.host}` : 'https://vyasaa.com';
-        const bookingLink = `${siteBase}/dr/${slug}`;
-        return (
-          <div className="space-y-4">
-            {/* Booking link card */}
-            <div className="rounded-2xl p-5 text-white" style={{ background: 'linear-gradient(135deg, #0a1628 0%, #1B4F8A 100%)' }}>
-              <div className="flex items-start gap-4">
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-bold uppercase tracking-widest opacity-60 mb-2">Your Patient Booking Link</div>
-                  <div className="text-sm font-mono font-semibold break-all mb-4 opacity-95 bg-white/10 rounded-lg px-3 py-2">{bookingLink}</div>
-                  <div className="flex gap-2 flex-wrap">
-                    <button onClick={() => copyLink(bookingLink)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/15 hover:bg-white/25 transition-colors">
-                      {copied ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                      {copied ? 'Copied!' : 'Copy Link'}
-                    </button>
-                    <a href={bookingLink} target="_blank" rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/15 hover:bg-white/25 transition-colors">
-                      <ExternalLink className="w-3.5 h-3.5" /> Preview
-                    </a>
-                    <a href={`https://wa.me/?text=${encodeURIComponent(`Book an appointment with Dr. ${padSettings.doctorName || user?.name}: ${bookingLink}`)}`}
-                      target="_blank" rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#25D366] hover:bg-[#1ebe58] transition-colors">
-                      <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
-                    </a>
-                  </div>
-                  <p className="text-xs mt-3 opacity-50">Add this link to your Google Business Profile so patients can book directly from Google Maps.</p>
-                </div>
-                {/* QR Code */}
-                <div className="flex-shrink-0 text-center">
-                  <a href={bookingLink} target="_blank" rel="noopener noreferrer"
-                    className="inline-block bg-white rounded-xl p-1.5 hover:shadow-lg transition-shadow duration-200 cursor-pointer">
-                    <img
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(bookingLink)}&bgcolor=ffffff&color=0a1628&margin=4`}
-                      alt="QR Code - Click to open booking page"
-                      width={100} height={100}
-                      className="rounded-lg hover:opacity-80 transition-opacity"
-                    />
-                  </a>
-                  <p className="text-xs opacity-60 mt-1.5">Scan or click to book</p>
-                  <div className="flex flex-col gap-1.5 mt-2">
-                    <button
-                      onClick={() => downloadBrandedQR(bookingLink, user?.name || 'Doctor', slug, {
-                        specialty: form.specialty,
-                        experience: pubProfile?.years_experience,
-                        qualification: form.qualification,
-                        city: pubProfile?.city
-                      }, true)}
-                      className="text-xs opacity-75 hover:opacity-100 underline hover:text-teal-600 font-medium"
-                    >
-                      Preview
-                    </button>
-                    <button
-                      onClick={() => downloadBrandedQR(bookingLink, user?.name || 'Doctor', slug, {
-                        specialty: form.specialty,
-                        experience: pubProfile?.years_experience,
-                        qualification: form.qualification,
-                        city: pubProfile?.city
-                      }, false)}
-                      className="text-xs opacity-75 hover:opacity-100 underline hover:text-teal-600 font-medium"
-                    >
-                      Download JPG
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="card p-6 space-y-5">
-              <div className="flex items-center justify-between">
-                <h2 className="font-semibold text-slate-800">Public Profile Settings</h2>
-                <div className="flex items-center gap-3">
-                  {pubLoading && <Loader2 className="w-4 h-4 animate-spin text-slate-400" />}
-                  {pubSaved && <span className="flex items-center gap-1.5 text-emerald-600 text-sm font-medium"><CheckCircle2 className="w-4 h-4" /> Saved</span>}
-                </div>
-              </div>
-
-              {/* Profile photo */}
-              <div>
-                <label className="label">Profile Photo</label>
-                <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 rounded-2xl bg-slate-100 border-2 border-dashed border-slate-300 flex items-center justify-center overflow-hidden flex-shrink-0">
-                    {pubProfile?.profile_photo_url ? (
-                      <img src={pubProfile.profile_photo_url} alt="Profile" className="w-full h-full object-cover" />
-                    ) : (
-                      <span className="text-2xl font-bold text-slate-400">{initials(user?.name || 'DR')}</span>
-                    )}
-                  </div>
-                  <div>
-                    <label className="btn-secondary text-xs cursor-pointer inline-flex items-center gap-1.5">
-                      {photoUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-                      {photoUploading ? 'Uploading…' : 'Upload Photo'}
-                      <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} disabled={photoUploading} />
-                    </label>
-                    <p className="text-xs text-slate-400 mt-1">JPG/PNG, max 2MB. Shown on your public booking page.</p>
-                    {pubProfile?.profile_photo_url && (
-                      <button onClick={() => setPubProfile(p => ({ ...p, profile_photo_url: '' }))}
-                        className="text-xs text-red-500 hover:text-red-700 mt-1 block">Remove photo</button>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Visibility toggles */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="border border-slate-200 rounded-xl p-4">
-                  <div className="text-sm font-semibold text-slate-700 mb-2">Profile Visibility</div>
-                  <div className="flex gap-3">
-                    {[{v:true,l:'Public'},{v:false,l:'Hidden'}].map(o=>(
-                      <label key={String(o.v)} className="flex items-center gap-1.5 cursor-pointer text-sm">
-                        <input type="radio" name="pub-enabled" checked={(pubProfile?.public_profile_enabled ?? true) === o.v}
-                          onChange={() => setPubProfile(p => ({...p, public_profile_enabled: o.v}))} className="accent-teal-500" />
-                        {o.l}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-                <div className="border border-slate-200 rounded-xl p-4">
-                  <div className="text-sm font-semibold text-slate-700 mb-2">Accepting Patients</div>
-                  <div className="flex gap-3">
-                    {[{v:true,l:'Yes'},{v:false,l:'No'}].map(o=>(
-                      <label key={String(o.v)} className="flex items-center gap-1.5 cursor-pointer text-sm">
-                        <input type="radio" name="pub-accepting" checked={(pubProfile?.accepting_patients ?? true) === o.v}
-                          onChange={() => setPubProfile(p => ({...p, accepting_patients: o.v}))} className="accent-teal-500" />
-                        {o.l}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="label">Consultation Fee (₹)</label>
-                  <input type="number" className="input" placeholder="e.g. 500"
-                    value={pubProfile?.consultation_fee ?? ''}
-                    onChange={e => setPubProfile(p => ({...p, consultation_fee: e.target.value ? Number(e.target.value) : null}))} />
-                </div>
-                <div>
-                  <label className="label">Years of Experience</label>
-                  <input type="number" className="input" placeholder="e.g. 10"
-                    value={pubProfile?.years_experience ?? ''}
-                    onChange={e => setPubProfile(p => ({...p, years_experience: Number(e.target.value)}))} />
-                </div>
-              </div>
-
-              {/* Advance payment */}
-              <div className="rounded-xl border border-slate-200 p-4 space-y-4">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <div className="text-sm font-semibold text-slate-800">Advance Payment for Bookings</div>
-                    <div className="text-xs text-slate-500 mt-0.5">Ask patients to pay an advance via your UPI QR while booking. You verify payments manually.</div>
-                  </div>
-                  <div className="flex gap-3 flex-shrink-0">
-                    {[{l:'On',v:true},{l:'Off',v:false}].map(o => (
-                      <label key={o.l} className="flex items-center gap-1.5 text-sm cursor-pointer">
-                        <input type="radio" name="adv-pay" checked={(pubProfile?.advance_payment ?? false) === o.v}
-                          onChange={() => setPubProfile(p => ({...p, advance_payment: o.v}))} className="accent-teal-500" />
-                        {o.l}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-                {pubProfile?.advance_payment && (
-                  <div className="grid sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="label">Advance Amount (₹) *</label>
-                      <input type="number" className="input" placeholder="e.g. 200"
-                        value={pubProfile?.advance_amount ?? ''}
-                        onChange={e => setPubProfile(p => ({...p, advance_amount: e.target.value ? Number(e.target.value) : null}))} />
-                      <p className="text-xs text-slate-400 mt-1">Shown to patients in the booking flow.</p>
+                      <label className="label">Consultation Fee (₹)</label>
+                      <input type="number" className="input" placeholder="e.g. 500"
+                        value={pubProfile?.consultation_fee ?? ''}
+                        onChange={e => setPubProfile(p => ({...p, consultation_fee: e.target.value ? Number(e.target.value) : null}))} />
                     </div>
                     <div>
-                      <label className="label">Payment QR Code (UPI) *</label>
-                      <div className="flex items-center gap-3">
-                        {pubProfile?.payment_qr_url ? (
-                          <img src={pubProfile.payment_qr_url} alt="Payment QR" className="w-16 h-16 rounded-lg border border-slate-200 object-contain bg-white" />
-                        ) : (
-                          <div className="w-16 h-16 rounded-lg border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-300 text-[10px] text-center">No QR</div>
-                        )}
-                        <div className="space-y-1">
-                          <label className="btn-secondary btn-sm cursor-pointer inline-block">
-                            Upload QR
-                            <input type="file" accept="image/*" className="hidden" onChange={e => {
-                              const file = e.target.files?.[0];
-                              if (!file) return;
-                              if (file.size > 1024 * 1024) { alert('QR image must be under 1MB'); return; }
-                              const reader = new FileReader();
-                              reader.onload = ev => setPubProfile(p => ({ ...p, payment_qr_url: ev.target?.result as string }));
-                              reader.readAsDataURL(file);
-                            }} />
+                      <label className="label">Years of Experience</label>
+                      <input type="number" className="input" placeholder="e.g. 10"
+                        value={pubProfile?.years_experience ?? ''}
+                        onChange={e => setPubProfile(p => ({...p, years_experience: Number(e.target.value)}))} />
+                    </div>
+                  </div>
+
+                  {/* Advance payment */}
+                  <div className="rounded-xl border border-slate-200 p-4 space-y-4">
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-800">Advance Payment for Bookings</div>
+                        <div className="text-xs text-slate-500 mt-0.5">Ask patients to pay an advance via your UPI QR while booking. You verify payments manually.</div>
+                      </div>
+                      <div className="flex gap-3 flex-shrink-0">
+                        {[{l:'On',v:true},{l:'Off',v:false}].map(o => (
+                          <label key={o.l} className="flex items-center gap-1.5 text-sm cursor-pointer">
+                            <input type="radio" name="adv-pay" checked={(pubProfile?.advance_payment ?? false) === o.v}
+                              onChange={() => setPubProfile(p => ({...p, advance_payment: o.v}))} className="accent-teal-500" />
+                            {o.l}
                           </label>
-                          {pubProfile?.payment_qr_url && (
-                            <button type="button" className="block text-xs text-red-500 hover:underline"
-                              onClick={() => setPubProfile(p => ({...p, payment_qr_url: ''}))}>Remove</button>
-                          )}
+                        ))}
+                      </div>
+                    </div>
+                    {pubProfile?.advance_payment && (
+                      <div className="grid sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="label">Advance Amount (₹) *</label>
+                          <input type="number" className="input" placeholder="e.g. 200"
+                            value={pubProfile?.advance_amount ?? ''}
+                            onChange={e => setPubProfile(p => ({...p, advance_amount: e.target.value ? Number(e.target.value) : null}))} />
+                          <p className="text-xs text-slate-400 mt-1">Shown to patients in the booking flow.</p>
+                        </div>
+                        <div>
+                          <label className="label">Payment QR Code (UPI) *</label>
+                          <div className="flex items-center gap-3">
+                            {pubProfile?.payment_qr_url ? (
+                              <img src={pubProfile.payment_qr_url} alt="Payment QR" className="w-16 h-16 rounded-lg border border-slate-200 object-contain bg-white" />
+                            ) : (
+                              <div className="w-16 h-16 rounded-lg border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-300 text-[10px] text-center">No QR</div>
+                            )}
+                            <div className="space-y-1">
+                              <label className="btn-secondary btn-sm cursor-pointer inline-block">
+                                Upload QR
+                                <input type="file" accept="image/*" className="hidden" onChange={e => {
+                                  const file = e.target.files?.[0];
+                                  if (!file) return;
+                                  if (file.size > 1024 * 1024) { alert('QR image must be under 1MB'); return; }
+                                  const reader = new FileReader();
+                                  reader.onload = ev => setPubProfile(p => ({ ...p, payment_qr_url: ev.target?.result as string }));
+                                  reader.readAsDataURL(file);
+                                }} />
+                              </label>
+                              {pubProfile?.payment_qr_url && (
+                                <button type="button" className="block text-xs text-red-500 hover:underline"
+                                  onClick={() => setPubProfile(p => ({...p, payment_qr_url: ''}))}>Remove</button>
+                              )}
+                            </div>
+                          </div>
+                          <p className="text-xs text-slate-400 mt-1">Screenshot of your GPay / PhonePe / Paytm QR.</p>
                         </div>
                       </div>
-                      <p className="text-xs text-slate-400 mt-1">Screenshot of your GPay / PhonePe / Paytm QR.</p>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="label">State</label>
+                      <select className="input"
+                        value={pubProfile?.state ?? ''}
+                        onChange={e => setPubProfile(p => ({...p, state: e.target.value}))}>
+                        <option value="">Select state…</option>
+                        {INDIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="label">City</label>
+                      <input type="text" className="input" placeholder="e.g. Kolkata"
+                        value={pubProfile?.city ?? ''}
+                        onChange={e => setPubProfile(p => ({...p, city: e.target.value}))} />
                     </div>
                   </div>
-                )}
-              </div>
+                  <p className="text-xs text-slate-400 -mt-3">Patients searching the doctor directory by state/city will find you through this.</p>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="label">State</label>
-                  <select className="input"
-                    value={pubProfile?.state ?? ''}
-                    onChange={e => setPubProfile(p => ({...p, state: e.target.value}))}>
-                    <option value="">Select state…</option>
-                    {INDIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
+                  <div>
+                    <label className="label">Languages Spoken</label>
+                    <input type="text" className="input" placeholder="e.g. Hindi, English, Bengali"
+                      value={pubProfile?.languages ?? ''}
+                      onChange={e => setPubProfile(p => ({...p, languages: e.target.value}))} />
+                  </div>
+
+                  <div>
+                    <label className="label">Bio / About (shown to patients)</label>
+                    <textarea rows={3} className="input resize-none" placeholder="Brief professional summary patients will read…"
+                      value={pubProfile?.bio ?? ''}
+                      onChange={e => setPubProfile(p => ({...p, bio: e.target.value}))} />
+                  </div>
+
+                  <div>
+                    <label className="label">Education & Training</label>
+                    <textarea rows={3} className="input resize-none"
+                      placeholder={'One per line, e.g.\nMBBS — Calcutta Medical College (2012)\nMD General Medicine — AIIMS New Delhi (2016)\nDNB Cardiology — Fortis Hospital (2019)'}
+                      value={pubProfile?.education ?? ''}
+                      onChange={e => setPubProfile(p => ({...p, education: e.target.value}))} />
+                    <p className="text-xs text-slate-400 mt-1">Degree — College / Institute (Year). One per line. Shown on your public page.</p>
+                  </div>
+
+                  <div>
+                    <label className="label">Services Offered</label>
+                    <textarea rows={2} className="input resize-none"
+                      placeholder="Comma separated, e.g. General Consultation, ECG, Diabetes Management, Health Checkup, Vaccination"
+                      value={pubProfile?.services ?? ''}
+                      onChange={e => setPubProfile(p => ({...p, services: e.target.value}))} />
+                    <p className="text-xs text-slate-400 mt-1">Shown as chips on your public page so patients know what you treat.</p>
+                  </div>
+
+                  <div>
+                    <label className="label">Awards & Memberships (optional)</label>
+                    <textarea rows={2} className="input resize-none"
+                      placeholder={'One per line, e.g.\nFellow, Indian Academy of Pediatrics\nBest Resident Award — AIIMS (2015)'}
+                      value={pubProfile?.awards ?? ''}
+                      onChange={e => setPubProfile(p => ({...p, awards: e.target.value}))} />
+                  </div>
+
+                  <div>
+                    <label className="label">Google Business Profile URL</label>
+                    <input type="url" className="input" placeholder="https://g.co/kgs/..."
+                      value={pubProfile?.gbp_url ?? ''}
+                      onChange={e => setPubProfile(p => ({...p, gbp_url: e.target.value}))} />
+                    <p className="text-xs text-slate-400 mt-1">
+                      Setup: business.google.com → Add website: <code className="bg-slate-100 px-1 rounded">{bookingLink}</code>
+                    </p>
+                  </div>
+
+                  {!isApiEnabled() && (
+                    <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-700">
+                      Connect to the live backend to save public profile settings.
+                    </div>
+                  )}
+
+                  <button onClick={handlePubSave} disabled={pubSaving || !isApiEnabled()}
+                    className="btn-primary w-full">
+                    {pubSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
+                    {pubSaving ? 'Saving…' : 'Save & Publish Profile'}
+                  </button>
                 </div>
-                <div>
-                  <label className="label">City</label>
-                  <input type="text" className="input" placeholder="e.g. Kolkata"
-                    value={pubProfile?.city ?? ''}
-                    onChange={e => setPubProfile(p => ({...p, city: e.target.value}))} />
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* ── Security tab ── */}
+      {tab === 'security' && (
+        <div className="space-y-4">
+          {/* Change Password card */}
+          <div className="card p-6 space-y-5">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center">
+                <Key className="w-4 h-4 text-slate-600" />
+              </div>
+              <div>
+                <h2 className="font-semibold text-slate-800">Change Password</h2>
+                <p className="text-xs text-slate-500">Update your account password</p>
+              </div>
+            </div>
+
+            {pwError && (
+              <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+                {pwError}
+              </div>
+            )}
+            {pwSaved && (
+              <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-700 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4" /> Password changed successfully.
+              </div>
+            )}
+
+            <div className="space-y-4">
+              {/* Current Password */}
+              <div>
+                <label className="label">Current Password</label>
+                <div className="relative">
+                  <input
+                    type={showPw.current ? 'text' : 'password'}
+                    value={pwForm.currentPassword}
+                    onChange={e => setPwForm(f => ({ ...f, currentPassword: e.target.value }))}
+                    placeholder="Enter current password"
+                    className="input w-full px-3 py-2 pr-10 border border-slate-300 rounded-lg text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPw(s => ({ ...s, current: !s.current }))}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    {showPw.current ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
                 </div>
               </div>
-              <p className="text-xs text-slate-400 -mt-3">Patients searching the doctor directory by state/city will find you through this.</p>
 
+              {/* New Password */}
               <div>
-                <label className="label">Languages Spoken</label>
-                <input type="text" className="input" placeholder="e.g. Hindi, English, Bengali"
-                  value={pubProfile?.languages ?? ''}
-                  onChange={e => setPubProfile(p => ({...p, languages: e.target.value}))} />
+                <label className="label">New Password</label>
+                <div className="relative">
+                  <input
+                    type={showPw.new ? 'text' : 'password'}
+                    value={pwForm.newPassword}
+                    onChange={e => setPwForm(f => ({ ...f, newPassword: e.target.value }))}
+                    placeholder="Enter new password"
+                    className="input w-full px-3 py-2 pr-10 border border-slate-300 rounded-lg text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPw(s => ({ ...s, new: !s.new }))}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    {showPw.new ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
 
+              {/* Confirm New Password */}
               <div>
-                <label className="label">Bio / About (shown to patients)</label>
-                <textarea rows={3} className="input resize-none" placeholder="Brief professional summary patients will read…"
-                  value={pubProfile?.bio ?? ''}
-                  onChange={e => setPubProfile(p => ({...p, bio: e.target.value}))} />
+                <label className="label">Confirm New Password</label>
+                <div className="relative">
+                  <input
+                    type={showPw.confirm ? 'text' : 'password'}
+                    value={pwForm.confirmPassword}
+                    onChange={e => setPwForm(f => ({ ...f, confirmPassword: e.target.value }))}
+                    placeholder="Repeat new password"
+                    className="input w-full px-3 py-2 pr-10 border border-slate-300 rounded-lg text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPw(s => ({ ...s, confirm: !s.confirm }))}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    {showPw.confirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
 
-              <div>
-                <label className="label">Education & Training</label>
-                <textarea rows={3} className="input resize-none"
-                  placeholder={'One per line, e.g.\nMBBS — Calcutta Medical College (2012)\nMD General Medicine — AIIMS New Delhi (2016)\nDNB Cardiology — Fortis Hospital (2019)'}
-                  value={pubProfile?.education ?? ''}
-                  onChange={e => setPubProfile(p => ({...p, education: e.target.value}))} />
-                <p className="text-xs text-slate-400 mt-1">Degree — College / Institute (Year). One per line. Shown on your public page.</p>
-              </div>
-
-              <div>
-                <label className="label">Services Offered</label>
-                <textarea rows={2} className="input resize-none"
-                  placeholder="Comma separated, e.g. General Consultation, ECG, Diabetes Management, Health Checkup, Vaccination"
-                  value={pubProfile?.services ?? ''}
-                  onChange={e => setPubProfile(p => ({...p, services: e.target.value}))} />
-                <p className="text-xs text-slate-400 mt-1">Shown as chips on your public page so patients know what you treat.</p>
-              </div>
-
-              <div>
-                <label className="label">Awards & Memberships (optional)</label>
-                <textarea rows={2} className="input resize-none"
-                  placeholder={'One per line, e.g.\nFellow, Indian Academy of Pediatrics\nBest Resident Award — AIIMS (2015)'}
-                  value={pubProfile?.awards ?? ''}
-                  onChange={e => setPubProfile(p => ({...p, awards: e.target.value}))} />
-              </div>
-
-              <div>
-                <label className="label">Google Business Profile URL</label>
-                <input type="url" className="input" placeholder="https://g.co/kgs/..."
-                  value={pubProfile?.gbp_url ?? ''}
-                  onChange={e => setPubProfile(p => ({...p, gbp_url: e.target.value}))} />
-                <p className="text-xs text-slate-400 mt-1">
-                  Setup: business.google.com → Add website: <code className="bg-slate-100 px-1 rounded">{bookingLink}</code>
-                </p>
-              </div>
+              <button
+                onClick={handleChangePassword}
+                disabled={pwSaving || !isApiEnabled()}
+                className="btn-primary w-full sm:w-auto"
+              >
+                {pwSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Key className="w-4 h-4" />}
+                {pwSaving ? 'Saving…' : 'Save New Password'}
+              </button>
 
               {!isApiEnabled() && (
-                <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-700">
-                  Connect to the live backend to save public profile settings.
-                </div>
+                <p className="text-xs text-amber-600">Connect to the live backend to change your password.</p>
               )}
-
-              <button onClick={handlePubSave} disabled={pubSaving || !isApiEnabled()}
-                className="btn-primary w-full">
-                {pubSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
-                {pubSaving ? 'Saving…' : 'Save & Publish Profile'}
-              </button>
             </div>
           </div>
-        );
-      })()}
 
-      {/* Notifications tab */}
+          {/* Other security info */}
+          <div className="card p-6 space-y-4">
+            <h2 className="font-semibold text-slate-800">Security Settings</h2>
+            <div className="space-y-3">
+              <div className="border border-slate-200 rounded-xl p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-emerald-50 flex items-center justify-center">
+                    <svg viewBox="0 0 24 24" className="w-4 h-4"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+                  </div>
+                  <div>
+                    <div className="font-medium text-slate-800">Google Account</div>
+                    <div className="text-xs text-emerald-600 font-medium">Connected · {user?.email}</div>
+                  </div>
+                </div>
+              </div>
+
+              {isApproved && (
+                <div className="border border-emerald-200 rounded-xl p-4 bg-emerald-50">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-emerald-100 flex items-center justify-center">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    </div>
+                    <div>
+                      <div className="font-medium text-emerald-800">Account Verified</div>
+                      <div className="text-xs text-emerald-600">License verified — full prescription access granted</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Notifications tab ── */}
       {tab === 'notifications' && (
         <div className="card p-6 space-y-4">
           <h2 className="font-semibold text-slate-800">Notification Preferences</h2>
@@ -860,7 +1036,7 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {/* Logout Button - Prominent on mobile */}
+      {/* ── Logout Button ── */}
       <div className="mt-8 pt-6 border-t border-slate-200 flex flex-col gap-3">
         <p className="text-xs text-slate-400 px-1">Actions</p>
         <button
@@ -874,7 +1050,27 @@ export default function ProfilePage() {
         </button>
       </div>
 
-      {/* QR Preview Modal */}
+      {/* ── Sticky Save/Cancel bar — mobile only, when editing ── */}
+      {editing && (
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-3 flex gap-2 md:hidden z-50">
+          <button
+            onClick={() => setEditing(false)}
+            className="flex-1 px-4 py-2.5 rounded-lg border border-slate-300 bg-white text-slate-700 font-semibold text-sm hover:bg-slate-50 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex-1 px-4 py-2.5 rounded-lg bg-teal-600 text-white font-semibold text-sm hover:bg-teal-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {saving ? 'Saving…' : 'Save Changes'}
+          </button>
+        </div>
+      )}
+
+      {/* ── QR Preview Modal ── */}
       {qrPreview && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-auto">

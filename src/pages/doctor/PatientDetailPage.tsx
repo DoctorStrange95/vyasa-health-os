@@ -3,6 +3,8 @@ import { useState } from 'react';
 import { ArrowLeft, Activity, Pill, FlaskConical, MessageSquare, ClipboardList, FileText, Info, Send, Plus, AlertTriangle, Printer, History, Syringe, Scissors, Camera, Skull, Calendar } from 'lucide-react';
 import { useAppStore, uid, nowIso } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
+import { usePadStore } from '@/store/usePadStore';
+import { PrintPreview } from '@/components/PrintPreview';
 import { PriorityBadge, StatusBadge, LabStatusBadge } from '@/components/ui/Badge';
 import { ScheduleModal } from '@/components/ScheduleModal';
 import { Modal } from '@/components/ui/Modal';
@@ -21,6 +23,8 @@ export default function PatientDetailPage() {
   const [deathDate, setDeathDate] = useState(new Date().toISOString().slice(0, 16));
   const [deathCause, setDeathCause] = useState('');
   const [showSchedule, setShowSchedule] = useState(false);
+  const [showTopPrint, setShowTopPrint] = useState(false);
+  const { settings: padTop } = usePadStore();
 
   const patient = patients.find(p => p.id === id);
   if (!patient) return (
@@ -31,9 +35,60 @@ export default function PatientDetailPage() {
     </div>
   );
 
-  const ptVitals = vitals[id!] || [];
-  const ptRx = prescriptions[id!] || [];
-  const ptLabs = labOrders[id!] || [];
+  const ptVisits = visits[id!] || [];
+
+  // Merge vitals from visit snapshots (handles cross-device / missing addVitals calls)
+  const rawVitals = vitals[id!] || [];
+  const snapshotVitals = ptVisits
+    .filter(v => v.vitalsSnapshot && Object.values(v.vitalsSnapshot as Record<string, string>).some(Boolean))
+    .map(v => {
+      const vs = v.vitalsSnapshot as Record<string, string>;
+      return {
+        id: `snap-${v.id}`, patientId: id!, time: v.date, recordedBy: v.doctorName ?? 'Doctor',
+        bp: vs.bp || '', pulse: vs.hr ? +vs.hr : undefined, temp: vs.temp ? +vs.temp : undefined,
+        spo2: vs.spo2 ? +vs.spo2 : undefined, rr: vs.rr ? +vs.rr : undefined, weight: vs.weight ? +vs.weight : undefined,
+      };
+    })
+    .filter(s => {
+      // Skip if rawVitals already has an entry with same BP within 10 minutes (addVitals called on finalize)
+      const snapMs = new Date(s.time).getTime();
+      return !rawVitals.some((r: any) =>
+        r.bp === s.bp && Math.abs(new Date(r.time).getTime() - snapMs) < 10 * 60 * 1000
+      );
+    });
+  const ptVitals = [...rawVitals, ...snapshotVitals]
+    .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+
+  // Merge drugs from visits into Rx tab
+  const rawRx = prescriptions[id!] || [];
+  const rawRxIds = new Set(rawRx.map((r: any) => r.id));
+  const visitDrugs = ptVisits.flatMap(v =>
+    (v.drugs ?? []).map((d: any, i: number) => ({
+      id: `visit-${v.id}-${i}`, patientId: id!, time: v.date, status: 'active',
+      drug: d.drug || '',
+      form: d.form || 'Tab',
+      dose: d.dose || '', route: d.route || 'Oral', frequency: d.frequency || '',
+      duration: d.duration || '', instructions: d.instructions || '',
+      prescribedBy: v.doctorName ?? 'Doctor',
+    }))
+  ).filter(d => !rawRxIds.has(d.id));
+  const ptRx = [...rawRx, ...visitDrugs]
+    .sort((a: any, b: any) => new Date(b.time).getTime() - new Date(a.time).getTime());
+
+  // Merge investigation text from visits into Labs tab
+  const rawLabs = labOrders[id!] || [];
+  const rawLabIds = new Set(rawLabs.map((l: any) => l.id));
+  const visitLabs = ptVisits
+    .filter(v => v.investigation?.trim())
+    .flatMap(v =>
+      String(v.investigation).split(/[,\n]+/).map((t: string) => t.trim()).filter(Boolean).map((t: string, i: number) => ({
+        id: `visit-lab-${v.id}-${i}`, patientId: id!, testName: t, panel: '',
+        orderedBy: v.doctorName ?? 'Doctor', orderedAt: v.date, status: 'ordered',
+      }))
+    )
+    .filter(l => !rawLabIds.has(l.id));
+  const ptLabs = [...rawLabs, ...visitLabs]
+    .sort((a: any, b: any) => new Date(b.orderedAt).getTime() - new Date(a.orderedAt).getTime());
   const ptNotes = nursingNotes[id!] || [];
   const ptChat = chatMessages[id!] || [];
 
@@ -93,7 +148,7 @@ export default function PatientDetailPage() {
           </div>
         </div>
         <div className="flex gap-2 flex-shrink-0 flex-wrap justify-end">
-          <button onClick={() => window.print()} className="btn-secondary btn-sm hidden sm:flex">
+          <button onClick={() => setShowTopPrint(true)} className="btn-secondary btn-sm hidden sm:flex">
             <Printer className="w-3.5 h-3.5" /> Print
           </button>
           {patient.status !== 'Deceased' && (
@@ -132,7 +187,7 @@ export default function PatientDetailPage() {
 
       {/* Tab content */}
       {tab === 'overview' && <OverviewTab patient={patient} />}
-      {tab === 'history' && <VisitsTab visits={visits[id!] ?? []} />}
+      {tab === 'history' && <VisitsTab visits={visits[id!] ?? []} patient={patient} />}
       {tab === 'vitals' && <VitalsTab vitals={ptVitals} patientId={id!} onAdd={addVitals} showToast={showToast} />}
       {tab === 'prescriptions' && <PrescriptionsTab rx={ptRx} patientId={id!} doctorName={user?.name || ''} onAdd={addPrescription} showToast={showToast} />}
       {tab === 'labs' && <LabsTab labs={ptLabs} patientId={id!} doctorName={user?.name || ''} onAdd={addLabOrder} showToast={showToast} />}
@@ -190,25 +245,85 @@ export default function PatientDetailPage() {
           </div>
         </div>
       </Modal>
+
+      {/* Top-level Print button → latest visit on customised PAD */}
+      {showTopPrint && (() => {
+        const ptVisits = visits[id!] ?? [];
+        const latest = [...ptVisits].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+        const vs = latest?.vitalsSnapshot ?? {};
+        const draft = {
+          chiefComplaint: latest?.chiefComplaint ?? '',
+          hopi: latest?.hopi ?? '',
+          diagnosis: latest?.diagnosis ?? '',
+          icdCode: latest?.icdCode ?? '',
+          secondaryDx: latest?.secondaryDx ?? '',
+          rxRows: (latest?.drugs ?? []).map((d: any, i: number) => ({
+            id: String(i), form: d.form ?? 'Tab', drug: d.drug ?? '',
+            dose: d.dose ?? '', strength: d.strength ?? '', puffs: d.puffs ?? '',
+            route: d.route ?? 'Oral', frequency: d.frequency ?? '',
+            duration: d.duration ?? '', instructions: d.instructions ?? '',
+          })),
+          vitals: { bp: vs.bp ?? '', hr: vs.hr ?? '', temp: vs.temp ?? '',
+            spo2: vs.spo2 ?? '', weight: vs.weight ?? '', height: vs.height ?? '', rr: vs.rr ?? '' },
+          investigation: latest?.investigation ?? '',
+          advice: latest?.advice ?? '',
+          followUp: latest?.followUp ?? '',
+          referredTo: latest?.referral?.specialty ?? '',
+        };
+        return (
+          <PrintPreview
+            pad={padTop}
+            patient={patient}
+            draft={draft}
+            onClose={() => setShowTopPrint(false)}
+          />
+        );
+      })()}
     </div>
   );
 }
 
 // ─── Tab: Visit History ───────────────────────────────────────────────────────
 
-function SectionBlock({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2 border-b border-slate-100 pb-1">{title}</div>
-      {children}
-    </div>
-  );
-}
 
-function VisitsTab({ visits }: { visits: any[] }) {
+function VisitsTab({ visits, patient }: { visits: any[]; patient: any }) {
   const sorted = [...visits].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   const [selected, setSelected] = useState<string>(sorted[0]?.id ?? '');
   const visit = sorted.find(v => v.id === selected) ?? sorted[0];
+  const { settings: pad, clinics } = usePadStore();
+  const [showPrint, setShowPrint] = useState(false);
+
+  // Map a stored visit into the PrintPreview "draft" shape so it prints on the customised PAD
+  function visitToDraft(v: any) {
+    const vs = v?.vitalsSnapshot ?? {};
+    return {
+      chiefComplaint: v?.chiefComplaint ?? '',
+      hopi: v?.hopi ?? '',
+      diagnosis: v?.diagnosis ?? '',
+      icdCode: v?.icdCode ?? '',
+      secondaryDx: v?.secondaryDx ?? '',
+      rxRows: (v?.drugs ?? []).map((d: any, i: number) => ({
+        id: String(i),
+        form: d.form ?? 'Tab',
+        drug: d.drug ?? '',
+        dose: d.dose ?? '',
+        strength: d.strength ?? '',
+        puffs: d.puffs ?? '',
+        route: d.route ?? 'Oral',
+        frequency: d.frequency ?? '',
+        duration: d.duration ?? '',
+        instructions: d.instructions ?? '',
+      })),
+      vitals: {
+        bp: vs.bp ?? '', hr: vs.hr ?? '', temp: vs.temp ?? '', spo2: vs.spo2 ?? '',
+        weight: vs.weight ?? '', height: vs.height ?? '', rr: vs.rr ?? '',
+      },
+      investigation: v?.investigation ?? '',
+      advice: v?.advice ?? '',
+      followUp: v?.followUp ?? '',
+      referredTo: v?.referral?.specialty ?? '',
+    };
+  }
 
   if (visits.length === 0) {
     return (
@@ -280,7 +395,14 @@ function VisitsTab({ visits }: { visits: any[] }) {
                 <div className="text-lg font-bold">{vDate(visit)} &nbsp;·&nbsp; {vTime(visit)}</div>
                 <div className="text-sm text-teal-200 mt-0.5">Dr. {visit.doctorName}</div>
               </div>
-              <div className="text-right flex-shrink-0">
+              <div className="text-right flex-shrink-0 flex items-center gap-3">
+                {visit.drugs?.length > 0 && (
+                  <button
+                    onClick={() => setShowPrint(true)}
+                    className="flex items-center gap-2 bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors">
+                    <Printer className="w-4 h-4" /> Print Rx
+                  </button>
+                )}
                 {visit.admitted && (
                   <span className="text-xs bg-white/20 text-white px-2 py-0.5 rounded-full">Admitted</span>
                 )}
@@ -288,291 +410,226 @@ function VisitsTab({ visits }: { visits: any[] }) {
             </div>
           </div>
 
-          <div className="p-5 space-y-5">
+          <div className="p-5 space-y-4">
 
-            {/* S — Subjective */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-xs font-bold flex items-center justify-center flex-shrink-0">S</span>
-                <span className="text-xs font-bold uppercase tracking-widest text-slate-500">Subjective</span>
+            {/* Chief Complaint */}
+            {visit.chiefComplaint && (
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Chief Complaint</div>
+                <p className="text-sm text-slate-800 font-medium">{visit.chiefComplaint}</p>
               </div>
+            )}
 
-              {visit.chiefComplaint && (
-                <SectionBlock title="Chief Complaint">
-                  <p className="text-sm text-slate-800 font-medium">{visit.chiefComplaint}</p>
-                </SectionBlock>
-              )}
-
-              {hasHistory && (
-                <SectionBlock title="History">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
-                    {visit.hopi && (
-                      <div className="sm:col-span-2">
-                        <span className="text-xs font-semibold text-slate-500">Present Illness &nbsp;</span>
-                        <span className="text-sm text-slate-700">{visit.hopi}</span>
-                      </div>
-                    )}
-                    {visit.pastMedical && (
-                      <div>
-                        <span className="text-xs font-semibold text-slate-500">Past Medical &nbsp;</span>
-                        <span className="text-sm text-slate-700">{visit.pastMedical}</span>
-                      </div>
-                    )}
-                    {visit.pastSurgical && (
-                      <div>
-                        <span className="text-xs font-semibold text-slate-500">Past Surgical &nbsp;</span>
-                        <span className="text-sm text-slate-700">{visit.pastSurgical}</span>
-                      </div>
-                    )}
-                    {visit.familyHistory && (
-                      <div>
-                        <span className="text-xs font-semibold text-slate-500">Family &nbsp;</span>
-                        <span className="text-sm text-slate-700">{visit.familyHistory}</span>
-                      </div>
-                    )}
-                    {visit.socialHistory && (
-                      <div>
-                        <span className="text-xs font-semibold text-slate-500">Social &nbsp;</span>
-                        <span className="text-sm text-slate-700">{visit.socialHistory}</span>
-                      </div>
-                    )}
-                    {visit.allergiesNote && (
-                      <div>
-                        <span className="text-xs font-semibold text-red-500">Allergies &nbsp;</span>
-                        <span className="text-sm text-red-700 font-medium">{visit.allergiesNote}</span>
-                      </div>
-                    )}
-                    {visit.currentMeds && (
-                      <div className="sm:col-span-2">
-                        <span className="text-xs font-semibold text-slate-500">Current Meds &nbsp;</span>
-                        <span className="text-sm text-slate-700">{visit.currentMeds}</span>
-                      </div>
-                    )}
-                  </div>
-                </SectionBlock>
-              )}
+            {/* Diagnosis */}
+            <div className="bg-orange-50 border border-orange-100 rounded-xl px-4 py-3">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-orange-400 mb-1">Diagnosis</div>
+              <div className="text-sm font-bold text-slate-900">{visit.diagnosis || '—'}</div>
+              {visit.icdCode && <div className="text-xs text-slate-400 mt-0.5">ICD: {visit.icdCode}</div>}
+              {visit.secondaryDx && <div className="text-xs text-slate-500 mt-1">Secondary: {visit.secondaryDx}</div>}
             </div>
 
-            <div className="border-t border-slate-100" />
-
-            {/* O — Objective */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <span className="w-6 h-6 rounded-full bg-green-100 text-green-700 text-xs font-bold flex items-center justify-center flex-shrink-0">O</span>
-                <span className="text-xs font-bold uppercase tracking-widest text-slate-500">Objective</span>
-              </div>
-
-              {hasVitals && (
-                <SectionBlock title="Vitals at Visit">
-                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-                    {[
-                      { label: 'BP', value: vs.bp, unit: 'mmHg' },
-                      { label: 'Pulse', value: vs.hr, unit: 'bpm' },
-                      { label: 'Temp', value: vs.temp, unit: '°F' },
-                      { label: 'SpO2', value: vs.spo2, unit: '%' },
-                      { label: 'RR', value: vs.rr, unit: '/min' },
-                      { label: 'Weight', value: vs.weight, unit: 'kg' },
-                    ].filter(i => i.value).map(i => (
-                      <div key={i.label} className="bg-slate-50 rounded-lg px-2.5 py-2 text-center">
-                        <div className="text-[10px] text-slate-400 font-medium">{i.label}</div>
-                        <div className="text-sm font-bold text-slate-800 mt-0.5">{i.value}</div>
-                        <div className="text-[9px] text-slate-400">{i.unit}</div>
-                      </div>
-                    ))}
-                  </div>
-                </SectionBlock>
-              )}
-
-              {hasExam && (
-                <SectionBlock title="Examination">
-                  <div className="space-y-1.5">
-                    {visit.generalExam && (
-                      <div className="text-sm text-slate-700">
-                        <span className="text-xs font-semibold text-slate-500">General: &nbsp;</span>{visit.generalExam}
-                      </div>
-                    )}
-                    {visit.systemicExam && (
-                      <div className="text-sm text-slate-700">
-                        <span className="text-xs font-semibold text-slate-500">Systemic: &nbsp;</span>{visit.systemicExam}
-                      </div>
-                    )}
-                    {visit.bodySigns && visit.bodySigns.length > 0 && (
-                      <div>
-                        <div className="text-xs font-semibold text-slate-500 mb-1.5">Clinical Signs</div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {(visit.bodySigns as string[]).map(s => (
-                            <span key={s} className="text-xs bg-red-50 border border-red-200 text-red-700 px-2 py-0.5 rounded-full font-medium">● {s}</span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {visit.bodyNotes && Object.values(visit.bodyNotes).some(Boolean) && (
-                      <div>
-                        <div className="text-xs font-semibold text-slate-500 mb-1.5">Regional Findings</div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                          {Object.entries(visit.bodyNotes as Record<string, string>).filter(([, v]) => v.trim()).map(([region, note]) => (
-                            <div key={region} className="bg-teal-50 rounded-lg px-2.5 py-1.5">
-                              <span className="text-[10px] font-bold uppercase text-teal-600 block">{region.replace(/-/g, ' ')}</span>
-                              <span className="text-xs text-slate-700">{note}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {visit.investigation && (
-                      <div className="text-sm text-slate-700">
-                        <span className="text-xs font-semibold text-slate-500">Investigations: &nbsp;</span>{visit.investigation}
-                      </div>
-                    )}
-                  </div>
-                </SectionBlock>
-              )}
-            </div>
-
-            <div className="border-t border-slate-100" />
-
-            {/* A — Assessment */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <span className="w-6 h-6 rounded-full bg-orange-100 text-orange-700 text-xs font-bold flex items-center justify-center flex-shrink-0">A</span>
-                <span className="text-xs font-bold uppercase tracking-widest text-slate-500">Assessment</span>
-              </div>
-
-              <SectionBlock title="Diagnosis">
-                <div className="flex items-start gap-3 flex-wrap">
-                  <div>
-                    <div className="text-sm font-bold text-slate-900">{visit.diagnosis || '—'}</div>
-                    {visit.icdCode && <div className="text-xs text-slate-400 mt-0.5">ICD: {visit.icdCode}</div>}
-                  </div>
-                  {visit.secondaryDx && (
-                    <div className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-lg">
-                      Secondary: {visit.secondaryDx}
+            {/* Vitals */}
+            {hasVitals && (
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Vitals</div>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { label: 'BP', value: vs.bp, unit: 'mmHg' },
+                    { label: 'Pulse', value: vs.hr, unit: 'bpm' },
+                    { label: 'Temp', value: vs.temp, unit: '°F' },
+                    { label: 'SpO2', value: vs.spo2, unit: '%' },
+                    { label: 'RR', value: vs.rr, unit: '/min' },
+                    { label: 'Weight', value: vs.weight, unit: 'kg' },
+                  ].filter(i => i.value).map(i => (
+                    <div key={i.label} className="bg-slate-50 border border-slate-100 rounded-lg px-3 py-1.5 text-center min-w-[60px]">
+                      <div className="text-[9px] text-slate-400 font-semibold uppercase">{i.label}</div>
+                      <div className="text-sm font-bold text-slate-800">{i.value}</div>
+                      <div className="text-[9px] text-slate-400">{i.unit}</div>
                     </div>
-                  )}
+                  ))}
                 </div>
-              </SectionBlock>
-            </div>
-
-            <div className="border-t border-slate-100" />
-
-            {/* P — Plan */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <span className="w-6 h-6 rounded-full bg-violet-100 text-violet-700 text-xs font-bold flex items-center justify-center flex-shrink-0">P</span>
-                <span className="text-xs font-bold uppercase tracking-widest text-slate-500">Plan</span>
               </div>
+            )}
 
-              {visit.drugs?.length > 0 && (
-                <SectionBlock title="Prescription">
-                  <div className="space-y-2">
-                    {visit.drugs.map((d: any, i: number) => (
-                      <div key={i} className="flex items-start gap-3 bg-teal-50 border border-teal-100 rounded-xl px-4 py-2.5">
-                        <div className="text-teal-600 font-bold text-sm flex-shrink-0 mt-0.5">Rx {i + 1}</div>
-                        <div className="flex-1 min-w-0">
-                          <div className="font-semibold text-slate-900 text-sm">
-                            {d.form && d.form !== 'Tab' ? `${d.form}. ` : 'Tab. '}{d.drug}
-                            {d.dose && <span className="font-normal text-slate-600"> {d.dose}</span>}
-                            {(d as any).strength && <span className="text-xs text-slate-400"> ({(d as any).strength})</span>}
-                          </div>
-                          <div className="text-xs text-slate-500 mt-0.5">
-                            {(d as any).puffs && <span>{(d as any).puffs} &nbsp;·&nbsp; </span>}
-                            {d.route && d.form !== 'Cream' && d.form !== 'MDI' ? `${d.route} · ` : ''}{d.frequency} &nbsp;·&nbsp; {d.duration}
-                            {d.instructions && <span className="text-slate-400 italic ml-2">({d.instructions})</span>}
-                          </div>
+            {/* Prescription */}
+            {visit.drugs?.length > 0 && (
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Prescription</div>
+                <div className="space-y-1.5">
+                  {visit.drugs.map((d: any, i: number) => (
+                    <div key={i} className="flex items-start gap-3 bg-teal-50 border border-teal-100 rounded-lg px-3 py-2">
+                      <div className="text-teal-500 font-bold text-xs flex-shrink-0 mt-0.5 w-8">Rx {i + 1}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-slate-900 text-sm">
+                          {d.form && d.form !== 'Tab' ? `${d.form}. ` : 'Tab. '}{d.drug}
+                          {d.dose && <span className="font-normal text-slate-600"> {d.dose}</span>}
+                          {(d as any).strength && <span className="text-xs text-slate-400"> ({(d as any).strength})</span>}
+                        </div>
+                        <div className="text-xs text-slate-500 mt-0.5">
+                          {d.frequency}{d.duration ? ` · ${d.duration}` : ''}
+                          {d.instructions && <span className="text-slate-400 italic ml-1">· {d.instructions}</span>}
                         </div>
                       </div>
-                    ))}
-                  </div>
-                </SectionBlock>
-              )}
-
-              {visit.vaccines?.length > 0 && (
-                <SectionBlock title="Vaccines">
-                  <div className="flex flex-wrap gap-2">
-                    {visit.vaccines.map((v: any) => (
-                      <span key={v.id} className="text-xs bg-teal-50 text-teal-700 border border-teal-200 px-3 py-1.5 rounded-full">
-                        <Syringe className="w-3 h-3 inline mr-1" />
-                        {v.name}{v.site ? ` (${v.site})` : ''}{v.nextDueDate ? ` · Next: ${v.nextDueDate}` : ''}
-                      </span>
-                    ))}
-                  </div>
-                </SectionBlock>
-              )}
-
-              {visit.procedures?.length > 0 && (
-                <SectionBlock title="Procedures">
-                  <div className="flex flex-wrap gap-2">
-                    {visit.procedures.map((p: any) => (
-                      <span key={p.id} className="text-xs bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1.5 rounded-full">
-                        <Scissors className="w-3 h-3 inline mr-1" />
-                        {p.name}{p.notes ? ` · ${p.notes}` : ''}
-                      </span>
-                    ))}
-                  </div>
-                </SectionBlock>
-              )}
-
-              {(visit.advice || visit.followUp) && (
-                <SectionBlock title="Advice &amp; Follow-Up">
-                  <div className="space-y-1.5">
-                    {visit.advice && <p className="text-sm text-slate-700">{visit.advice}</p>}
-                    {visit.followUp && (
-                      <div className="flex items-center gap-2 text-xs text-teal-700 bg-teal-50 border border-teal-100 rounded-lg px-3 py-1.5 w-fit">
-                        <Activity className="w-3 h-3" />
-                        Follow-up: <span className="font-semibold">{visit.followUp}</span>
-                      </div>
-                    )}
-                  </div>
-                </SectionBlock>
-              )}
-
-              {visit.referral?.specialty && (
-                <div className="bg-violet-50 border border-violet-200 rounded-xl px-4 py-3">
-                  <div className="text-[10px] font-bold uppercase tracking-widest text-violet-400 mb-1">Referral</div>
-                  <div className="text-sm font-semibold text-violet-900">
-                    {visit.referral.doctorName ? `Dr. ${visit.referral.doctorName}, ` : ''}{visit.referral.specialty}
-                  </div>
-                  {visit.referral.reason && <div className="text-xs text-violet-600 mt-0.5">{visit.referral.reason}</div>}
-                  {visit.referral.urgency && (
-                    <span className="text-[10px] font-bold bg-violet-200 text-violet-700 px-2 py-0.5 rounded-full mt-1 inline-block">{visit.referral.urgency}</span>
-                  )}
+                    </div>
+                  ))}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
+
+            {/* Investigations */}
+            {visit.investigation && (
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Investigations</div>
+                <p className="text-sm text-slate-700">{visit.investigation}</p>
+              </div>
+            )}
+
+            {/* History (collapsed by default — show only if present) */}
+            {hasHistory && (
+              <div className="border border-slate-100 rounded-xl px-4 py-3 space-y-1.5">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">History</div>
+                {visit.hopi && <p className="text-xs text-slate-600"><span className="font-semibold text-slate-500">HoPi: </span>{visit.hopi}</p>}
+                {visit.pastMedical && <p className="text-xs text-slate-600"><span className="font-semibold text-slate-500">Past Medical: </span>{visit.pastMedical}</p>}
+                {visit.pastSurgical && <p className="text-xs text-slate-600"><span className="font-semibold text-slate-500">Surgical: </span>{visit.pastSurgical}</p>}
+                {visit.familyHistory && <p className="text-xs text-slate-600"><span className="font-semibold text-slate-500">Family: </span>{visit.familyHistory}</p>}
+                {visit.socialHistory && <p className="text-xs text-slate-600"><span className="font-semibold text-slate-500">Social: </span>{visit.socialHistory}</p>}
+                {visit.currentMeds && <p className="text-xs text-slate-600"><span className="font-semibold text-slate-500">Current Meds: </span>{visit.currentMeds}</p>}
+                {visit.allergiesNote && <p className="text-xs text-red-600 font-medium"><span className="font-bold">Allergies: </span>{visit.allergiesNote}</p>}
+              </div>
+            )}
+
+            {/* Examination */}
+            {hasExam && (
+              <div className="border border-slate-100 rounded-xl px-4 py-3 space-y-1.5">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Examination</div>
+                {visit.generalExam && <p className="text-xs text-slate-600"><span className="font-semibold text-slate-500">General: </span>{visit.generalExam}</p>}
+                {visit.systemicExam && <p className="text-xs text-slate-600"><span className="font-semibold text-slate-500">Systemic: </span>{visit.systemicExam}</p>}
+                {visit.bodySigns?.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-1">
+                    {(visit.bodySigns as string[]).map(s => (
+                      <span key={s} className="text-xs bg-red-50 border border-red-200 text-red-700 px-2 py-0.5 rounded-full">● {s}</span>
+                    ))}
+                  </div>
+                )}
+                {visit.bodyNotes && Object.values(visit.bodyNotes).some(Boolean) && (
+                  <div className="grid grid-cols-2 gap-1.5 mt-1">
+                    {Object.entries(visit.bodyNotes as Record<string, string>).filter(([, v]) => v.trim()).map(([region, note]) => (
+                      <div key={region} className="bg-teal-50 rounded-lg px-2.5 py-1.5">
+                        <span className="text-[9px] font-bold uppercase text-teal-600 block">{region.replace(/-/g, ' ')}</span>
+                        <span className="text-xs text-slate-700">{note}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Advice & Follow-up */}
+            {(visit.advice || visit.followUp) && (
+              <div>
+                {visit.advice && (
+                  <div className="mb-2">
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Advice</div>
+                    <p className="text-sm text-slate-700">{visit.advice}</p>
+                  </div>
+                )}
+                {visit.followUp && (
+                  <div className="flex items-center gap-2 text-xs text-teal-700 bg-teal-50 border border-teal-100 rounded-lg px-3 py-2 w-fit">
+                    <Activity className="w-3 h-3 flex-shrink-0" />
+                    Follow-up: <span className="font-semibold">{visit.followUp}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Vaccines */}
+            {visit.vaccines?.length > 0 && (
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Vaccines</div>
+                <div className="flex flex-wrap gap-2">
+                  {visit.vaccines.map((v: any) => (
+                    <span key={v.id} className="text-xs bg-teal-50 text-teal-700 border border-teal-200 px-3 py-1.5 rounded-full">
+                      <Syringe className="w-3 h-3 inline mr-1" />
+                      {v.name}{v.site ? ` (${v.site})` : ''}{v.nextDueDate ? ` · Next: ${v.nextDueDate}` : ''}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Procedures */}
+            {visit.procedures?.length > 0 && (
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Procedures</div>
+                <div className="flex flex-wrap gap-2">
+                  {visit.procedures.map((p: any) => (
+                    <span key={p.id} className="text-xs bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1.5 rounded-full">
+                      <Scissors className="w-3 h-3 inline mr-1" />
+                      {p.name}{p.notes ? ` · ${p.notes}` : ''}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Referral */}
+            {visit.referral?.specialty && (
+              <div className="bg-violet-50 border border-violet-200 rounded-xl px-4 py-3">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-violet-400 mb-1">Referral</div>
+                <div className="text-sm font-semibold text-violet-900">
+                  {visit.referral.doctorName ? `Dr. ${visit.referral.doctorName}, ` : ''}{visit.referral.specialty}
+                </div>
+                {visit.referral.reason && <div className="text-xs text-violet-600 mt-0.5">{visit.referral.reason}</div>}
+                {visit.referral.urgency && (
+                  <span className="text-[10px] font-bold bg-violet-200 text-violet-700 px-2 py-0.5 rounded-full mt-1 inline-block">{visit.referral.urgency}</span>
+                )}
+              </div>
+            )}
 
             {/* Attachments */}
             {visit.attachments?.length > 0 && (
-              <>
-                <div className="border-t border-slate-100" />
-                <SectionBlock title="Attachments">
-                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-                    {visit.attachments.map((a: any) => (
-                      <a key={a.id} href={a.dataUrl} target="_blank" rel="noreferrer"
-                        className="rounded-xl overflow-hidden border border-slate-200 hover:border-teal-400 transition-colors">
-                        {a.type === 'photo' || a.type === 'xray' ? (
-                          <img src={a.dataUrl} alt={a.label} className="w-full h-16 object-cover" />
-                        ) : (
-                          <div className="w-full h-16 flex items-center justify-center bg-slate-50">
-                            <FileText className="w-5 h-5 text-slate-400" />
-                          </div>
-                        )}
-                        <div className="text-[10px] text-slate-500 px-1.5 py-1 truncate">{a.label}</div>
-                      </a>
-                    ))}
-                  </div>
-                </SectionBlock>
-              </>
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Attachments</div>
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                  {visit.attachments.map((a: any) => (
+                    <a key={a.id} href={a.dataUrl} target="_blank" rel="noreferrer"
+                      className="rounded-xl overflow-hidden border border-slate-200 hover:border-teal-400 transition-colors">
+                      {a.type === 'photo' || a.type === 'xray' ? (
+                        <img src={a.dataUrl} alt={a.label} className="w-full h-16 object-cover" />
+                      ) : (
+                        <div className="w-full h-16 flex items-center justify-center bg-slate-50">
+                          <FileText className="w-5 h-5 text-slate-400" />
+                        </div>
+                      )}
+                      <div className="text-[10px] text-slate-500 px-1.5 py-1 truncate">{a.label}</div>
+                    </a>
+                  ))}
+                </div>
+              </div>
             )}
 
-            {/* Private note — doctor only */}
+            {/* Private note */}
             {visit.privateNote && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
-                <div className="text-[10px] font-bold uppercase tracking-widest text-amber-500 mb-1">Private Note (Doctor only)</div>
+                <div className="text-[10px] font-bold uppercase tracking-widest text-amber-500 mb-1">Private Note</div>
                 <p className="text-sm text-amber-900">{visit.privateNote}</p>
               </div>
             )}
           </div>
         </div>
+      )}
+
+      {/* Customised PAD print preview for this visit */}
+      {showPrint && visit && (
+        <PrintPreview
+          patient={patient}
+          draft={visitToDraft(visit)}
+          pad={pad}
+          clinicName={clinics[0]?.name}
+          clinicAddress={clinics[0]?.address}
+          clinicPhone={clinics[0]?.phone}
+          onClose={() => setShowPrint(false)}
+        />
       )}
     </div>
   );
@@ -825,6 +882,14 @@ function PrescriptionsTab({ rx, patientId, doctorName, onAdd, showToast }: { rx:
     setForm({ drug: '', dose: '', route: 'Oral', frequency: 'OD', duration: '', instructions: '' });
   }
 
+  // Group by date (YYYY-MM-DD)
+  const grouped = rx.reduce((acc: Record<string, any[]>, r: any) => {
+    const day = (r.time || r.date || '').slice(0, 10);
+    (acc[day] = acc[day] || []).push(r);
+    return acc;
+  }, {});
+  const sortedDays = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
+
   return (
     <div>
       <div className="flex justify-end mb-4">
@@ -832,25 +897,37 @@ function PrescriptionsTab({ rx, patientId, doctorName, onAdd, showToast }: { rx:
           <Plus className="w-4 h-4" /> Add Rx
         </button>
       </div>
-      <div className="table-wrapper">
-        <table className="data-table">
-          <thead><tr><th>Drug</th><th>Dose</th><th>Route</th><th>Frequency</th><th>Duration</th><th>Instructions</th><th>Prescribed By</th><th>Status</th></tr></thead>
-          <tbody>
-            {rx.map(r => (
-              <tr key={r.id}>
-                <td className="font-semibold text-slate-900">{r.drug}</td>
-                <td>{r.dose}</td>
-                <td><span className="badge bg-blue-100 text-blue-700">{r.route}</span></td>
-                <td>{r.frequency}</td>
-                <td>{r.duration}</td>
-                <td className="text-xs text-slate-500">{r.instructions || '—'}</td>
-                <td className="text-xs text-slate-500">{r.prescribedBy}</td>
-                <td><span className={cn('badge', r.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500')}>{r.status}</span></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {rx.length === 0 && <div className="text-center py-8 text-slate-400 text-sm">No prescriptions yet</div>}
+      {rx.length === 0 && <div className="text-center py-8 text-slate-400 text-sm">No prescriptions yet</div>}
+      <div className="space-y-5">
+        {sortedDays.map(day => (
+          <div key={day}>
+            <div className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-2">
+              <span>{new Date(day).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+              <span className="text-[10px] text-slate-300">({grouped[day].length} drug{grouped[day].length !== 1 ? 's' : ''})</span>
+            </div>
+            <div className="table-wrapper">
+              <table className="data-table">
+                <thead><tr><th>Drug</th><th>Dose</th><th>Route</th><th>Frequency</th><th>Duration</th><th>Instructions</th><th>By</th><th>Status</th></tr></thead>
+                <tbody>
+                  {grouped[day].map((r: any) => (
+                    <tr key={r.id}>
+                      <td className="font-semibold text-slate-900">
+                        {r.form && r.form !== 'Tab' ? `${r.form}. ` : 'Tab. '}{r.drug}
+                      </td>
+                      <td>{r.dose || '—'}</td>
+                      <td><span className="badge bg-blue-100 text-blue-700">{r.route || 'Oral'}</span></td>
+                      <td>{r.frequency || '—'}</td>
+                      <td>{r.duration || '—'}</td>
+                      <td className="text-xs text-slate-500">{r.instructions || '—'}</td>
+                      <td className="text-xs text-slate-500">{r.prescribedBy}</td>
+                      <td><span className={cn('badge', r.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500')}>{r.status || 'active'}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ))}
       </div>
       <Modal open={open} onClose={() => setOpen(false)} title="Add Prescription" footer={<><button onClick={() => setOpen(false)} className="btn-secondary">Cancel</button><button onClick={submit} className="btn-primary">Add</button></>}>
         <div className="space-y-4">

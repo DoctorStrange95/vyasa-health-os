@@ -1,11 +1,13 @@
 import { useState, useMemo } from 'react';
-import { FileText, Pill, ChevronDown, ChevronUp, CheckCircle2, Lock, Eye, Pencil, X } from 'lucide-react';
+import { FileText, Pill, ChevronDown, ChevronUp, CheckCircle2, Lock, Eye, Pencil, X, Printer } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { cn, formatDate } from '@/lib/utils';
 import { Link } from 'react-router-dom';
 import { RxSection, type RxRow } from '@/components/prescription/RxSection';
 import { PriorityBadge, StatusBadge } from '@/components/ui/Badge';
+import { PrintPreview } from '@/components/PrintPreview';
+import { usePadStore } from '@/store/usePadStore';
 
 const STATUS_COLORS: Record<string, string> = {
   active: 'bg-emerald-100 text-emerald-700',
@@ -18,7 +20,9 @@ const BLANK_RX_ROW = (): RxRow => ({ id: String(Date.now()), form: 'Tab', drug: 
 export default function PrescriptionsPage() {
   const { patients, prescriptions, addPrescription, vitals, visits } = useAppStore();
   const { user, isDemo } = useAuthStore();
+  const { settings: pad, clinics } = usePadStore();
   const [expandedRx, setExpandedRx] = useState<string | null>(null);
+  const [printRx, setPrintRx] = useState<any | null>(null);
 
   // Rx form state - keyed by patient ID
   const [selectedPatientForRx, setSelectedPatientForRx] = useState<string | null>(null);
@@ -332,11 +336,23 @@ export default function PrescriptionsPage() {
                     {isExpanded ? <ChevronUp className="w-4 h-4 text-slate-400 flex-shrink-0" /> : <ChevronDown className="w-4 h-4 text-slate-400 flex-shrink-0" />}
                   </div>
                   {isExpanded && (
-                    <div className="border-t border-slate-100 mt-3 pt-3 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                      <div><span className="text-slate-400 text-xs uppercase tracking-wide">Patient</span><div className="font-medium text-sm">{rx.patient.name}, {rx.patient.age}y</div></div>
-                      <div><span className="text-slate-400 text-xs uppercase tracking-wide">Prescribed By</span><div className="font-medium text-sm">{rx.prescribedBy}</div></div>
-                      <div><span className="text-slate-400 text-xs uppercase tracking-wide">Instructions</span><div className="font-medium text-sm">{rx.instructions || '—'}</div></div>
-                      <div><span className="text-slate-400 text-xs uppercase tracking-wide">Date</span><div className="font-medium text-sm">{rx.time ? formatDate(rx.time) : '—'}</div></div>
+                    <div className="border-t border-slate-100 mt-3 pt-3 space-y-3">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                        <div><span className="text-slate-400 text-xs uppercase tracking-wide">Patient</span><div className="font-medium text-sm">{rx.patient.name}, {rx.patient.age}y</div></div>
+                        <div><span className="text-slate-400 text-xs uppercase tracking-wide">Prescribed By</span><div className="font-medium text-sm">{rx.prescribedBy}</div></div>
+                        <div><span className="text-slate-400 text-xs uppercase tracking-wide">Instructions</span><div className="font-medium text-sm">{rx.instructions || '—'}</div></div>
+                        <div><span className="text-slate-400 text-xs uppercase tracking-wide">Date</span><div className="font-medium text-sm">{rx.time ? formatDate(rx.time) : '—'}</div></div>
+                      </div>
+                      {!isDemo && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPrintRx(rx);
+                          }}
+                          className="btn-primary btn-sm w-full text-white flex items-center justify-center gap-2">
+                          <Printer className="w-3.5 h-3.5" /> Print Prescription
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -344,6 +360,42 @@ export default function PrescriptionsPage() {
             })}
           </div>
         </div>
+      )}
+
+      {/* Customised PAD print preview for a single prescription */}
+      {printRx && (
+        <PrintPreview
+          patient={printRx.patient}
+          draft={{
+            chiefComplaint: '',
+            hopi: '',
+            diagnosis: printRx.instructions || '',
+            icdCode: '',
+            secondaryDx: '',
+            rxRows: [{
+              id: '0',
+              form: 'Tab',
+              drug: printRx.drug ?? '',
+              dose: printRx.dose ?? '',
+              strength: '',
+              puffs: '',
+              route: printRx.route ?? 'Oral',
+              frequency: printRx.frequency ?? '',
+              duration: printRx.duration ?? '',
+              instructions: printRx.instructions ?? '',
+            }],
+            vitals: { bp: '', hr: '', temp: '', spo2: '', weight: '', height: '', rr: '' },
+            investigation: '',
+            advice: '',
+            followUp: '',
+            referredTo: '',
+          }}
+          pad={pad}
+          clinicName={clinics[0]?.name}
+          clinicAddress={clinics[0]?.address}
+          clinicPhone={clinics[0]?.phone}
+          onClose={() => setPrintRx(null)}
+        />
       )}
     </div>
   );

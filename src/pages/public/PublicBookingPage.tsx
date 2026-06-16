@@ -3,11 +3,17 @@ import { useParams } from 'react-router-dom';
 import { Calendar, Clock, User, CheckCircle } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { usePadStore } from '@/store/usePadStore';
+import { localDate } from '@/lib/utils';
 import type { DaySchedule } from '@/types';
 
-function today() { return new Date().toISOString().slice(0, 10); }
 function addDays(d: string, n: number) {
-  const dt = new Date(d); dt.setDate(dt.getDate() + n); return dt.toISOString().slice(0, 10);
+  const [y, mo, day] = d.split('-').map(Number);
+  const dt = new Date(y, mo - 1, day + n);
+  return localDate(dt);
+}
+function nowHHMM() {
+  const n = new Date();
+  return `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`;
 }
 function hhmm(t: string) {
   return new Date(`2000-01-01T${t}`).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
@@ -35,7 +41,7 @@ function generateSlots(clinicId: string, date: string, schedule: DaySchedule[]) 
 
 export default function PublicBookingPage() {
   const { clinicId } = useParams<{ clinicId: string }>();
-  const { bookingSlots, addBookingSlot, updateBookingSlot } = useAppStore();
+  const { bookingSlots, addBookingSlot, updateBookingSlot, addAppointment } = useAppStore();
   const { clinics, settings } = usePadStore();
 
   const clinic = clinics.find(c => c.id === clinicId);
@@ -45,24 +51,40 @@ export default function PublicBookingPage() {
   const [selectedSlotId, setSelectedSlotId] = useState('');
   const [form, setForm] = useState({ name: '', phone: '', age: '', gender: 'M' as 'M' | 'F' | 'Other', reason: '' });
 
+  const todayStr = localDate();
+
   const availableDays = useMemo(() => {
     if (!clinic) return [];
     const days: string[] = [];
     for (let i = 0; i < 14; i++) {
-      const d = addDays(today(), i);
-      const dow = new Date(d).getDay();
+      const d = addDays(todayStr, i);
+      const [y, mo, day] = d.split('-').map(Number);
+      const dow = new Date(y, mo - 1, day).getDay();
       const ds = clinic.schedule.find(s => s.day === dow);
-      if (ds?.open) days.push(d);
+      if (!ds?.open) continue;
+      // For today, only include if there are future slots remaining
+      if (i === 0) {
+        const slots = generateSlots(clinicId!, d, clinic.schedule);
+        if (slots.some(s => s.time > nowHHMM())) days.push(d);
+      } else {
+        days.push(d);
+      }
     }
     return days;
-  }, [clinic]);
+  }, [clinic, todayStr]);
 
   const timeSlotsForDate = useMemo(() => {
     if (!clinic || !selectedDate) return [];
-    const stored = bookingSlots.filter(s => s.clinicId === clinicId && s.date === selectedDate && s.status === 'available');
-    if (stored.length > 0) return stored;
-    return generateSlots(clinicId!, selectedDate, clinic.schedule).map(s => ({ ...s, status: 'available' as const }));
-  }, [clinic, selectedDate, bookingSlots, clinicId]);
+    const bookedIds = new Set(
+      bookingSlots.filter(s => s.clinicId === clinicId && s.date === selectedDate && s.status === 'booked').map(s => s.id)
+    );
+    const allSlots = generateSlots(clinicId!, selectedDate, clinic.schedule).map(s => ({
+      ...s, status: bookedIds.has(s.id) ? 'booked' as const : 'available' as const,
+    }));
+    // For today, hide past slots
+    if (selectedDate === todayStr) return allSlots.filter(s => s.time > nowHHMM());
+    return allSlots;
+  }, [clinic, selectedDate, bookingSlots, clinicId, todayStr]);
 
   const selectedSlot = timeSlotsForDate.find(s => s.id === selectedSlotId);
 
@@ -77,6 +99,20 @@ export default function PublicBookingPage() {
         durationMins: 15, status: 'booked', patientName: form.name, bookedVia: 'self', fee: clinic?.fee ?? 0,
       });
     }
+    // Always create an appointment so it syncs to backend and shows in doctor's Today's OPD
+    addAppointment({
+      id: `BOOK-${Date.now()}`,
+      patientId: `BOOK-${Date.now()}`,
+      patientName: form.name,
+      patientAge: form.age ? Number(form.age) : undefined,
+      clinicId: clinicId!,
+      clinicName: clinic?.name ?? '',
+      date: selectedDate,
+      time: selectedSlot.time,
+      reason: form.reason || 'OPD Appointment',
+      status: 'scheduled',
+      createdAt: new Date().toISOString(),
+    });
     setStep('confirm');
   };
 
