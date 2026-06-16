@@ -54,6 +54,7 @@ export default function ProfilePage() {
   const [pubSaving, setPubSaving] = useState(false);
   const [pubSaved, setPubSaved] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [qrPreview, setQrPreview] = useState<string | null>(null);
 
   const [form, setForm] = useState({
     name: user?.name || '',
@@ -143,7 +144,7 @@ export default function ProfilePage() {
     setTimeout(() => setCopied(false), 2000);
   }
 
-  async function downloadBrandedQR(bookingLink: string, doctorName: string, slug: string, details?: { specialty?: string; experience?: number; qualification?: string; city?: string }) {
+  async function downloadBrandedQR(bookingLink: string, doctorName: string, slug: string, details?: { specialty?: string; experience?: number; qualification?: string; city?: string }, previewOnly: boolean = false) {
     const canvas = document.createElement('canvas');
     canvas.width = 1080;
     canvas.height = 1500;
@@ -183,9 +184,9 @@ export default function ProfilePage() {
     // ===== DOCTOR PROFILE SECTION =====
     let y = 250;
 
-    // Specialty badge - highlighted box
+    // Specialty badge - highlighted box (Navy)
     if (details?.specialty) {
-      ctx.fillStyle = '#0d9488';
+      ctx.fillStyle = '#0a1628';
       ctx.fillRect(80, y - 20, canvas.width - 160, 45);
       ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
@@ -194,22 +195,23 @@ export default function ProfilePage() {
       y += 80;
     }
 
-    // Doctor Name - PROMINENT, TEAL COLOR
-    ctx.fillStyle = '#0d9488';
+    // Doctor Name - PROMINENT, NAVY COLOR
+    ctx.fillStyle = '#0a1628';
     ctx.font = 'bold 64px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(`Dr ${doctorName}`, canvas.width / 2, y);
     y += 90;
 
-    // Qualification/Degree - BIGGER FONT BELOW NAME
+    // Qualification/Degree - BIGGER FONT BELOW NAME - SHOW ALL QUALIFICATIONS
     if (details?.qualification) {
       ctx.fillStyle = '#1a2f4d';
-      ctx.font = 'bold 28px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.font = 'bold 26px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
       ctx.textAlign = 'center';
-      const qualText = details.qualification.split(',')[0].trim();
+      // Get all qualifications, not just first one
+      const qualText = details.qualification.trim();
 
       // Handle long text by wrapping
-      if (qualText.length > 30) {
+      if (qualText.length > 35) {
         const words = qualText.split(' ');
         let line1 = '';
         let line2 = '';
@@ -217,7 +219,7 @@ export default function ProfilePage() {
 
         for (let i = 0; i < words.length; i++) {
           const testLine = currentLine + (currentLine ? ' ' : '') + words[i];
-          if (testLine.length > 20 && !line1) {
+          if (testLine.length > 22 && !line1) {
             line1 = currentLine;
             currentLine = words[i];
           } else {
@@ -246,7 +248,7 @@ export default function ProfilePage() {
     if (infoText) {
       ctx.fillStyle = '#f0f9ff';
       ctx.fillRect(50, y - 30, canvas.width - 100, 60);
-      ctx.strokeStyle = '#0d9488';
+      ctx.strokeStyle = '#0a1628';
       ctx.lineWidth = 2;
       ctx.strokeRect(50, y - 30, canvas.width - 100, 60);
 
@@ -281,8 +283,8 @@ export default function ProfilePage() {
     y += 680;
 
     // ===== CALL TO ACTION SECTION =====
-    // Action button style
-    ctx.fillStyle = '#0d9488';
+    // Action button style (Navy)
+    ctx.fillStyle = '#0a1628';
     ctx.fillRect(50, y, canvas.width - 100, 80);
 
     ctx.fillStyle = '#ffffff';
@@ -294,17 +296,23 @@ export default function ProfilePage() {
     ctx.font = 'bold 28px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.fillText('Get Instant Consultation', canvas.width / 2, y + 65);
 
-    // Convert to JPG and download
+    // Convert to JPG and download or preview
     canvas.toBlob((blob) => {
       if (blob) {
         const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `Dr-${slug}-BookingQR.jpg`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        if (previewOnly) {
+          // Show preview
+          setQrPreview(url);
+        } else {
+          // Download directly
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `Dr-${slug}-BookingQR.jpg`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }
       }
     }, 'image/jpeg', 0.95);
   }
@@ -560,17 +568,30 @@ export default function ProfilePage() {
                     />
                   </a>
                   <p className="text-xs opacity-60 mt-1.5">Scan or click to book</p>
-                  <button
-                    onClick={() => downloadBrandedQR(bookingLink, user?.name || 'Doctor', slug, {
-                      specialty: form.specialty,
-                      experience: pubProfile?.years_experience,
-                      qualification: form.qualification,
-                      city: pubProfile?.city
-                    })}
-                    className="text-xs opacity-75 hover:opacity-100 underline mt-0.5 block hover:text-teal-600 font-medium"
-                  >
-                    Download JPG
-                  </button>
+                  <div className="flex flex-col gap-1.5 mt-2">
+                    <button
+                      onClick={() => downloadBrandedQR(bookingLink, user?.name || 'Doctor', slug, {
+                        specialty: form.specialty,
+                        experience: pubProfile?.years_experience,
+                        qualification: form.qualification,
+                        city: pubProfile?.city
+                      }, true)}
+                      className="text-xs opacity-75 hover:opacity-100 underline hover:text-teal-600 font-medium"
+                    >
+                      Preview
+                    </button>
+                    <button
+                      onClick={() => downloadBrandedQR(bookingLink, user?.name || 'Doctor', slug, {
+                        specialty: form.specialty,
+                        experience: pubProfile?.years_experience,
+                        qualification: form.qualification,
+                        city: pubProfile?.city
+                      }, false)}
+                      className="text-xs opacity-75 hover:opacity-100 underline hover:text-teal-600 font-medium"
+                    >
+                      Download JPG
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -842,6 +863,46 @@ export default function ProfilePage() {
           <LogOut className="w-4 h-4" /> Logout
         </button>
       </div>
+
+      {/* QR Preview Modal */}
+      {qrPreview && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-auto">
+            <div className="sticky top-0 bg-white border-b border-slate-200 p-4 flex items-center justify-between">
+              <h3 className="font-semibold text-slate-900">QR Code Preview</h3>
+              <button
+                onClick={() => setQrPreview(null)}
+                className="text-slate-400 hover:text-slate-600 text-2xl leading-none"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-6 flex flex-col items-center gap-4">
+              <img src={qrPreview} alt="QR Code Preview" className="w-full rounded-xl border border-slate-200" />
+              <div className="flex gap-3 w-full">
+                <button
+                  onClick={() => {
+                    const a = document.createElement('a');
+                    a.href = qrPreview;
+                    a.download = 'booking-qr.jpg';
+                    a.click();
+                    setQrPreview(null);
+                  }}
+                  className="flex-1 px-4 py-2.5 rounded-lg bg-teal-600 text-white font-semibold hover:bg-teal-700 transition-colors"
+                >
+                  Download
+                </button>
+                <button
+                  onClick={() => setQrPreview(null)}
+                  className="flex-1 px-4 py-2.5 rounded-lg bg-slate-200 text-slate-900 font-semibold hover:bg-slate-300 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
