@@ -149,7 +149,7 @@ export const usePadStore = create<PadStore>()(
         if (!isApiEnabled()) return;
         try {
           const rows = await api.get<Clinic[]>('/clinics');
-          if (Array.isArray(rows) && rows.length) {
+          if (Array.isArray(rows)) {
             set({ clinics: rows.map(r => ({ ...r, schedule: r.schedule ?? [] })) });
           }
         } catch { /* offline / demo — keep local clinics */ }
