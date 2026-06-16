@@ -479,15 +479,16 @@ export default function ProfilePage() {
                 </div>
                 {/* QR Code */}
                 <div className="flex-shrink-0 text-center">
-                  <div className="bg-white rounded-xl p-1.5">
+                  <a href={bookingLink} target="_blank" rel="noopener noreferrer"
+                    className="inline-block bg-white rounded-xl p-1.5 hover:shadow-lg transition-shadow duration-200 cursor-pointer">
                     <img
                       src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(bookingLink)}&bgcolor=ffffff&color=0a1628&margin=4`}
-                      alt="QR Code"
+                      alt="QR Code - Click to open booking page"
                       width={100} height={100}
-                      className="rounded-lg"
+                      className="rounded-lg hover:opacity-80 transition-opacity"
                     />
-                  </div>
-                  <p className="text-xs opacity-60 mt-1.5">Scan to book</p>
+                  </a>
+                  <p className="text-xs opacity-60 mt-1.5">Scan or click to book</p>
                   <button
                     onClick={() => downloadBrandedQR(bookingLink, user?.name || 'Doctor', slug)}
                     className="text-xs opacity-75 hover:opacity-100 underline mt-0.5 block hover:text-teal-600 font-medium"
