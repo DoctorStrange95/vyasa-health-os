@@ -213,15 +213,19 @@ export default function ProfilePage() {
     ctx.strokeStyle = '#1a2f4d';
     ctx.lineWidth = 4;
     ctx.beginPath();
-    ctx.moveTo(200, canvas.height - 90);
-    ctx.lineTo(canvas.width - 200, canvas.height - 90);
+    ctx.moveTo(200, canvas.height - 100);
+    ctx.lineTo(canvas.width - 200, canvas.height - 100);
     ctx.stroke();
 
-    // Bottom instructions
+    // Bottom instructions for patients
     ctx.fillStyle = '#0a1628';
-    ctx.font = 'bold 22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.font = 'bold 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('Print & Display at Reception', canvas.width / 2, canvas.height - 20);
+    ctx.fillText('Scan to Book Online', canvas.width / 2, canvas.height - 45);
+
+    ctx.fillStyle = '#475569';
+    ctx.font = '20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.fillText('Get Instant Consultation', canvas.width / 2, canvas.height - 10);
 
     // Convert to JPG and download
     canvas.toBlob((blob) => {
