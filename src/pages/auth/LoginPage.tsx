@@ -379,6 +379,19 @@ export default function LoginPage() {
             </Link>
           </div>
 
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 18, padding: '14px 16px', background: '#f0fdf4', border: '1.5px solid #dcfce7', borderRadius: 11 }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#0f2040' }}>Looking for a Doctor?</div>
+              <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>Browse our verified doctors network</div>
+            </div>
+            <Link to="/doctors"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'white', border: '1.5px solid #dcfce7', borderRadius: 11, padding: '9px 16px', fontSize: 13, fontWeight: 700, color: '#0d9488', textDecoration: 'none', whiteSpace: 'nowrap', transition: 'all 0.2s' }}
+              onMouseOver={e => { (e.currentTarget as HTMLAnchorElement).style.borderColor = '#0d9488'; (e.currentTarget as HTMLAnchorElement).style.background = '#f0fdf4'; }}
+              onMouseOut={e => { (e.currentTarget as HTMLAnchorElement).style.borderColor = '#dcfce7'; (e.currentTarget as HTMLAnchorElement).style.background = 'white'; }}>
+              Browse
+            </Link>
+          </div>
+
           <p style={{ textAlign: 'center', fontSize: 12, color: '#cbd5e1', marginTop: 18 }}>
             Vyasa Health Technologies Pvt. Ltd.
           </p>
