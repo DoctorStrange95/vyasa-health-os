@@ -68,7 +68,7 @@ export function QuickRegisterModal() {
   function handleRegister() {
     if (!name.trim() || !age) return;
 
-    const newId = `P-${Date.now()}`;
+    const newId = `p-${Date.now()}`;
     const mrn = `MRN-${String(patients.length + 1).padStart(3, '0')}`;
     const todayQueueCount = queue.filter(q => q.status !== 'no-show').length;
     const token = todayQueueCount + 1;
