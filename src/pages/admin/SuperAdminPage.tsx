@@ -122,8 +122,12 @@ export default function SuperAdminPage() {
     try {
       await api.post(`/admin/users/${id}/delete`, {});
       setUsers(prev => prev.filter(u => u.id !== id));
-      alert('Doctor profile deleted');
-    } catch (e) { alert(e instanceof Error ? e.message : 'Failed to delete'); }
+      alert('Doctor profile deleted successfully');
+    } catch (e: any) {
+      const errorMsg = e?.response?.data?.error || e?.message || 'Failed to delete doctor';
+      alert(errorMsg || 'An error occurred');
+      console.error('Delete error:', e);
+    }
     finally { setActing(null); }
   }
 
