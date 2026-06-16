@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { FileText, Plus, Search, Printer, Send, Pill, Calendar, User, ChevronDown, ChevronUp, Clock, CheckCircle2, XCircle } from 'lucide-react';
+import { FileText, Plus, Search, Printer, Send, Pill, Calendar, User, ChevronDown, ChevronUp, Clock, CheckCircle2, XCircle, Lock } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { cn, formatDate } from '@/lib/utils';
@@ -20,7 +20,7 @@ interface RxDrug { drug: string; dose: string; route: string; frequency: string;
 
 export default function PrescriptionsPage() {
   const { patients, prescriptions, addPrescription } = useAppStore();
-  const { user } = useAuthStore();
+  const { user, isDemo } = useAuthStore();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'completed'>('active');
   const [showNew, setShowNew] = useState(false);
@@ -67,6 +67,10 @@ export default function PrescriptionsPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (isDemo) {
+      alert('Writing prescriptions is not available in demo mode');
+      return;
+    }
     if (!selectedPatient || drugs.some(d => !d.drug || !d.dose)) return;
     setSaving(true);
     await new Promise(r => setTimeout(r, 400));
@@ -103,15 +107,32 @@ export default function PrescriptionsPage() {
 
   return (
     <div className="p-0 md:p-6 space-y-6">
+      {/* Demo Mode Banner */}
+      {isDemo && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-start gap-3">
+          <Lock className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <div className="font-semibold text-amber-900">Demo Mode - Read Only</div>
+            <div className="text-sm text-amber-800 mt-0.5">You cannot write, print, or share prescriptions in demo mode. This is a demonstration account only.</div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Prescriptions</h1>
           <p className="text-sm text-slate-500 mt-0.5">Manage and write prescriptions for your patients</p>
         </div>
-        <button onClick={() => setShowNew(true)} className="btn-primary">
-          <Plus className="w-4 h-4" /> Write Prescription
-        </button>
+        {isDemo ? (
+          <button disabled className="btn-primary opacity-50 cursor-not-allowed" title="Not available in demo mode">
+            <Lock className="w-4 h-4" /> Write Prescription (Demo)
+          </button>
+        ) : (
+          <button onClick={() => setShowNew(true)} className="btn-primary">
+            <Plus className="w-4 h-4" /> Write Prescription
+          </button>
+        )}
       </div>
 
       {/* Stats */}
@@ -162,7 +183,12 @@ export default function PrescriptionsPage() {
         {filtered.map(rx => {
           const isExpanded = expandedRx === rx.id;
           return (
-            <div key={rx.id} className="card overflow-hidden">
+            <div key={rx.id} className={cn("card overflow-hidden", isDemo && "relative")}>
+              {isDemo && (
+                <div className="absolute inset-0 z-10 pointer-events-none flex items-center justify-center opacity-10">
+                  <div className="text-8xl font-bold text-slate-900 transform -rotate-45">DEMO</div>
+                </div>
+              )}
               <div className="p-4 flex flex-wrap items-center gap-3 sm:gap-4 cursor-pointer hover:bg-slate-50"
                 onClick={() => setExpandedRx(isExpanded ? null : rx.id)}>
                 <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center flex-shrink-0">
@@ -182,12 +208,16 @@ export default function PrescriptionsPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0 w-full sm:w-auto justify-end">
-                  <button className="btn-secondary btn-sm" onClick={e => { e.stopPropagation(); window.print(); }}>
-                    <Printer className="w-3.5 h-3.5" /> Print
-                  </button>
-                  <button className="btn-secondary btn-sm" onClick={e => e.stopPropagation()}>
-                    <Send className="w-3.5 h-3.5" /> WhatsApp
-                  </button>
+                  {!isDemo && (
+                    <>
+                      <button className="btn-secondary btn-sm" onClick={e => { e.stopPropagation(); window.print(); }}>
+                        <Printer className="w-3.5 h-3.5" /> Print
+                      </button>
+                      <button className="btn-secondary btn-sm" onClick={e => e.stopPropagation()}>
+                        <Send className="w-3.5 h-3.5" /> WhatsApp
+                      </button>
+                    </>
+                  )}
                   {isExpanded ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
                 </div>
               </div>

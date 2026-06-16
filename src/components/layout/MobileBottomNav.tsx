@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Users, ListOrdered, Pill, User } from 'lucide-react';
+import { LayoutDashboard, Users, ListOrdered, Pill, User, Lock } from 'lucide-react';
 import { useAuthStore } from '@/store/useAuthStore';
 import { cn } from '@/lib/utils';
 
@@ -28,7 +28,7 @@ const BOTTOM_NAV_BY_ROLE: Record<string, { icon: React.ComponentType<{ className
 };
 
 export function MobileBottomNav() {
-  const { user } = useAuthStore();
+  const { user, isDemo } = useAuthStore();
   const location = useLocation();
 
   if (!user) return null;
@@ -40,7 +40,22 @@ export function MobileBottomNav() {
       <div className="flex">
         {items.map(item => {
           const isActive = location.pathname === item.to || location.pathname.startsWith(item.to + '/');
-          return (
+          // Disable Write Rx in demo mode
+          const isDisabledForDemo = isDemo && (item.label === 'Write Rx');
+
+          return isDisabledForDemo ? (
+            <div
+              key={item.to}
+              className="relative flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 text-[10px] font-medium opacity-50 cursor-not-allowed"
+              title="Not available in demo mode"
+            >
+              <div className="w-5 h-5 relative">
+                <item.icon className="w-5 h-5 text-slate-400" />
+                <Lock className="w-3 h-3 absolute -bottom-0.5 -right-0.5 text-red-500" />
+              </div>
+              {item.label}
+            </div>
+          ) : (
             <Link
               key={item.to}
               to={item.to}
