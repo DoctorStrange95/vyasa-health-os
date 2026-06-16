@@ -43,6 +43,10 @@ export function MobileBottomNav() {
           // Disable Write Rx in demo mode
           const isDisabledForDemo = isDemo && (item.label === 'Write Rx');
 
+          // Highlight Rx/Write Rx button
+          const isRxButton = item.label.includes('Rx');
+          const rxHighlight = isRxButton && !isDisabledForDemo ? 'bg-teal-50 text-teal-700' : '';
+
           return isDisabledForDemo ? (
             <div
               key={item.to}
@@ -60,14 +64,15 @@ export function MobileBottomNav() {
               key={item.to}
               to={item.to}
               className={cn(
-                'relative flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 text-[10px] font-medium transition-colors',
+                'relative flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 text-[10px] font-medium transition-colors rounded-lg',
                 isActive
-                  ? 'text-teal-600'
-                  : 'text-slate-400 active:text-teal-500'
+                  ? 'text-teal-600 bg-teal-50'
+                  : 'text-slate-400 active:text-teal-500',
+                rxHighlight && 'border-t-2 border-teal-500'
               )}
             >
-              <item.icon className={cn('w-5 h-5', isActive && 'text-teal-600')} />
-              {item.label}
+              <item.icon className={cn('w-5 h-5', (isActive || isRxButton) && 'text-teal-600')} />
+              <span className={cn('font-semibold', isRxButton && 'text-teal-700')}>{item.label}</span>
               {isActive && <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-6 h-0.5 bg-teal-500 rounded-full" />}
             </Link>
           );

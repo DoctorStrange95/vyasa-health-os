@@ -31,6 +31,13 @@ export default function PrescriptionsPage() {
   const [drugs, setDrugs] = useState<RxDrug[]>([{ drug: '', dose: '', route: 'Oral', frequency: 'Twice daily', duration: '7 days', instructions: '' }]);
   const [diagnosis, setDiagnosis] = useState('');
   const [notes, setNotes] = useState('');
+  const [showAddPatient, setShowAddPatient] = useState(false);
+
+  // Quick patient registration state
+  const [newPtName, setNewPtName] = useState('');
+  const [newPtAge, setNewPtAge] = useState('');
+  const [newPtGender, setNewPtGender] = useState<'M' | 'F' | 'Other'>('M');
+  const [newPtPhone, setNewPtPhone] = useState('');
   const [saving, setSaving] = useState(false);
 
   // Flatten all prescriptions with patient info
@@ -63,6 +70,34 @@ export default function PrescriptionsPage() {
 
   function removeDrug(i: number) {
     setDrugs(d => d.filter((_, idx) => idx !== i));
+  }
+
+  function handleQuickAddPatient() {
+    if (!newPtName.trim() || !newPtAge) return;
+    const { upsertPatient } = useAppStore.getState();
+    const newPatientId = `p-${Date.now()}`;
+    const mrn = `MRN-${String(patients.length + 1).padStart(3, '0')}`;
+
+    upsertPatient({
+      id: newPatientId,
+      name: newPtName.trim(),
+      age: Number(newPtAge),
+      gender: newPtGender,
+      mrn,
+      phone: newPtPhone || undefined,
+      status: 'OPD',
+      priority: 'Stable',
+      allergies: [],
+      attendingDoctor: user?.name ?? '',
+      attendingDoctorId: user?.id,
+    });
+
+    setSelectedPatient(newPatientId);
+    setShowAddPatient(false);
+    setNewPtName('');
+    setNewPtAge('');
+    setNewPtPhone('');
+    setNewPtGender('M');
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -237,16 +272,44 @@ export default function PrescriptionsPage() {
       {/* Write Rx Modal */}
       <Modal open={showNew} onClose={() => setShowNew(false)} title="Write Prescription" size="lg">
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Patient select */}
-          <div>
-            <label className="label">Patient *</label>
-            <select value={selectedPatient} onChange={e => setSelectedPatient(e.target.value)} className="input" required>
-              <option value="">Select patient…</option>
-              {patients.filter(p => p.status !== 'Discharged').map(p => (
-                <option key={p.id} value={p.id}>{p.name} · {p.status} · {p.diagnosis}</option>
-              ))}
-            </select>
-          </div>
+          {/* Patient selection or quick add */}
+          {!showAddPatient ? (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="label mb-0">Patient *</label>
+                <button type="button" onClick={() => setShowAddPatient(true)} className="btn-secondary btn-sm text-xs">
+                  <Plus className="w-3 h-3" /> Add New
+                </button>
+              </div>
+              <select value={selectedPatient} onChange={e => setSelectedPatient(e.target.value)} className="input" required>
+                <option value="">Select patient…</option>
+                {patients.filter(p => p.status !== 'Discharged').map(p => (
+                  <option key={p.id} value={p.id}>{p.name} · {p.status} · {p.diagnosis}</option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div className="border border-teal-200 bg-teal-50 rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-semibold text-teal-900">Register New Patient</h3>
+                <button type="button" onClick={() => setShowAddPatient(false)} className="text-teal-600 hover:text-teal-800 text-xl">×</button>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <input type="text" placeholder="Patient name" value={newPtName} onChange={e => setNewPtName(e.target.value)} className="input text-sm" required />
+                <input type="number" placeholder="Age" value={newPtAge} onChange={e => setNewPtAge(e.target.value)} className="input text-sm" required />
+                <select value={newPtGender} onChange={e => setNewPtGender(e.target.value as 'M' | 'F' | 'Other')} className="input text-sm">
+                  <option value="M">Male</option>
+                  <option value="F">Female</option>
+                  <option value="Other">Other</option>
+                </select>
+                <input type="tel" placeholder="Phone (optional)" value={newPtPhone} onChange={e => setNewPtPhone(e.target.value)} className="input text-sm" />
+              </div>
+              <div className="flex gap-2">
+                <button type="button" onClick={handleQuickAddPatient} className="btn-primary btn-sm flex-1">Register</button>
+                <button type="button" onClick={() => setShowAddPatient(false)} className="btn-secondary btn-sm flex-1">Cancel</button>
+              </div>
+            </div>
+          )}
 
           {activePt && (
             <div className="flex items-center gap-3 bg-teal-50 rounded-xl px-4 py-2.5 text-sm">
