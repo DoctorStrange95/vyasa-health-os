@@ -35,10 +35,10 @@ export default function DoctorsDirectoryPage() {
   useEffect(() => {
     async function loadDoctors() {
       try {
-        const res = await fetch(`${API_BASE}/api/doctors?approved=true`);
+        const res = await fetch(`${API_BASE}/public/doctors`);
         if (res.ok) {
           const data = await res.json();
-          setDoctors(data);
+          setDoctors(data.doctors || data);
         }
       } catch (err) {
         console.error('Failed to load doctors:', err);
