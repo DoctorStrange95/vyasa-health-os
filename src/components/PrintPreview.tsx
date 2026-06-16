@@ -1,4 +1,6 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
+import { useAuthStore } from '@/store/useAuthStore';
+import { api } from '@/lib/api';
 import { Printer, Send, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -164,6 +166,21 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
       ? `<div style="margin-top:16px;padding-top:8px;border-top:1px solid #e2e8f0;font-size:10px;color:#94a3b8;text-align:center;">${esc(pad.footerNote)}</div>`
       : '';
 
+    const qrHtml = bookingUrl
+      ? `<div style="text-align:center;">
+          <img src="https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${encodeURIComponent(bookingUrl)}&bgcolor=ffffff&color=0a1628&margin=2" width="44" height="44" alt="Scan to book" style="border-radius:4px;border:1px solid #e2e8f0;" />
+          <div style="font-size:8px;color:#94a3b8;margin-top:2px;">Scan to Book</div>
+         </div>`
+      : '';
+    const vyasaBrand = `
+      <div style="margin-top:24px;padding-top:8px;border-top:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+        ${qrHtml}
+        <div style="flex:1;display:flex;align-items:center;justify-content:flex-end;gap:6px;">
+          <img src="${window.location.origin}/logos/vyasa-logo.svg" width="14" height="14" alt="Vyasa" style="display:inline-block;vertical-align:middle;border-radius:3px;" />
+          <span style="font-size:9px;color:#94a3b8;letter-spacing:0.04em;">Powered by <strong style="color:#64748b;">Vyasa Integrated Healthcare</strong></span>
+        </div>
+      </div>`;
+
     return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Prescription</title>
       <style>
         @page { margin: 12mm; }
@@ -180,6 +197,7 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
         ${body}
         ${signature}
         ${footer}
+        ${vyasaBrand}
       </body></html>`;
   }
 
@@ -209,6 +227,23 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
   }
 
   const doctorDisplayName = pad.doctorName || 'Dr. ';
+
+  const user = useAuthStore(s => s.user);
+  const [bookingUrl, setBookingUrl] = useState('');
+  useEffect(() => {
+    api.get<{ profile_slug?: string }>('/auth/me/public-profile').then(p => {
+      const slug = p?.profile_slug
+        ?? (user?.name ?? '').toLowerCase().replace(/^dr\.?\s+/i, '').replace(/[^a-z0-9\s]/g, '').trim().replace(/\s+/g, '-');
+      if (!slug) return;
+      const base = window.location.hostname === 'localhost'
+        ? `${window.location.protocol}//${window.location.host}`
+        : 'https://vyasaa.com';
+      setBookingUrl(`${base}/dr/${slug}`);
+    }).catch(() => {});
+  }, [user?.name]);
+  const qrSrc = bookingUrl
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${encodeURIComponent(bookingUrl)}&bgcolor=ffffff&color=0a1628&margin=2`
+    : '';
 
   return (
     <div className="rx-print-modal fixed inset-0 z-50 flex bg-black/60" onClick={onClose}>
@@ -378,12 +413,28 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
               </div>
             </div>
 
-            {/* Footer */}
+            {/* Footer note (user-editable) */}
             {pad.footerNote && (
               <div className="mt-4 pt-2 border-t border-slate-200 text-xs text-slate-400 text-center">
                 {pad.footerNote}
               </div>
             )}
+
+            {/* Fixed Vyasa branding — always visible, non-removable */}
+            <div className="mt-5 pt-2 border-t border-slate-200 flex items-center justify-between gap-2">
+              {bookingUrl && (
+                <div className="flex flex-col items-center">
+                  <img src={qrSrc} width={44} height={44} alt="Scan to book" className="rounded border border-slate-200" />
+                  <span className="text-[8px] text-slate-400 mt-0.5">Scan to Book</span>
+                </div>
+              )}
+              <div className="flex-1 flex items-center justify-end gap-1.5">
+                <img src="/logos/vyasa-logo.svg" width={14} height={14} alt="Vyasa" className="rounded-sm" />
+                <span className="text-[9px] text-slate-400 tracking-wide">
+                  Powered by <strong className="text-slate-500">Vyasa Integrated Healthcare</strong>
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
