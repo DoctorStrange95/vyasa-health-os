@@ -1,14 +1,11 @@
 import { useState, useMemo } from 'react';
-import { FileText, Plus, Search, Printer, Send, Pill, Calendar, User, ChevronDown, ChevronUp, Clock, CheckCircle2, XCircle, Lock } from 'lucide-react';
+import { FileText, Plus, Search, Printer, Send, Pill, Calendar, User, ChevronDown, ChevronUp, Clock, CheckCircle2, Lock } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { cn, formatDate } from '@/lib/utils';
 import Modal from '@/components/ui/Modal';
+import { RxSection, type RxRow } from '@/components/prescription/RxSection';
 import type { Medication, Patient } from '@/types';
-
-const ROUTES = ['Oral', 'IV', 'IM', 'SC', 'Topical', 'Inhaled', 'Sublingual', 'Rectal', 'Nasal'];
-const FREQUENCIES = ['Once daily', 'Twice daily', 'Three times daily', 'Four times daily', 'Every 6 hours', 'Every 8 hours', 'Every 12 hours', 'As needed', 'Stat (immediately)', 'Bedtime'];
-const DURATIONS = ['1 day', '3 days', '5 days', '7 days', '10 days', '14 days', '21 days', '30 days', '60 days', 'Ongoing'];
 
 const STATUS_COLORS: Record<string, string> = {
   active: 'bg-emerald-100 text-emerald-700',
@@ -16,7 +13,7 @@ const STATUS_COLORS: Record<string, string> = {
   completed: 'bg-slate-100 text-slate-600',
 };
 
-interface RxDrug { drug: string; dose: string; route: string; frequency: string; duration: string; instructions: string; }
+const BLANK_RX_ROW = (): RxRow => ({ id: String(Date.now()), form: 'Tab', drug: '', dose: '', strength: '', puffs: '', doseML: '', route: 'Oral', frequency: 'OD', duration: '5 days', instructions: '' });
 
 export default function PrescriptionsPage() {
   const { patients, prescriptions, addPrescription } = useAppStore();
@@ -28,7 +25,7 @@ export default function PrescriptionsPage() {
 
   // New Rx form state
   const [selectedPatient, setSelectedPatient] = useState('');
-  const [drugs, setDrugs] = useState<RxDrug[]>([{ drug: '', dose: '', route: 'Oral', frequency: 'Twice daily', duration: '7 days', instructions: '' }]);
+  const [rxRows, setRxRows] = useState<RxRow[]>([BLANK_RX_ROW()]);
   const [diagnosis, setDiagnosis] = useState('');
   const [notes, setNotes] = useState('');
   const [showAddPatient, setShowAddPatient] = useState(false);
@@ -60,16 +57,25 @@ export default function PrescriptionsPage() {
     });
   }, [allRx, search, statusFilter]);
 
-  function addDrug() {
-    setDrugs(d => [...d, { drug: '', dose: '', route: 'Oral', frequency: 'Twice daily', duration: '7 days', instructions: '' }]);
+  function updateRxForm(id: string, form: RxRow['form']) {
+    const FORM_ROUTES: Record<RxRow['form'], string> = { Tab: 'Oral', Cap: 'Oral', Syr: 'Oral', MDI: 'Inhaled', Drops: 'Topical', Cream: 'Topical', Inj: 'IM' };
+    setRxRows(rows => rows.map(r => r.id === id ? { ...r, form, route: FORM_ROUTES[form] } : r));
   }
 
-  function updateDrug(i: number, field: keyof RxDrug, val: string) {
-    setDrugs(d => d.map((drug, idx) => idx === i ? { ...drug, [field]: val } : drug));
+  function updateRx(id: string, field: keyof RxRow, val: string) {
+    setRxRows(rows => rows.map(r => r.id === id ? { ...r, [field]: val } : r));
   }
 
-  function removeDrug(i: number) {
-    setDrugs(d => d.filter((_, idx) => idx !== i));
+  function removeRx(id: string) {
+    setRxRows(rows => rows.filter(r => r.id !== id));
+  }
+
+  function updateRxMulti(id: string, fields: Partial<RxRow>) {
+    setRxRows(rows => rows.map(r => r.id === id ? { ...r, ...fields } : r));
+  }
+
+  function addRxRow() {
+    setRxRows(rows => [...rows, BLANK_RX_ROW()]);
   }
 
   function handleQuickAddPatient() {
@@ -106,10 +112,11 @@ export default function PrescriptionsPage() {
       alert('Writing prescriptions is not available in demo mode');
       return;
     }
-    if (!selectedPatient || drugs.some(d => !d.drug || !d.dose)) return;
+    const activeDrugs = rxRows.filter(r => r.drug.trim());
+    if (!selectedPatient || activeDrugs.length === 0) return;
     setSaving(true);
     await new Promise(r => setTimeout(r, 400));
-    drugs.forEach(d => {
+    activeDrugs.forEach(d => {
       addPrescription({
         id: `rx-${Date.now()}-${Math.random()}`,
         patientId: selectedPatient,
@@ -127,7 +134,7 @@ export default function PrescriptionsPage() {
     setSaving(false);
     setShowNew(false);
     setSelectedPatient('');
-    setDrugs([{ drug: '', dose: '', route: 'Oral', frequency: 'Twice daily', duration: '7 days', instructions: '' }]);
+    setRxRows([BLANK_RX_ROW()]);
     setDiagnosis('');
     setNotes('');
   }
@@ -324,63 +331,19 @@ export default function PrescriptionsPage() {
             <input value={diagnosis} onChange={e => setDiagnosis(e.target.value)} placeholder="e.g. Hypertension, Type 2 DM" className="input" />
           </div>
 
-          {/* Drug rows */}
+          {/* Drug rows - using unified RxSection */}
           <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="label mb-0">Medications *</label>
-              <button type="button" onClick={addDrug} className="btn-secondary btn-sm">
-                <Plus className="w-3.5 h-3.5" /> Add Drug
-              </button>
-            </div>
-            <div className="space-y-3">
-              {drugs.map((drug, i) => (
-                <div key={i} className="border border-slate-200 rounded-xl p-3 space-y-3 bg-slate-50">
-                  <div className="flex items-start gap-2">
-                    <div className="flex-1 grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-xs text-slate-500 font-medium mb-1 block">Drug Name *</label>
-                        <input value={drug.drug} onChange={e => updateDrug(i, 'drug', e.target.value)}
-                          placeholder="e.g. Amlodipine" className="input text-sm" required />
-                      </div>
-                      <div>
-                        <label className="text-xs text-slate-500 font-medium mb-1 block">Dose *</label>
-                        <input value={drug.dose} onChange={e => updateDrug(i, 'dose', e.target.value)}
-                          placeholder="e.g. 5mg" className="input text-sm" required />
-                      </div>
-                      <div>
-                        <label className="text-xs text-slate-500 font-medium mb-1 block">Route</label>
-                        <select value={drug.route} onChange={e => updateDrug(i, 'route', e.target.value)} className="input text-sm">
-                          {ROUTES.map(r => <option key={r}>{r}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-xs text-slate-500 font-medium mb-1 block">Frequency</label>
-                        <select value={drug.frequency} onChange={e => updateDrug(i, 'frequency', e.target.value)} className="input text-sm">
-                          {FREQUENCIES.map(f => <option key={f}>{f}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-xs text-slate-500 font-medium mb-1 block">Duration</label>
-                        <select value={drug.duration} onChange={e => updateDrug(i, 'duration', e.target.value)} className="input text-sm">
-                          {DURATIONS.map(d => <option key={d}>{d}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-xs text-slate-500 font-medium mb-1 block">Instructions</label>
-                        <input value={drug.instructions} onChange={e => updateDrug(i, 'instructions', e.target.value)}
-                          placeholder="After food, with water…" className="input text-sm" />
-                      </div>
-                    </div>
-                    {drugs.length > 1 && (
-                      <button type="button" onClick={() => removeDrug(i)}
-                        className="mt-6 text-red-400 hover:text-red-600 flex-shrink-0">
-                        <XCircle className="w-5 h-5" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
+            <label className="label mb-2">Medications *</label>
+            <RxSection
+              rxRows={rxRows}
+              onUpdateRxForm={updateRxForm}
+              onUpdateRx={updateRx}
+              onUpdateRxMulti={updateRxMulti}
+              onRemoveRx={removeRx}
+              onAddRx={addRxRow}
+              showAddButton={true}
+              compact={true}
+            />
           </div>
 
           <div>

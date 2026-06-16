@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ChevronDown, ChevronUp, CheckCircle2, Printer, Send, Save,
-  Plus, Trash2, ArrowLeft, FileText, Loader2,
+  Plus, ArrowLeft, FileText, Loader2,
   Activity, Pill, FlaskConical, ClipboardList, MessageCircle, X,
   BedDouble, Share2, Syringe, Scissors, Upload, Camera, Calculator
 } from 'lucide-react';
@@ -11,29 +11,12 @@ import { useAuthStore } from '@/store/useAuthStore';
 import { usePadStore } from '@/store/usePadStore';
 import { BodyDiagram } from '@/components/BodyDiagram';
 import { ClinicalCalculators } from '@/components/ClinicalCalculators';
-import { DrugAutocomplete } from '@/components/prescription/DrugAutocomplete';
-import { FrequencyPicker } from '@/components/prescription/FrequencyPicker';
-import { DurationPicker } from '@/components/prescription/DurationPicker';
+import { RxSection, type RxRow, type RxForm } from '@/components/prescription/RxSection';
 import { FavDrugsPanel } from '@/components/prescription/FavDrugsPanel';
 import { cn } from '@/lib/utils';
-import type { DrugKB, VaccineEntry, ProcedureEntry, AttachmentEntry } from '@/types';
+import type { VaccineEntry, ProcedureEntry, AttachmentEntry } from '@/types';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
-
-type RxForm = 'Tab' | 'Cap' | 'Syr' | 'MDI' | 'Drops' | 'Cream' | 'Inj';
-interface RxRow {
-  id: string;
-  form: RxForm;
-  drug: string;
-  dose: string;
-  strength: string;  // e.g. "125mg/5mL" for Syr, "mcg/puff" for MDI
-  puffs: string;     // for MDI
-  doseML: string;    // auto-calculated mL for Syr
-  route: string;
-  frequency: string;
-  duration: string;
-  instructions: string;
-}
 
 interface ConsultDraft {
   chiefComplaint: string;
@@ -74,9 +57,7 @@ const BLANK_DRAFT: ConsultDraft = {
   bodySigns: [],
 };
 
-const ROUTES = ['Oral', 'IV', 'IM', 'SC', 'Topical', 'Inhaled', 'Sublingual', 'Rectal', 'Nasal'];
 const FORM_ROUTES: Record<RxForm, string> = { Tab: 'Oral', Cap: 'Oral', Syr: 'Oral', MDI: 'Inhaled', Drops: 'Topical', Cream: 'Topical', Inj: 'IM' };
-const RX_FORMS: RxForm[] = ['Tab', 'Cap', 'Syr', 'MDI', 'Drops', 'Cream', 'Inj'];
 const FOLLOW_UPS = ['2 days', '3 days', '1 week', '2 weeks', '1 month', '3 months', 'As needed', 'No follow-up'];
 
 // ─── Section wrapper ──────────────────────────────────────────────────────────
@@ -757,158 +738,17 @@ export default function ConsultPage() {
                 set('rxRows', [...draft.rxRows.filter(r => r.drug.trim()), ...newRows]);
               }}
             />
-            {draft.rxRows.map((row, idx) => {
-              const isLiquid = row.form === 'Syr' || row.form === 'Drops';
-              const isMDI = row.form === 'MDI';
-              const isCream = row.form === 'Cream';
-              // Pediatric mL calc: if Syr + strength like "125mg/5mL" + dose in mg + weight
-              let calcML: string | null = null;
-              if (isPediatric && isLiquid && row.strength && row.dose && patientWeightKg) {
-                const match = row.strength.match(/([\d.]+)\s*mg\s*\/\s*([\d.]+)\s*mL/i);
-                if (match) {
-                  const mgPerML = parseFloat(match[1]) / parseFloat(match[2]);
-                  const doseMg = parseFloat(row.dose);
-                  if (mgPerML && doseMg) calcML = (doseMg / mgPerML).toFixed(1);
-                }
-              }
-              return (
-              <div key={row.id} className="border border-slate-200 rounded-xl bg-slate-50 overflow-hidden">
-                {/* Form selector row */}
-                <div className="flex items-center gap-0 border-b border-slate-200">
-                  <div className="px-2.5 py-1.5 text-xs font-bold text-slate-400 flex-shrink-0 w-7 text-center">{idx + 1}</div>
-                  <div className="flex gap-0.5 px-1 py-1 flex-wrap">
-                    {RX_FORMS.map(f => (
-                      <button key={f} type="button" onClick={() => updateRxForm(row.id, f)}
-                        className={cn('px-2.5 py-1 text-xs font-bold rounded-md transition-all',
-                          row.form === f
-                            ? f === 'Syr' ? 'bg-blue-500 text-white'
-                              : f === 'MDI' ? 'bg-violet-500 text-white'
-                              : f === 'Inj' ? 'bg-red-500 text-white'
-                              : f === 'Cream' ? 'bg-pink-500 text-white'
-                              : 'bg-teal-500 text-white'
-                            : 'text-slate-500 hover:bg-slate-200')}>
-                        {f}
-                      </button>
-                    ))}
-                  </div>
-                  {draft.rxRows.length > 1 && (
-                    <button type="button" onClick={() => removeRx(row.id)}
-                      className="ml-auto mr-2 p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-                {/* Fields */}
-                <div className="p-2.5 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
-                  <div className="col-span-2 lg:col-span-2">
-                    <label className="text-[10px] text-slate-400 uppercase tracking-wide">
-                      Drug Name *
-                      {isPediatric && <span className="ml-1 text-violet-500">Pediatric</span>}
-                    </label>
-                    <DrugAutocomplete
-                      value={row.drug}
-                      onChange={(val, kb?: DrugKB) => {
-                        if (kb) {
-                          updateRxMulti(row.id, {
-                            drug: kb.name,
-                            dose: kb.defaultDose,
-                            route: kb.defaultRoute,
-                            frequency: kb.defaultFrequency,
-                            duration: kb.defaultDuration,
-                            instructions: kb.defaultInstructions,
-                          });
-                        } else {
-                          updateRx(row.id, 'drug', val);
-                        }
-                      }}
-                      placeholder={
-                        row.form === 'Syr' ? 'Amoxicillin Syr' :
-                        row.form === 'MDI' ? 'Salbutamol MDI' :
-                        row.form === 'Drops' ? 'Otrivin Nasal Drops' :
-                        row.form === 'Cream' ? 'Betamethasone Cream' :
-                        row.form === 'Inj' ? 'Ceftriaxone Inj' :
-                        'Paracetamol'
-                      }
-                    />
-                  </div>
-
-                  {/* Dose */}
-                  <div>
-                    <label className="text-[10px] text-slate-400 uppercase tracking-wide">
-                      {isMDI ? 'Dose (mcg)' : isCream ? 'Amount' : isLiquid ? 'Dose (mg)' : 'Dose'}
-                    </label>
-                    <input value={row.dose} onChange={e => updateRx(row.id, 'dose', e.target.value)}
-                      placeholder={isMDI ? '100 mcg' : isCream ? 'Apply thin layer' : row.form === 'Drops' ? '2 drops' : '500 mg'}
-                      className="input text-sm w-full" />
-                  </div>
-
-                  {/* Strength / puffs / mL */}
-                  {isLiquid && (
-                    <div>
-                      <label className="text-[10px] text-slate-400 uppercase tracking-wide">Strength</label>
-                      <input value={row.strength} onChange={e => updateRx(row.id, 'strength', e.target.value)}
-                        placeholder="125mg/5mL" className="input text-sm w-full" />
-                    </div>
-                  )}
-                  {isMDI && (
-                    <div>
-                      <label className="text-[10px] text-slate-400 uppercase tracking-wide">Puffs</label>
-                      <input value={row.puffs} onChange={e => updateRx(row.id, 'puffs', e.target.value)}
-                        placeholder="2 puffs" className="input text-sm w-full" />
-                    </div>
-                  )}
-
-                  {/* Route (hide for forms where it's obvious) */}
-                  {!isLiquid && !isMDI && !isCream && (
-                    <div>
-                      <label className="text-[10px] text-slate-400 uppercase tracking-wide">Route</label>
-                      <select value={row.route} onChange={e => updateRx(row.id, 'route', e.target.value)} className="input text-sm w-full">
-                        {ROUTES.map(r => <option key={r}>{r}</option>)}
-                      </select>
-                    </div>
-                  )}
-
-                  <div className="col-span-2 sm:col-span-4 lg:col-span-3">
-                    <label className="text-[10px] text-slate-400 uppercase tracking-wide">Frequency</label>
-                    <FrequencyPicker value={row.frequency} onChange={v => updateRx(row.id, 'frequency', v)} />
-                  </div>
-                  <div className="col-span-2 sm:col-span-4 lg:col-span-3">
-                    <label className="text-[10px] text-slate-400 uppercase tracking-wide">Duration</label>
-                    <DurationPicker value={row.duration} onChange={v => updateRx(row.id, 'duration', v)} />
-                  </div>
-                  <div className={cn('col-span-2', isLiquid || isMDI ? 'sm:col-span-4 lg:col-span-6' : 'sm:col-span-4 lg:col-span-3')}>
-                    <label className="text-[10px] text-slate-400 uppercase tracking-wide">Instructions / Notes</label>
-                    <input value={row.instructions} onChange={e => updateRx(row.id, 'instructions', e.target.value)}
-                      placeholder={
-                        isMDI ? 'Shake well, 2 puffs BD with spacer, rinse mouth after' :
-                        isLiquid ? 'After food, shake well before use' :
-                        isCream ? 'Apply thin layer twice daily, avoid eyes' :
-                        'After food, with water'
-                      }
-                      className="input text-sm w-full" />
-                  </div>
-                </div>
-                {/* Pediatric calc */}
-                {isPediatric && isLiquid && (
-                  <div className="px-2.5 pb-2 flex items-center gap-3 text-xs">
-                    <span className="text-violet-600 font-semibold">Pediatric helper:</span>
-                    {patientWeightKg && row.dose && (
-                      <span className="text-slate-600">
-                        Wt {patientWeightKg} kg · Dose {row.dose}
-                        {calcML && <span className="ml-2 font-bold text-blue-700">→ {calcML} mL / dose</span>}
-                        {!calcML && <span className="text-slate-400 ml-1">(add strength like 125mg/5mL to get mL)</span>}
-                      </span>
-                    )}
-                    {!patientWeightKg && <span className="text-slate-400">Enter weight in vitals for mL calculation</span>}
-                  </div>
-                )}
-              </div>
-              );
-            })}
-            <button type="button" onClick={addRxRow}
-              className="btn-secondary w-full border-dashed">
-              <Plus className="w-4 h-4" /> Add Medication
-            </button>
+            <RxSection
+              rxRows={draft.rxRows}
+              onUpdateRxForm={updateRxForm}
+              onUpdateRx={updateRx}
+              onUpdateRxMulti={updateRxMulti}
+              onRemoveRx={removeRx}
+              onAddRx={addRxRow}
+              isPediatric={isPediatric}
+              patientWeightKg={patientWeightKg}
+              showAddButton={true}
+            />
 
             {prevRx.length > 0 && (
               <div className="mt-2">
