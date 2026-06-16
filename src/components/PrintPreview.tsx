@@ -5,7 +5,7 @@ import { Printer, Send, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const THEME_COLORS: Record<string, string> = {
-  teal: '#14b8a6', blue: '#3b82f6', green: '#10b981', purple: '#a855f7', rose: '#f43f5e', slate: '#64748b',
+  teal: '#0d9488', navy: '#0a1628', maroon: '#7f1d1d', dark: '#1e293b',
 };
 
 interface PrintSections {
