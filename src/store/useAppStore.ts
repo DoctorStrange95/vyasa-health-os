@@ -271,13 +271,25 @@ export const useAppStore = create<AppState>()(
   addAppointment: (a) => {
     set(s => ({ appointments: [...s.appointments, a] }));
     import('@/lib/api').then(({ isApiEnabled, api }) => {
-      if (isApiEnabled()) api.post('/appointments', a).catch(console.warn);
+      if (isApiEnabled()) {
+        api.post('/appointments', a).catch((e) => {
+          const err = e?.response?.data?.error || e?.message || 'Failed to save appointment';
+          console.warn('Appointment save error:', err);
+          get().showToast(`Appointment sync failed: ${err}`, 'error');
+        });
+      }
     });
   },
   updateAppointment: (id, patch) => {
     set(s => ({ appointments: s.appointments.map(a => a.id === id ? { ...a, ...patch } : a) }));
     import('@/lib/api').then(({ isApiEnabled, api }) => {
-      if (isApiEnabled()) api.patch(`/appointments/${id}`, patch).catch(console.warn);
+      if (isApiEnabled()) {
+        api.patch(`/appointments/${id}`, patch).catch((e) => {
+          const err = e?.response?.data?.error || e?.message || 'Failed to update appointment';
+          console.warn('Appointment update error:', err);
+          get().showToast(`Appointment update failed: ${err}`, 'error');
+        });
+      }
     });
   },
   refreshAppointments: async () => {
@@ -293,7 +305,13 @@ export const useAppStore = create<AppState>()(
       visits: { ...s.visits, [v.patientId]: [v, ...(s.visits[v.patientId] ?? [])] },
     }));
     import('@/lib/api').then(({ isApiEnabled, api }) => {
-      if (isApiEnabled()) api.post('/visits', v).catch(console.warn);
+      if (isApiEnabled()) {
+        api.post('/visits', v).catch((e) => {
+          const err = e?.response?.data?.error || e?.message || 'Failed to save visit';
+          console.warn('Visit save error:', err);
+          get().showToast(`Visit sync failed: ${err}`, 'error');
+        });
+      }
     });
   },
   updateVisit: (id, patch) => set(s => ({
