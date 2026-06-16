@@ -143,7 +143,7 @@ export default function ProfilePage() {
     setTimeout(() => setCopied(false), 2000);
   }
 
-  async function downloadBrandedQR(bookingLink: string, doctorName: string, slug: string) {
+  async function downloadBrandedQR(bookingLink: string, doctorName: string, slug: string, details?: { specialty?: string; experience?: number; qualification?: string; city?: string }) {
     const canvas = document.createElement('canvas');
     canvas.width = 1080;
     canvas.height = 1350;
@@ -183,6 +183,45 @@ export default function ProfilePage() {
 
     // Main section with padding
     const contentY = 280;
+
+    // Doctor details section
+    let detailsY = contentY + 30;
+
+    // Specialty
+    if (details?.specialty) {
+      ctx.fillStyle = '#0d9488';
+      ctx.font = 'bold 22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(details.specialty, canvas.width / 2, detailsY);
+      detailsY += 40;
+    }
+
+    // Qualification/Education
+    if (details?.qualification) {
+      ctx.fillStyle = '#475569';
+      ctx.font = '18px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.textAlign = 'center';
+      const qualText = details.qualification.split(',')[0]; // Get first qualification
+      ctx.fillText(qualText, canvas.width / 2, detailsY);
+      detailsY += 35;
+    }
+
+    // Experience
+    if (details?.experience && details.experience > 0) {
+      ctx.fillStyle = '#64748b';
+      ctx.font = '16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${details.experience} years experience`, canvas.width / 2, detailsY);
+      detailsY += 30;
+    }
+
+    // City
+    if (details?.city) {
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(details.city, canvas.width / 2, detailsY);
+    }
 
     // QR Code from URL - larger
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=${encodeURIComponent(bookingLink)}&bgcolor=ffffff&color=0a1628&margin=10`;
@@ -494,7 +533,12 @@ export default function ProfilePage() {
                   </a>
                   <p className="text-xs opacity-60 mt-1.5">Scan or click to book</p>
                   <button
-                    onClick={() => downloadBrandedQR(bookingLink, user?.name || 'Doctor', slug)}
+                    onClick={() => downloadBrandedQR(bookingLink, user?.name || 'Doctor', slug, {
+                      specialty: form.specialty,
+                      experience: pubProfile?.years_experience,
+                      qualification: form.qualification,
+                      city: pubProfile?.city
+                    })}
                     className="text-xs opacity-75 hover:opacity-100 underline mt-0.5 block hover:text-teal-600 font-medium"
                   >
                     Download JPG
