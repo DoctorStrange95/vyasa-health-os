@@ -217,7 +217,7 @@ export const useAppStore = create<AppState>()(
     import('@/lib/api').then(({ isApiEnabled, api }) => {
       if (isApiEnabled()) {
         api.post('/patients', p).catch((e) => {
-          const err = e?.response?.data?.error || e?.message || 'Failed to save patient';
+          const err = e instanceof Error ? e.message : String(e);
           console.warn('Patient save error:', err);
           get().showToast(`Patient sync failed: ${err}`, 'error');
         });
@@ -273,7 +273,7 @@ export const useAppStore = create<AppState>()(
     import('@/lib/api').then(({ isApiEnabled, api }) => {
       if (isApiEnabled()) {
         api.post('/appointments', a).catch((e) => {
-          const err = e?.response?.data?.error || e?.message || 'Failed to save appointment';
+          const err = e instanceof Error ? e.message : String(e);
           console.warn('Appointment save error:', err);
           get().showToast(`Appointment sync failed: ${err}`, 'error');
         });
@@ -285,7 +285,7 @@ export const useAppStore = create<AppState>()(
     import('@/lib/api').then(({ isApiEnabled, api }) => {
       if (isApiEnabled()) {
         api.patch(`/appointments/${id}`, patch).catch((e) => {
-          const err = e?.response?.data?.error || e?.message || 'Failed to update appointment';
+          const err = e instanceof Error ? e.message : String(e);
           console.warn('Appointment update error:', err);
           get().showToast(`Appointment update failed: ${err}`, 'error');
         });
@@ -307,7 +307,7 @@ export const useAppStore = create<AppState>()(
     import('@/lib/api').then(({ isApiEnabled, api }) => {
       if (isApiEnabled()) {
         api.post('/visits', v).catch((e) => {
-          const err = e?.response?.data?.error || e?.message || 'Failed to save visit';
+          const err = e instanceof Error ? e.message : String(e);
           console.warn('Visit save error:', err);
           get().showToast(`Visit sync failed: ${err}`, 'error');
         });
