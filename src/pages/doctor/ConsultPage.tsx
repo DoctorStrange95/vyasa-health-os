@@ -365,7 +365,11 @@ export default function ConsultPage() {
 
     showToast(editVisitId ? 'Consultation updated' : 'Consultation saved', 'success');
     setSaving(false);
-    navigate(`/app/patients/${patient.id}`);
+    // Auto-print consultation sheet, then navigate back
+    setTimeout(() => {
+      window.print();
+      setTimeout(() => navigate(`/app/patients/${patient.id}`), 500);
+    }, 300);
   }
 
   function handleAdmit() {

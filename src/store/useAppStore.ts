@@ -234,9 +234,20 @@ export const useAppStore = create<AppState>()(
     vitals: { ...s.vitals, [v.patientId]: [v, ...(s.vitals[v.patientId] || [])] }
   })),
   setPrescriptions: (pid, rx) => set(s => ({ prescriptions: { ...s.prescriptions, [pid]: rx } })),
-  addPrescription: (rx) => set(s => ({
-    prescriptions: { ...s.prescriptions, [rx.patientId ?? '']: [rx, ...(s.prescriptions[rx.patientId ?? ''] || [])] }
-  })),
+  addPrescription: (rx) => {
+    set(s => ({
+      prescriptions: { ...s.prescriptions, [rx.patientId ?? '']: [rx, ...(s.prescriptions[rx.patientId ?? ''] || [])] }
+    }));
+    import('@/lib/api').then(({ isApiEnabled, api }) => {
+      if (isApiEnabled()) {
+        api.post('/prescriptions', rx).catch((e) => {
+          const err = e instanceof Error ? e.message : String(e);
+          console.warn('Prescription save error:', err);
+          get().showToast(`Prescription sync failed: ${err}`, 'error');
+        });
+      }
+    });
+  },
   setLabOrders: (pid, labs) => set(s => ({ labOrders: { ...s.labOrders, [pid]: labs } })),
   addLabOrder: (lab) => set(s => ({
     labOrders: { ...s.labOrders, [lab.patientId]: [lab, ...(s.labOrders[lab.patientId] || [])] }
