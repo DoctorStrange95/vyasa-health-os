@@ -27,6 +27,7 @@ interface AppState {
   sidebarCollapsed: boolean;
   mobileSidebarOpen: boolean;
   quickRegisterOpen: boolean;
+  quickRxModalOpen: boolean;
   toasts: Toast[];
 
   // Actions
@@ -56,6 +57,8 @@ interface AppState {
   closeMobileSidebar: () => void;
   openQuickRegister: () => void;
   closeQuickRegister: () => void;
+  openQuickRxModal: () => void;
+  closeQuickRxModal: () => void;
   showToast: (msg: string, type?: Toast['type']) => void;
   removeToast: (id: string) => void;
   addVisit: (v: VisitRecord) => void;
@@ -199,6 +202,7 @@ const EMPTY_STATE = {
   sidebarCollapsed: false,
   mobileSidebarOpen: false,
   quickRegisterOpen: false,
+  quickRxModalOpen: false,
   toasts: [] as Toast[],
 };
 
@@ -271,6 +275,8 @@ export const useAppStore = create<AppState>()(
   closeMobileSidebar: () => set({ mobileSidebarOpen: false }),
   openQuickRegister: () => set({ quickRegisterOpen: true, mobileSidebarOpen: false }),
   closeQuickRegister: () => set({ quickRegisterOpen: false }),
+  openQuickRxModal: () => set({ quickRxModalOpen: true, mobileSidebarOpen: false }),
+  closeQuickRxModal: () => set({ quickRxModalOpen: false }),
 
   showToast: (message, type = 'info') => {
     const toastId = id();

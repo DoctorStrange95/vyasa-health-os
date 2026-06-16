@@ -6,13 +6,14 @@ import { AppFooter } from './AppFooter';
 import { MobileBottomNav } from './MobileBottomNav';
 import { ToastContainer } from '@/components/ui/Toast';
 import { QuickRegisterModal } from '@/components/QuickRegisterModal';
+import { QuickRxModal } from '@/components/QuickRxModal';
 import { useAppStore } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePadStore } from '@/store/usePadStore';
 import { cn } from '@/lib/utils';
 
 export function AppLayout() {
-  const { sidebarCollapsed, mobileSidebarOpen, closeMobileSidebar, quickRegisterOpen } = useAppStore();
+  const { sidebarCollapsed, mobileSidebarOpen, closeMobileSidebar, quickRegisterOpen, quickRxModalOpen } = useAppStore();
   const { user } = useAuthStore();
   const syncClinicsFromApi = usePadStore(s => s.syncClinicsFromApi);
 
@@ -55,6 +56,7 @@ export function AppLayout() {
       <MobileBottomNav />
       <ToastContainer />
       {quickRegisterOpen && <QuickRegisterModal />}
+      {quickRxModalOpen && <QuickRxModal />}
     </div>
   );
 }
