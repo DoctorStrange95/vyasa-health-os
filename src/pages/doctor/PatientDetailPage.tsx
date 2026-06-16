@@ -93,7 +93,7 @@ export default function PatientDetailPage() {
           </div>
         </div>
         <div className="flex gap-2 flex-shrink-0 flex-wrap justify-end">
-          <button className="btn-secondary btn-sm hidden sm:flex">
+          <button onClick={() => window.print()} className="btn-secondary btn-sm hidden sm:flex">
             <Printer className="w-3.5 h-3.5" /> Print
           </button>
           {patient.status !== 'Deceased' && (
