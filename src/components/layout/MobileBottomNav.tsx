@@ -1,4 +1,4 @@
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Users, ListOrdered, Pill, User, Lock } from 'lucide-react';
 import { useAuthStore } from '@/store/useAuthStore';
 import { cn } from '@/lib/utils';
@@ -30,6 +30,7 @@ const BOTTOM_NAV_BY_ROLE: Record<string, { icon: React.ComponentType<{ className
 export function MobileBottomNav() {
   const { user, isDemo } = useAuthStore();
   const location = useLocation();
+  const navigate = useNavigate();
 
   if (!user) return null;
   const items = BOTTOM_NAV_BY_ROLE[user.role];
@@ -59,6 +60,19 @@ export function MobileBottomNav() {
               </div>
               {item.label}
             </div>
+          ) : isRxButton ? (
+            <button
+              key={item.to}
+              onClick={() => navigate('/app/dashboard')}
+              className={cn(
+                'relative flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 text-[10px] font-medium transition-colors rounded-lg',
+                'text-slate-400 active:text-teal-500',
+                'border-t-2 border-teal-500'
+              )}
+            >
+              <item.icon className="w-5 h-5 text-teal-600" />
+              <span className="font-semibold text-teal-700">{item.label}</span>
+            </button>
           ) : (
             <Link
               key={item.to}

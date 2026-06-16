@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { FileText, ChevronDown, ChevronUp, CheckCircle2, Lock, Eye, Pencil, X } from 'lucide-react';
+import { FileText, Pill, ChevronDown, ChevronUp, CheckCircle2, Lock, Eye, Pencil, X } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { cn, formatDate } from '@/lib/utils';
