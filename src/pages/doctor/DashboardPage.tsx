@@ -7,7 +7,7 @@ import { PriorityBadge, StatusBadge } from '@/components/ui/Badge';
 import {
   Users, BedDouble, Bell, Clock, TrendingUp, AlertTriangle, Activity,
   CheckCircle2, Pencil, Search, UserPlus, X, ArrowRight, Phone,
-  ChevronRight, Building2, ChevronDown, Edit2, Calendar, CalendarDays, Settings2, BarChart3, DollarSign
+  ChevronRight, Building2, ChevronDown, Edit2, Calendar, CalendarDays, Settings2, BarChart3, DollarSign, Eye
 } from 'lucide-react';
 import { formatDateTime, cn, localDate } from '@/lib/utils';
 import type { Patient } from '@/types';
@@ -364,7 +364,7 @@ function QuickRxModal({ onClose }: { onClose: () => void }) {
 
 export default function DashboardPage() {
   const { user } = useAuthStore();
-  const { patients, alerts, queue, vitals, appointments, bills } = useAppStore();
+  const { patients, alerts, queue, vitals, appointments, bills, visits } = useAppStore();
   const [showRxModal, setShowRxModal] = useState(false);
 
   const myPatients = patients.filter(p => p.attendingDoctorId === user?.id);
@@ -529,11 +529,18 @@ export default function DashboardPage() {
                       <PriorityBadge priority={p.priority} />
                     </div>
                   </Link>
-                  {/* Quick consult from patient row */}
-                  <Link to={`/app/consult/${p.id}`}
-                    className="btn-secondary btn-sm text-teal-600 border-teal-200 hover:bg-teal-50 flex-shrink-0">
-                    <Pencil className="w-3 h-3" /> Rx
-                  </Link>
+                  {/* Action button: View for consulted, Rx for new */}
+                  {visits[p.id]?.length > 0 ? (
+                    <Link to={`/app/patients/${p.id}`}
+                      className="btn-secondary btn-sm text-teal-600 border-teal-200 hover:bg-teal-50 flex-shrink-0">
+                      <Eye className="w-3 h-3" /> View
+                    </Link>
+                  ) : (
+                    <Link to={`/app/consult/${p.id}`}
+                      className="btn-secondary btn-sm text-teal-600 border-teal-200 hover:bg-teal-50 flex-shrink-0">
+                      <Pencil className="w-3 h-3" /> Rx
+                    </Link>
+                  )}
                 </div>
               );
             })}
