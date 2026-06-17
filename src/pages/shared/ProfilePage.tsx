@@ -48,6 +48,7 @@ export default function ProfilePage() {
     education?: string; services?: string; awards?: string;
     state?: string; city?: string;
     advance_payment?: boolean; advance_amount?: number | null; payment_qr_url?: string;
+    show_reg_number?: boolean;
   } | null>(null);
   const [photoUploading, setPhotoUploading] = useState(false);
   const [pubLoading, setPubLoading] = useState(false);
@@ -115,6 +116,7 @@ export default function ProfilePage() {
         advance_payment: pubProfile.advance_payment ?? false,
         advance_amount: pubProfile.advance_amount ?? null,
         payment_qr_url: pubProfile.payment_qr_url ?? '',
+        show_reg_number: pubProfile.show_reg_number ?? false,
       });
       setPubProfile(updated);
       setPubSaved(true);
@@ -677,7 +679,7 @@ export default function ProfilePage() {
                   </div>
 
                   {/* Visibility toggles */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div className="border border-slate-200 rounded-xl p-4">
                       <div className="text-sm font-semibold text-slate-700 mb-2">Profile Visibility</div>
                       <div className="flex gap-3">
@@ -697,6 +699,19 @@ export default function ProfilePage() {
                           <label key={String(o.v)} className="flex items-center gap-1.5 cursor-pointer text-sm">
                             <input type="radio" name="pub-accepting" checked={(pubProfile?.accepting_patients ?? true) === o.v}
                               onChange={() => setPubProfile(p => ({...p, accepting_patients: o.v}))} className="accent-teal-500" />
+                            {o.l}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="border border-slate-200 rounded-xl p-4">
+                      <div className="text-sm font-semibold text-slate-700 mb-1">Show MCI Reg. No.</div>
+                      <div className="text-xs text-slate-400 mb-2">Hidden by default for privacy</div>
+                      <div className="flex gap-3">
+                        {[{v:true,l:'Show'},{v:false,l:'Hide'}].map(o=>(
+                          <label key={String(o.v)} className="flex items-center gap-1.5 cursor-pointer text-sm">
+                            <input type="radio" name="pub-reg" checked={(pubProfile?.show_reg_number ?? false) === o.v}
+                              onChange={() => setPubProfile(p => ({...p, show_reg_number: o.v}))} className="accent-teal-500" />
                             {o.l}
                           </label>
                         ))}

@@ -197,6 +197,7 @@ export default function SuperAdminPage() {
   const [doctors, setDoctors] = useState<DoctorOverview[]>([]);
   const [loading, setLoading] = useState(true);
   const [doctorsLoading, setDoctorsLoading] = useState(false);
+  const [doctorsError, setDoctorsError] = useState(false);
   const [mainTab, setMainTab] = useState<MainTab>('users');
   const [filter, setFilter] = useState<Filter>('pending');
   const [search, setSearch] = useState('');
@@ -224,10 +225,17 @@ export default function SuperAdminPage() {
 
   const loadDoctors = useCallback(async () => {
     setDoctorsLoading(true);
+    setDoctorsError(false);
     try {
+      // 20-second timeout so it never hangs forever on Render cold start
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 20000);
       const data = await api.get<DoctorOverview[]>('/admin/doctors/overview');
+      clearTimeout(timer);
       setDoctors(data);
-    } catch { /* silently fail */ }
+    } catch {
+      setDoctorsError(true);
+    }
     finally { setDoctorsLoading(false); }
   }, []);
 
@@ -521,7 +529,18 @@ export default function SuperAdminPage() {
           </div>
 
           {doctorsLoading ? (
-            <div className="flex justify-center py-16"><Loader2 className="w-7 h-7 animate-spin text-teal-500" /></div>
+            <div className="flex flex-col items-center justify-center py-16 gap-3">
+              <Loader2 className="w-7 h-7 animate-spin text-teal-500" />
+              <p className="text-sm text-slate-400">Loading doctor stats… (backend may be waking up)</p>
+            </div>
+          ) : doctorsError ? (
+            <div className="card p-12 text-center">
+              <p className="font-semibold text-slate-600 mb-1">Could not load doctor stats</p>
+              <p className="text-sm text-slate-400 mb-4">The backend may be waking up — try again in a moment</p>
+              <button onClick={loadDoctors} className="btn-primary btn-sm mx-auto">
+                <RefreshCw className="w-3.5 h-3.5" /> Retry
+              </button>
+            </div>
           ) : filteredDoctors.length === 0 ? (
             <div className="card p-12 text-center text-slate-400">
               <Stethoscope className="w-10 h-10 mx-auto mb-3 text-slate-300" />
