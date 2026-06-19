@@ -25,11 +25,12 @@ function fmtTime(t: string) {
 function dateStr(d: Date) { return localDate(d); }
 
 const STATUS_STYLES: Record<AppointmentStatus, { label: string; chip: string; dot: string }> = {
-  scheduled:  { label: 'Scheduled',   chip: 'bg-teal-100 text-teal-700',    dot: 'bg-teal-500' },
-  confirmed:  { label: 'Confirmed',   chip: 'bg-blue-100 text-blue-700',    dot: 'bg-blue-500' },
-  completed:  { label: 'Completed',   chip: 'bg-slate-100 text-slate-500',  dot: 'bg-slate-400' },
-  cancelled:  { label: 'Cancelled',   chip: 'bg-red-100 text-red-600',      dot: 'bg-red-400' },
-  'no-show':  { label: 'No Show',     chip: 'bg-orange-100 text-orange-600', dot: 'bg-orange-400' },
+  scheduled:    { label: 'Scheduled',   chip: 'bg-teal-100 text-teal-700',    dot: 'bg-teal-500' },
+  confirmed:    { label: 'Confirmed',   chip: 'bg-blue-100 text-blue-700',    dot: 'bg-blue-500' },
+  'checked-in': { label: 'Checked In', chip: 'bg-amber-100 text-amber-700',  dot: 'bg-amber-500' },
+  completed:    { label: 'Completed',   chip: 'bg-slate-100 text-slate-500',  dot: 'bg-slate-400' },
+  cancelled:    { label: 'Cancelled',   chip: 'bg-red-100 text-red-600',      dot: 'bg-red-400' },
+  'no-show':    { label: 'No Show',     chip: 'bg-orange-100 text-orange-600', dot: 'bg-orange-400' },
 };
 
 export default function SchedulerPage() {
@@ -234,7 +235,7 @@ export default function SchedulerPage() {
                         <div className="flex items-center gap-1.5 flex-shrink-0">
                           {(apt.status === 'scheduled' || apt.status === 'confirmed') && !isIPD && (
                             <Link
-                              to={`/app/consult/${apt.patientId}`}
+                              to={`/app/consult/${apt.patientId ?? `apt-${apt.id}`}`}
                               className="btn-primary btn-sm px-2.5 py-1.5 text-xs"
                             >
                               <Stethoscope className="w-3 h-3" />
@@ -243,7 +244,7 @@ export default function SchedulerPage() {
                           )}
                           {(apt.status === 'scheduled' || apt.status === 'confirmed') && isIPD && (
                             <Link
-                              to={`/app/consult/${apt.patientId}`}
+                              to={`/app/consult/${apt.patientId ?? `apt-${apt.id}`}`}
                               className="btn-secondary btn-sm px-2.5 py-1.5 text-xs border-blue-300 text-blue-700"
                             >
                               <Stethoscope className="w-3 h-3" />

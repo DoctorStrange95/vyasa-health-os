@@ -1,8 +1,10 @@
 import { useRef, useState, useEffect } from 'react';
 import { useAuthStore } from '@/store/useAuthStore';
+import { usePadStore } from '@/store/usePadStore';
 import { api } from '@/lib/api';
-import { Printer, Send, X } from 'lucide-react';
+import { Printer, Send, X, ChevronDown, Settings2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import type { VaccineEntry, ProcedureEntry } from '@/types';
 
 const THEME_COLORS: Record<string, string> = {
   teal: '#0d9488', navy: '#0a1628', maroon: '#7f1d1d', dark: '#1e293b',
@@ -10,13 +12,17 @@ const THEME_COLORS: Record<string, string> = {
 
 interface PrintSections {
   complaint: boolean;
+  hopi: boolean;
+  vitalsRow: boolean;
+  specialtyExam: boolean;
   diagnosis: boolean;
   rx: boolean;
   investigation: boolean;
   advice: boolean;
   followup: boolean;
-  vitalsRow: boolean;
-  hopi: boolean;
+  vaccines: boolean;
+  procedures: boolean;
+  referral: boolean;
 }
 
 interface ConsultDraft {
@@ -42,38 +48,61 @@ interface PrintPreviewProps {
   clinicPhone?: string;
   onClose: () => void;
   onWhatsApp?: () => void;
+  onEndConsult?: () => void;
+  specialtyExam?: Record<string, string>;
+  doctorSpecialty?: string;
+  vaccines?: VaccineEntry[];
+  procedures?: ProcedureEntry[];
 }
 
-export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, clinicPhone, onClose, onWhatsApp }: PrintPreviewProps) {
+// Strip stale form prefixes so drug name never double-prints (e.g. "Syr. Tab. Metronidazole" → "Syr. Metronidazole")
+const cleanDrug = (name: string) =>
+  name.replace(/^(tab\.?|cap\.?|syr\.?|syrup|mdi\.?|drops?\.?|cream\.?|inj\.?|injection\.?|sachet\.?)\s+/i, '').trim();
+
+// Strip embedded concentration (e.g. "Amoxicillin 228.5mg/5ml" → "Amoxicillin") so (strength) doesn't duplicate it
+const CONC_RE = /\s*\d+(?:\.\d+)?\s*(?:mg|mcg|IU|g)\s*\/\s*\d+(?:\.\d+)?\s*(?:mL|ml|L|g)\b/gi;
+const stripConc = (name: string) => name.replace(CONC_RE, '').replace(/\s+/g, ' ').trim();
+
+export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, clinicPhone, onClose, onWhatsApp, onEndConsult, specialtyExam, vaccines = [], procedures = [] }: PrintPreviewProps) {
   const printRef = useRef<HTMLDivElement>(null);
+  const { eSignUrl } = usePadStore();
   const theme = THEME_COLORS[pad.theme] ?? THEME_COLORS.teal;
   const patientAge = typeof patient.age === 'number' ? patient.age : '';
   const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 
   const [ps, setPs] = useState<PrintSections>({
     complaint: true,
+    hopi: false,
+    vitalsRow: true,
+    specialtyExam: true,
     diagnosis: true,
     rx: true,
     investigation: true,
     advice: true,
     followup: true,
-    vitalsRow: true,
-    hopi: false,
+    vaccines: true,
+    procedures: true,
+    referral: true,
   });
+  const [sectionsOpen, setSectionsOpen] = useState(false);
 
   function togglePs(key: keyof PrintSections) {
     setPs(s => ({ ...s, [key]: !s[key] }));
   }
 
   const SECTION_LABELS: { key: keyof PrintSections; label: string }[] = [
-    { key: 'complaint', label: 'C/C' },
-    { key: 'hopi', label: 'History' },
+    { key: 'complaint', label: 'Chief Complaint' },
+    { key: 'hopi', label: 'History (HOPI)' },
+    { key: 'vitalsRow', label: 'Vitals Row' },
+    { key: 'specialtyExam', label: 'Examination' },
     { key: 'diagnosis', label: 'Diagnosis' },
-    { key: 'rx', label: 'Rx' },
+    { key: 'rx', label: 'Prescription (Rx)' },
     { key: 'investigation', label: 'Investigations' },
     { key: 'advice', label: 'Advice' },
     { key: 'followup', label: 'Follow-up' },
-    { key: 'vitalsRow', label: 'Vitals Row' },
+    { key: 'vaccines', label: 'Vaccines Given' },
+    { key: 'procedures', label: 'Procedures Done' },
+    { key: 'referral', label: 'Referral' },
   ];
 
   // Build a fully self-contained HTML doc with INLINE styles so it prints
@@ -84,7 +113,7 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
 
     // Left column (doctor)
     const left = `
-      <div style="flex:1;">
+      <div style="flex:1;min-width:0;">
         <div style="color:${theme};font-size:22px;font-weight:bold;line-height:1.1;">${esc(doctorDisplayName)}</div>
         ${pad.degrees ? `<div style="color:#475569;font-size:12px;margin-top:2px;">${esc(pad.degrees)}</div>` : ''}
         ${pad.specialty ? `<div style="color:#475569;font-size:12px;font-weight:600;">${esc(pad.specialty)}</div>` : ''}
@@ -97,7 +126,7 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
     const cAddr = clinicAddress || pad.address;
     const cPhone = clinicPhone || pad.phone;
     const right = `
-      <div style="text-align:right;font-size:12px;color:#475569;">
+      <div style="text-align:right;font-size:12px;color:#475569;max-width:50%;flex-shrink:0;word-break:break-word;">
         ${cName ? `<div style="font-weight:700;color:#334155;">${esc(cName)}</div>` : ''}
         ${cAddr ? `<div>${esc(cAddr)}</div>` : ''}
         ${cPhone ? `<div>📞 ${esc(cPhone)}</div>` : ''}
@@ -129,6 +158,131 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
       body += sectionTitle('Diagnosis') + `<div style="font-size:13px;font-weight:500;">${esc(draft.diagnosis)}${draft.icdCode ? ` (${esc(draft.icdCode)})` : ''}</div>`;
       if (draft.secondaryDx) body += `<div style="font-size:12px;color:#475569;">${esc(draft.secondaryDx)}</div>`;
     }
+    // ── Specialty examination block ──────────────────────────────────────────
+    // Each module is checked for its own keys — independent of doctor's specialty.
+    // Psychiatry fields are NEVER printed (sensitive clinical notes).
+    if (ps.specialtyExam && specialtyExam) {
+      const sp = specialtyExam;
+      const has = (...keys: string[]) => keys.some(k => sp[k]?.trim());
+      const spRow = (label: string, val: string) =>
+        val?.trim() ? `<div style="font-size:12px;margin-bottom:3px;"><span style="color:#94a3b8;min-width:130px;display:inline-block;">${label}</span><span style="font-weight:600;">${esc(val)}</span></div>` : '';
+      const dualRow = (label: string, re: string, le: string) =>
+        (re?.trim() || le?.trim()) ? `<div style="font-size:12px;margin-bottom:3px;"><span style="color:#94a3b8;min-width:130px;display:inline-block;">${label}</span><span style="font-weight:600;">RE: ${esc(re)||'—'} &nbsp;|&nbsp; LE: ${esc(le)||'—'}</span></div>` : '';
+
+      const subTitle = (t: string) =>
+        `<div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:0.05em;color:#94a3b8;margin:8px 0 3px;border-bottom:1px solid #f1f5f9;padding-bottom:2px;">${t}</div>`;
+
+      let examBody = '';
+
+      // Ophthalmology
+      if (has('va_re_ucva','va_re_bcva','va_le_ucva','va_le_bcva','iop_re','iop_le','refx_re_sph','refx_le_sph','ant_re','ant_le','post_re','post_le','add_power')) {
+        examBody += subTitle('Ophthalmic');
+        const va = (e: string) => [sp[`va_${e}_ucva`], sp[`va_${e}_bcva`]].filter(Boolean).join(' / ');
+        const rfx = (e: string) => [sp[`refx_${e}_sph`] && `Sph ${sp[`refx_${e}_sph`]}`, sp[`refx_${e}_cyl`] && `Cyl ${sp[`refx_${e}_cyl`]}`, sp[`refx_${e}_axis`] && `Axis ${sp[`refx_${e}_axis`]}`].filter(Boolean).join(' ');
+        examBody += dualRow('VA (UCVA / BCVA)', va('re'), va('le'));
+        examBody += dualRow('IOP', sp.iop_re ? `${sp.iop_re} mmHg` : '', sp.iop_le ? `${sp.iop_le} mmHg` : '');
+        examBody += dualRow('Refraction', rfx('re'), rfx('le'));
+        if (sp.add_power) examBody += spRow('Add Power', sp.add_power);
+        examBody += dualRow('Anterior Segment', sp.ant_re ?? '', sp.ant_le ?? '');
+        examBody += dualRow('Posterior Segment', sp.post_re ?? '', sp.post_le ?? '');
+      }
+
+      // Dentistry
+      if (has('dent_tooth_fdi','dent_diagnosis','dent_procedure','dent_material','dent_post_op','dent_xray_findings','dent_ohi_score')) {
+        examBody += subTitle('Dental');
+        examBody += spRow('Tooth (FDI)', sp.dent_tooth_fdi ?? '');
+        examBody += spRow('Dental Diagnosis', sp.dent_diagnosis ?? '');
+        examBody += spRow('Procedure', sp.dent_procedure ?? '');
+        examBody += spRow('Material', sp.dent_material ?? '');
+        if (sp.dent_local_anaesthetic && sp.dent_local_anaesthetic !== 'Not used') examBody += spRow('Local Anaesthetic', sp.dent_local_anaesthetic);
+        if (sp.dent_xray_type && sp.dent_xray_type !== 'Not taken') {
+          examBody += spRow('Radiograph', sp.dent_xray_type);
+          examBody += spRow('Radiographic Findings', sp.dent_xray_findings ?? '');
+        }
+        if (sp.dent_ohi_score) examBody += spRow('OHI Score', sp.dent_ohi_score);
+        examBody += spRow('Post-op Instructions', sp.dent_post_op ?? '');
+      }
+
+      // Surgery
+      if (has('surg_procedure_name','surg_pre_op_dx','surg_post_op_dx','surg_intraop','surg_postop','surg_anaesthesia','surg_implant')) {
+        examBody += subTitle('Surgical Notes');
+        examBody += spRow('Procedure', sp.surg_procedure_name ?? '');
+        examBody += spRow('Pre-op Diagnosis', sp.surg_pre_op_dx ?? '');
+        examBody += spRow('Post-op Diagnosis', sp.surg_post_op_dx ?? '');
+        examBody += spRow('Anaesthesia', sp.surg_anaesthesia ?? '');
+        if (sp.surg_duration_min) examBody += spRow('Duration', `${sp.surg_duration_min} min`);
+        if (sp.surg_blood_loss_ml) examBody += spRow('Blood Loss', `${sp.surg_blood_loss_ml} ml`);
+        examBody += spRow('Implant / Device', sp.surg_implant ?? '');
+        examBody += spRow('Intraoperative Findings', sp.surg_intraop ?? '');
+        examBody += spRow('Post-op Instructions', sp.surg_postop ?? '');
+      }
+
+      // Orthopaedics
+      if (has('orth_region','orth_laterality','orth_mechanism','orth_xray','orth_mri_ct','orth_fracture_type','orth_implant')) {
+        examBody += subTitle('Orthopaedic');
+        examBody += spRow('Region / Laterality', [sp.orth_region, sp.orth_laterality].filter(Boolean).join(' — '));
+        examBody += spRow('Mechanism of Injury', sp.orth_mechanism ?? '');
+        examBody += spRow('X-ray Findings', sp.orth_xray ?? '');
+        examBody += spRow('MRI / CT Findings', sp.orth_mri_ct ?? '');
+        examBody += spRow('Fracture Type', sp.orth_fracture_type ?? '');
+        examBody += spRow('Implant / Fixation', sp.orth_implant ?? '');
+      }
+
+      // Dermatology
+      if (has('derm_primary_lesion','derm_secondary_lesion','derm_distribution','derm_site','derm_dermoscopy','derm_biopsy','derm_treatment')) {
+        examBody += subTitle('Dermatology');
+        examBody += spRow('Primary Lesion', sp.derm_primary_lesion ?? '');
+        examBody += spRow('Secondary Lesion', sp.derm_secondary_lesion ?? '');
+        examBody += spRow('Distribution', sp.derm_distribution ?? '');
+        examBody += spRow('Site', sp.derm_site ?? '');
+        examBody += spRow('Dermatoscopy', sp.derm_dermoscopy ?? '');
+        if (sp.derm_biopsy && sp.derm_biopsy !== 'Not sent') examBody += spRow('Biopsy', sp.derm_biopsy);
+        examBody += spRow('Treatment Plan', sp.derm_treatment ?? '');
+      }
+
+      // OBG
+      if (has('obg_lmp','obg_edd','obg_ga_weeks','obg_gravida','obg_para','obg_presentation','obg_pv_findings','obg_usg')) {
+        examBody += subTitle('Obstetric & Gynaecology');
+        if (sp.obg_lmp) examBody += spRow('LMP', sp.obg_lmp);
+        if (sp.obg_edd) examBody += spRow('EDD', sp.obg_edd);
+        if (sp.obg_ga_weeks) examBody += spRow('Gestational Age', `${sp.obg_ga_weeks} weeks (${sp.obg_ga_source || 'LMP'})`);
+        const gpla = [sp.obg_gravida && `G${sp.obg_gravida}`, sp.obg_para && `P${sp.obg_para}`, sp.obg_live && `L${sp.obg_live}`, sp.obg_abortion && `A${sp.obg_abortion}`].filter(Boolean).join(' ');
+        if (gpla) examBody += spRow('Obstetric History', gpla);
+        examBody += spRow('Presentation', sp.obg_presentation ?? '');
+        examBody += spRow('P/V Findings', sp.obg_pv_findings ?? '');
+        examBody += spRow('USG Summary', sp.obg_usg ?? '');
+      }
+
+      // Paediatrics
+      if (has('paed_apgar_1','paed_apgar_5','paed_birth_wt','paed_ga_birth','paed_dev_motor','paed_dev_language','paed_immunisation','paed_notes')) {
+        examBody += subTitle('Paediatrics');
+        if (sp.paed_apgar_1 || sp.paed_apgar_5) examBody += spRow('APGAR', [sp.paed_apgar_1 && `1 min: ${sp.paed_apgar_1}`, sp.paed_apgar_5 && `5 min: ${sp.paed_apgar_5}`].filter(Boolean).join('  |  '));
+        if (sp.paed_birth_wt) examBody += spRow('Birth Weight', `${sp.paed_birth_wt} kg`);
+        if (sp.paed_ga_birth) examBody += spRow('GA at Birth', `${sp.paed_ga_birth} weeks`);
+        examBody += spRow('Developmental Milestones', [sp.paed_dev_motor && `Motor: ${sp.paed_dev_motor}`, sp.paed_dev_language && `Language: ${sp.paed_dev_language}`].filter(Boolean).join('  ·  '));
+        examBody += spRow('Immunisation', sp.paed_immunisation ?? '');
+        examBody += spRow('Notes', sp.paed_notes ?? '');
+      }
+
+      // General Medicine
+      if (has('gm_built','gm_pallor','gm_icterus','gm_cyanosis','gm_clubbing','gm_oedema','gm_lymph','gm_jvp')) {
+        const gmFindings = [
+          sp.gm_built && `Built: ${sp.gm_built}`,
+          sp.gm_pallor && sp.gm_pallor !== 'Absent' && `Pallor: ${sp.gm_pallor}`,
+          sp.gm_icterus && sp.gm_icterus !== 'Absent' && `Icterus: ${sp.gm_icterus}`,
+          sp.gm_cyanosis && sp.gm_cyanosis !== 'Absent' && `Cyanosis: ${sp.gm_cyanosis}`,
+          sp.gm_clubbing && sp.gm_clubbing !== 'Absent' && `Clubbing: ${sp.gm_clubbing}`,
+          sp.gm_oedema && sp.gm_oedema !== 'Absent' && `Oedema: ${sp.gm_oedema}`,
+          sp.gm_lymph && sp.gm_lymph !== 'Not palpable' && `LN: ${sp.gm_lymph}`,
+          sp.gm_jvp && sp.gm_jvp !== 'Normal' && `JVP: ${sp.gm_jvp}`,
+        ].filter(Boolean).join('  ·  ');
+        if (gmFindings) examBody += subTitle('Clinical Findings') + `<div style="font-size:13px;">${esc(gmFindings)}</div>`;
+      }
+      // Psychiatry: intentionally omitted from PDF
+
+      if (examBody) body += sectionTitle('Examination') + examBody;
+    }
+
     if (ps.rx && activeDrugs.length) {
       body += `<div style="color:${theme};font-size:24px;font-weight:bold;margin:14px 0 6px;">℞</div>`;
       activeDrugs.forEach((r, i) => {
@@ -140,7 +294,7 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
         ].filter(Boolean).map(esc).join(' · ');
         body += `
           <div style="margin-bottom:10px;">
-            <div style="font-weight:600;font-size:13px;">${i + 1}. ${esc(formLabel)}${esc(r.drug)}${r.dose ? ` ${esc(r.dose)}` : ''}${r.strength ? ` (${esc(r.strength)})` : ''}</div>
+            <div style="font-weight:600;font-size:13px;">${i + 1}. ${esc(formLabel)}${esc(stripConc(cleanDrug(r.drug)))}${r.dose ? ` ${esc(r.dose)}` : ''}${r.strength ? ` (${esc(r.strength)})` : ''}</div>
             <div style="font-size:12px;color:#475569;padding-left:16px;">${detail}</div>
           </div>`;
       });
@@ -148,7 +302,36 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
     if (ps.investigation && draft.investigation) body += sectionTitle('Investigations') + `<div style="font-size:13px;">${esc(draft.investigation)}</div>`;
     if (ps.advice && draft.advice) body += sectionTitle('Advice') + `<div style="font-size:13px;">${esc(draft.advice)}</div>`;
     if (ps.followup && draft.followUp && draft.followUp !== 'No follow-up') {
-      body += sectionTitle('Follow-up') + `<div style="font-size:13px;">After <strong>${esc(draft.followUp)}</strong>${draft.referredTo ? ` · Refer to: ${esc(draft.referredTo)}` : ''}</div>`;
+      body += sectionTitle('Follow-up') + `<div style="font-size:13px;">After <strong>${esc(draft.followUp)}</strong>${draft.referredTo && !ps.referral ? ` · Refer to: ${esc(draft.referredTo)}` : ''}</div>`;
+    }
+    if (ps.referral && draft.referredTo) {
+      body += sectionTitle('Referral') + `<div style="font-size:13px;">Referred to: <strong>${esc(draft.referredTo)}</strong></div>`;
+    }
+    if (ps.vaccines && vaccines.length > 0) {
+      const rows = vaccines.map(v =>
+        `<tr style="border-bottom:1px solid #f1f5f9;">
+          <td style="padding:3px 8px 3px 0;font-weight:600;">${esc(v.name)}</td>
+          <td style="padding:3px 8px 3px 0;color:#64748b;">${esc(v.site || '—')}</td>
+          <td style="padding:3px 8px 3px 0;color:#64748b;">${esc(v.batchNo || '—')}</td>
+          <td style="padding:3px 0;color:#64748b;">${v.nextDueDate ? new Date(v.nextDueDate).toLocaleDateString('en-IN') : '—'}</td>
+        </tr>`
+      ).join('');
+      body += sectionTitle('Vaccines Given') + `
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead><tr style="border-bottom:1px solid ${theme}60;">
+            <th style="text-align:left;padding:3px 8px 3px 0;font-weight:600;color:#475569;">Vaccine</th>
+            <th style="text-align:left;padding:3px 8px 3px 0;font-weight:600;color:#475569;">Site</th>
+            <th style="text-align:left;padding:3px 8px 3px 0;font-weight:600;color:#475569;">Batch</th>
+            <th style="text-align:left;padding:3px 0;font-weight:600;color:#475569;">Next Due</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    }
+    if (ps.procedures && procedures.length > 0) {
+      const items = procedures.map(p =>
+        `<div style="font-size:12px;margin:2px 0;"><span style="font-weight:600;">${esc(p.name)}</span>${p.notes ? `<span style="color:#64748b;"> — ${esc(p.notes)}</span>` : ''}</div>`
+      ).join('');
+      body += sectionTitle('Procedures Performed') + items;
     }
     (pad.customFields ?? []).forEach((cf: any) => {
       if (cf.label) body += `<div style="margin:6px 0;font-size:13px;"><span style="font-weight:700;color:#64748b;text-transform:uppercase;font-size:11px;">${esc(cf.label)}: </span>${esc(cf.value)}</div>`;
@@ -156,15 +339,14 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
 
     const signature = `
       <div style="margin-top:48px;display:flex;justify-content:flex-end;">
-        <div style="text-align:center;border-top:1px solid #475569;padding-top:4px;min-width:160px;font-size:12px;color:#475569;">
-          ${esc(doctorDisplayName)}<br/>
-          ${pad.degrees ? `<span style="color:#94a3b8;">${esc(pad.degrees)}</span>` : ''}
+        <div style="text-align:center;padding-top:4px;min-width:160px;">
+          ${eSignUrl ? `<img src="${esc(eSignUrl)}" alt="Signature" style="max-height:48px;max-width:160px;object-fit:contain;display:block;margin:0 auto 4px;" />` : ''}
+          <div style="border-top:1px solid #475569;padding-top:4px;font-size:12px;color:#475569;">
+            ${esc(doctorDisplayName)}<br/>
+            ${pad.degrees ? `<span style="color:#94a3b8;">${esc(pad.degrees)}</span>` : ''}
+          </div>
         </div>
       </div>`;
-
-    const footer = pad.footerNote
-      ? `<div style="margin-top:16px;padding-top:8px;border-top:1px solid #e2e8f0;font-size:10px;color:#94a3b8;text-align:center;">${esc(pad.footerNote)}</div>`
-      : '';
 
     const qrHtml = bookingUrl
       ? `<div style="text-align:center;">
@@ -181,7 +363,10 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
     const printFooter = `
       <div id="pftr" style="position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #e2e8f0;padding:6px 20px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
         ${qrHtml}
-        <div style="flex:1;display:flex;align-items:center;justify-content:flex-end;gap:6px;">
+        <div style="flex:1;text-align:center;font-size:9px;color:#94a3b8;padding:0 8px;">
+          ${pad.footerNote ? esc(pad.footerNote) : ''}
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
           <img src="${window.location.origin}/logos/vyasa-logo.svg" width="14" height="14" alt="Vyasa" style="display:inline-block;vertical-align:middle;border-radius:3px;" />
           <span style="font-size:9px;color:#94a3b8;letter-spacing:0.04em;">Powered by <strong style="color:#64748b;">Vyasa Integrated Healthcare</strong></span>
         </div>
@@ -202,7 +387,6 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
         </div>
         ${body}
         ${signature}
-        ${footer}
       </body></html>`;
   }
 
@@ -266,25 +450,64 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
                 <Send className="w-3.5 h-3.5" /> WhatsApp
               </button>
             )}
-            <button onClick={onClose} className="btn-ghost p-1.5 rounded-lg">
-              <X className="w-4 h-4" />
-            </button>
+            {onEndConsult && (
+              <button onClick={onEndConsult} className="btn-sm text-sm font-semibold px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white flex items-center gap-1.5 transition-colors">
+                <X className="w-3.5 h-3.5" /> End Consultation
+              </button>
+            )}
+            {!onEndConsult && (
+              <button onClick={onClose} className="btn-ghost p-1.5 rounded-lg">
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Section toggles */}
-        <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mr-1">Print sections:</span>
-            {SECTION_LABELS.map(({ key, label }) => (
-              <button key={key} type="button" onClick={() => togglePs(key)}
-                className={cn('text-xs px-2.5 py-1 rounded-full border font-medium transition-all',
-                  ps[key]
-                    ? 'bg-teal-500 border-teal-500 text-white'
-                    : 'bg-white border-slate-300 text-slate-400 line-through')}>
-                {label}
-              </button>
-            ))}
+        {/* Section toggles — dropdown */}
+        <div className="bg-slate-50 border-b border-slate-200 px-4 py-2">
+          <div className="relative">
+            <button type="button" onClick={() => setSectionsOpen(o => !o)}
+              className={cn(
+                'flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all duration-100 active:scale-[0.97]',
+                sectionsOpen
+                  ? 'bg-teal-500 border-teal-500 text-white shadow-sm'
+                  : 'bg-white border-slate-300 text-slate-600 hover:border-teal-400 hover:text-teal-600'
+              )}>
+              <Settings2 className="w-3.5 h-3.5" />
+              Print sections
+              <span className="ml-1 bg-white/20 rounded px-1 text-[10px]">
+                {SECTION_LABELS.filter(l => ps[l.key]).length}/{SECTION_LABELS.length}
+              </span>
+              <ChevronDown className={cn('w-3 h-3 transition-transform duration-200', sectionsOpen && 'rotate-180')} />
+            </button>
+
+            {sectionsOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setSectionsOpen(false)} />
+                <div className="absolute left-0 top-full mt-1 z-20 bg-white border border-slate-200 rounded-xl shadow-xl w-56 py-1 overflow-hidden">
+                  <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400 border-b border-slate-100">
+                    Toggle print sections
+                  </div>
+                  {SECTION_LABELS.map(({ key, label }) => (
+                    <button key={key} type="button" onClick={() => togglePs(key)}
+                      className={cn(
+                        'w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors duration-75 active:scale-[0.99]',
+                        ps[key] ? 'text-slate-800 hover:bg-slate-50' : 'text-slate-400 hover:bg-slate-50'
+                      )}>
+                      <span className={cn('w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors',
+                        ps[key] ? 'bg-teal-500 border-teal-500' : 'border-slate-300')}>
+                        {ps[key] && (
+                          <svg width="9" height="7" viewBox="0 0 9 7" fill="none">
+                            <path d="M1 3.5L3.5 6L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        )}
+                      </span>
+                      <span className={cn('flex-1 text-left', !ps[key] && 'line-through')}>{label}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </div>
 
@@ -305,7 +528,7 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
                   {pad.regNumber && <div className="text-slate-400 text-xs">Reg: {pad.regNumber}</div>}
                   {pad.showQuote && pad.quote && <div className="italic text-xs mt-1" style={{ color: theme }}>"{pad.quote}"</div>}
                 </div>
-                <div className="text-right text-xs text-slate-500">
+                <div className="text-right text-xs text-slate-500 max-w-[45%] shrink-0 break-words">
                   {(clinicName || pad.clinicName) && <div className="font-semibold text-slate-700">{clinicName || pad.clinicName}</div>}
                   {(clinicAddress || pad.address) && <div>{clinicAddress || pad.address}</div>}
                   {(clinicPhone || pad.phone) && <div>📞 {clinicPhone || pad.phone}</div>}
@@ -352,6 +575,139 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
               </div>
             )}
 
+            {/* Examination (specialty modules — psychiatry always excluded) */}
+            {ps.specialtyExam && specialtyExam && (() => {
+              const sp = specialtyExam;
+              const has = (...keys: string[]) => keys.some(k => sp[k]?.trim());
+              const Row = ({ label, val }: { label: string; val?: string }) =>
+                val?.trim() ? (
+                  <div className="flex gap-2 text-xs mb-1">
+                    <span className="text-slate-400 min-w-[110px] flex-shrink-0">{label}</span>
+                    <span className="font-medium text-slate-800">{val}</span>
+                  </div>
+                ) : null;
+              const DualRow = ({ label, re, le }: { label: string; re?: string; le?: string }) =>
+                (re?.trim() || le?.trim()) ? (
+                  <div className="flex gap-2 text-xs mb-1">
+                    <span className="text-slate-400 min-w-[110px] flex-shrink-0">{label}</span>
+                    <span className="font-medium text-slate-800">RE: {re || '—'} &nbsp;|&nbsp; LE: {le || '—'}</span>
+                  </div>
+                ) : null;
+              const Sub = ({ title }: { title: string }) => (
+                <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mt-2 mb-1 border-b border-slate-100 pb-0.5">{title}</div>
+              );
+
+              const hasOphth = has('va_re_ucva','va_re_bcva','va_le_ucva','va_le_bcva','iop_re','iop_le','refx_re_sph','refx_le_sph','ant_re','ant_le','post_re','post_le','add_power');
+              const hasDent  = has('dent_tooth_fdi','dent_diagnosis','dent_procedure','dent_material','dent_post_op','dent_xray_findings');
+              const hasSurg  = has('surg_procedure_name','surg_pre_op_dx','surg_post_op_dx','surg_intraop','surg_postop','surg_anaesthesia','surg_implant');
+              const hasOrth  = has('orth_region','orth_laterality','orth_mechanism','orth_xray','orth_mri_ct','orth_fracture_type','orth_implant');
+              const hasDerm  = has('derm_primary_lesion','derm_secondary_lesion','derm_distribution','derm_site','derm_dermoscopy','derm_biopsy','derm_treatment');
+              const hasObg   = has('obg_lmp','obg_edd','obg_ga_weeks','obg_gravida','obg_para','obg_presentation','obg_pv_findings','obg_usg');
+              const hasPaed  = has('paed_apgar_1','paed_apgar_5','paed_birth_wt','paed_ga_birth','paed_dev_motor','paed_dev_language','paed_immunisation','paed_notes');
+              const hasGm    = has('gm_built','gm_pallor','gm_icterus','gm_cyanosis','gm_clubbing','gm_oedema','gm_lymph','gm_jvp');
+              const anyData  = hasOphth || hasDent || hasSurg || hasOrth || hasDerm || hasObg || hasPaed || hasGm;
+              if (!anyData) return null;
+
+              return (
+                <div className="mb-3">
+                  <div className="text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: theme }}>Examination</div>
+
+                  {hasOphth && <>
+                    <Sub title="Ophthalmic" />
+                    <DualRow label="VA (UCVA/BCVA)" re={[sp.va_re_ucva,sp.va_re_bcva].filter(Boolean).join('/')} le={[sp.va_le_ucva,sp.va_le_bcva].filter(Boolean).join('/')} />
+                    <DualRow label="IOP" re={sp.iop_re ? `${sp.iop_re} mmHg` : ''} le={sp.iop_le ? `${sp.iop_le} mmHg` : ''} />
+                    <DualRow label="Refraction" re={[sp.refx_re_sph && `Sph ${sp.refx_re_sph}`,sp.refx_re_cyl && `Cyl ${sp.refx_re_cyl}`,sp.refx_re_axis && `Axis ${sp.refx_re_axis}`].filter(Boolean).join(' ')} le={[sp.refx_le_sph && `Sph ${sp.refx_le_sph}`,sp.refx_le_cyl && `Cyl ${sp.refx_le_cyl}`,sp.refx_le_axis && `Axis ${sp.refx_le_axis}`].filter(Boolean).join(' ')} />
+                    {sp.add_power && <Row label="Add Power" val={sp.add_power} />}
+                    <DualRow label="Anterior Segment" re={sp.ant_re} le={sp.ant_le} />
+                    <DualRow label="Posterior Segment" re={sp.post_re} le={sp.post_le} />
+                  </>}
+
+                  {hasDent && <>
+                    <Sub title="Dental" />
+                    <Row label="Tooth (FDI)" val={sp.dent_tooth_fdi} />
+                    <Row label="Dental Diagnosis" val={sp.dent_diagnosis} />
+                    <Row label="Procedure" val={sp.dent_procedure} />
+                    <Row label="Material" val={sp.dent_material} />
+                    {sp.dent_local_anaesthetic && sp.dent_local_anaesthetic !== 'Not used' && <Row label="Local Anaesthetic" val={sp.dent_local_anaesthetic} />}
+                    {sp.dent_xray_type && sp.dent_xray_type !== 'Not taken' && <Row label="Radiograph" val={sp.dent_xray_type} />}
+                    <Row label="Radiographic Findings" val={sp.dent_xray_findings} />
+                    {sp.dent_ohi_score && <Row label="OHI Score" val={sp.dent_ohi_score} />}
+                    <Row label="Post-op Instructions" val={sp.dent_post_op} />
+                  </>}
+
+                  {hasSurg && <>
+                    <Sub title="Surgical Notes" />
+                    <Row label="Procedure" val={sp.surg_procedure_name} />
+                    <Row label="Pre-op Diagnosis" val={sp.surg_pre_op_dx} />
+                    <Row label="Post-op Diagnosis" val={sp.surg_post_op_dx} />
+                    <Row label="Anaesthesia" val={sp.surg_anaesthesia} />
+                    {sp.surg_duration_min && <Row label="Duration" val={`${sp.surg_duration_min} min`} />}
+                    {sp.surg_blood_loss_ml && <Row label="Blood Loss" val={`${sp.surg_blood_loss_ml} ml`} />}
+                    <Row label="Implant / Device" val={sp.surg_implant} />
+                    <Row label="Intraoperative Findings" val={sp.surg_intraop} />
+                    <Row label="Post-op Instructions" val={sp.surg_postop} />
+                  </>}
+
+                  {hasOrth && <>
+                    <Sub title="Orthopaedic" />
+                    <Row label="Region / Laterality" val={[sp.orth_region,sp.orth_laterality].filter(Boolean).join(' — ')} />
+                    <Row label="Mechanism of Injury" val={sp.orth_mechanism} />
+                    <Row label="X-ray Findings" val={sp.orth_xray} />
+                    <Row label="MRI / CT Findings" val={sp.orth_mri_ct} />
+                    <Row label="Fracture Type" val={sp.orth_fracture_type} />
+                    <Row label="Implant / Fixation" val={sp.orth_implant} />
+                  </>}
+
+                  {hasDerm && <>
+                    <Sub title="Dermatology" />
+                    <Row label="Primary Lesion" val={sp.derm_primary_lesion} />
+                    <Row label="Secondary Lesion" val={sp.derm_secondary_lesion} />
+                    <Row label="Distribution" val={sp.derm_distribution} />
+                    <Row label="Site" val={sp.derm_site} />
+                    <Row label="Dermatoscopy" val={sp.derm_dermoscopy} />
+                    {sp.derm_biopsy && sp.derm_biopsy !== 'Not sent' && <Row label="Biopsy" val={sp.derm_biopsy} />}
+                    <Row label="Treatment Plan" val={sp.derm_treatment} />
+                  </>}
+
+                  {hasObg && <>
+                    <Sub title="Obstetric & Gynaecology" />
+                    {sp.obg_lmp && <Row label="LMP" val={sp.obg_lmp} />}
+                    {sp.obg_edd && <Row label="EDD" val={sp.obg_edd} />}
+                    {sp.obg_ga_weeks && <Row label="Gestational Age" val={`${sp.obg_ga_weeks} weeks (${sp.obg_ga_source || 'LMP'})`} />}
+                    {[sp.obg_gravida && `G${sp.obg_gravida}`,sp.obg_para && `P${sp.obg_para}`,sp.obg_live && `L${sp.obg_live}`,sp.obg_abortion && `A${sp.obg_abortion}`].filter(Boolean).length > 0 &&
+                      <Row label="Obstetric History" val={[sp.obg_gravida && `G${sp.obg_gravida}`,sp.obg_para && `P${sp.obg_para}`,sp.obg_live && `L${sp.obg_live}`,sp.obg_abortion && `A${sp.obg_abortion}`].filter(Boolean).join(' ')} />}
+                    <Row label="Presentation" val={sp.obg_presentation} />
+                    <Row label="P/V Findings" val={sp.obg_pv_findings} />
+                    <Row label="USG Summary" val={sp.obg_usg} />
+                  </>}
+
+                  {hasPaed && <>
+                    <Sub title="Paediatrics" />
+                    {(sp.paed_apgar_1 || sp.paed_apgar_5) && <Row label="APGAR" val={[sp.paed_apgar_1 && `1 min: ${sp.paed_apgar_1}`,sp.paed_apgar_5 && `5 min: ${sp.paed_apgar_5}`].filter(Boolean).join(' | ')} />}
+                    {sp.paed_birth_wt && <Row label="Birth Weight" val={`${sp.paed_birth_wt} kg`} />}
+                    {sp.paed_ga_birth && <Row label="GA at Birth" val={`${sp.paed_ga_birth} weeks`} />}
+                    <Row label="Milestones" val={[sp.paed_dev_motor && `Motor: ${sp.paed_dev_motor}`,sp.paed_dev_language && `Language: ${sp.paed_dev_language}`].filter(Boolean).join(' · ')} />
+                    <Row label="Immunisation" val={sp.paed_immunisation} />
+                    <Row label="Notes" val={sp.paed_notes} />
+                  </>}
+
+                  {hasGm && (() => {
+                    const findings = [
+                      sp.gm_built && `Built: ${sp.gm_built}`,
+                      sp.gm_pallor && sp.gm_pallor !== 'Absent' && `Pallor: ${sp.gm_pallor}`,
+                      sp.gm_icterus && sp.gm_icterus !== 'Absent' && `Icterus: ${sp.gm_icterus}`,
+                      sp.gm_cyanosis && sp.gm_cyanosis !== 'Absent' && `Cyanosis: ${sp.gm_cyanosis}`,
+                      sp.gm_clubbing && sp.gm_clubbing !== 'Absent' && `Clubbing: ${sp.gm_clubbing}`,
+                      sp.gm_oedema && sp.gm_oedema !== 'Absent' && `Oedema: ${sp.gm_oedema}`,
+                      sp.gm_lymph && sp.gm_lymph !== 'Not palpable' && `LN: ${sp.gm_lymph}`,
+                      sp.gm_jvp && sp.gm_jvp !== 'Normal' && `JVP: ${sp.gm_jvp}`,
+                    ].filter(Boolean).join('  ·  ');
+                    return findings ? <><Sub title="Clinical Findings" /><div className="text-xs text-slate-800">{findings}</div></> : null;
+                  })()}
+                </div>
+              );
+            })()}
+
             {/* Rx */}
             {ps.rx && draft.rxRows.some(r => r.drug.trim()) && (
               <div className="mb-3">
@@ -359,7 +715,7 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
                 {draft.rxRows.filter(r => r.drug.trim()).map((r, i) => (
                   <div key={r.id} className="mb-2.5">
                     <div className="font-semibold text-sm">
-                      {i + 1}. {r.form && r.form !== 'Tab' ? `${r.form}. ` : 'Tab. '}{r.drug}
+                      {i + 1}. {r.form && r.form !== 'Tab' ? `${r.form}. ` : 'Tab. '}{stripConc(cleanDrug(r.drug))}
                       {r.dose && ` ${r.dose}`}
                       {r.strength && ` (${r.strength})`}
                     </div>
@@ -400,6 +756,56 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
               </div>
             )}
 
+            {/* Referral */}
+            {ps.referral && draft.referredTo && (
+              <div className="mb-4">
+                <div className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: theme }}>Referral</div>
+                <div className="text-sm">Referred to: <strong>{draft.referredTo}</strong></div>
+              </div>
+            )}
+
+            {/* Vaccines */}
+            {ps.vaccines && vaccines.length > 0 && (
+              <div className="mb-4">
+                <div className="text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: theme }}>Vaccines Given</div>
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b" style={{ borderColor: theme + '40' }}>
+                      <th className="text-left py-1 pr-3 font-semibold text-slate-600">Vaccine</th>
+                      <th className="text-left py-1 pr-3 font-semibold text-slate-600">Site</th>
+                      <th className="text-left py-1 pr-3 font-semibold text-slate-600">Batch</th>
+                      <th className="text-left py-1 font-semibold text-slate-600">Next Due</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {vaccines.map(v => (
+                      <tr key={v.id} className="border-b border-slate-100">
+                        <td className="py-1 pr-3 font-medium text-slate-800">{v.name}</td>
+                        <td className="py-1 pr-3 text-slate-600">{v.site || '—'}</td>
+                        <td className="py-1 pr-3 text-slate-600">{v.batchNo || '—'}</td>
+                        <td className="py-1 text-slate-600">{v.nextDueDate ? new Date(v.nextDueDate).toLocaleDateString('en-IN') : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Procedures */}
+            {ps.procedures && procedures.length > 0 && (
+              <div className="mb-4">
+                <div className="text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: theme }}>Procedures Performed</div>
+                <div className="space-y-0.5">
+                  {procedures.map(p => (
+                    <div key={p.id} className="text-xs text-slate-700">
+                      <span className="font-medium">{p.name}</span>
+                      {p.notes && <span className="text-slate-500"> — {p.notes}</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Custom fields */}
             {pad.customFields?.map((cf: any) => cf.label && (
               <div key={cf.label} className="mb-2">
@@ -410,30 +816,29 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
 
             {/* Signature */}
             <div className="mt-8 flex justify-end">
-              <div className="text-center">
-                <div className="w-36 border-t border-slate-400 pt-1 text-xs text-slate-500">
+              <div className="text-center min-w-[144px]">
+                {eSignUrl && (
+                  <img src={eSignUrl} alt="Signature" className="max-h-12 max-w-[144px] object-contain mx-auto mb-1" />
+                )}
+                <div className="border-t border-slate-400 pt-1 text-xs text-slate-500">
                   {doctorDisplayName}<br />
                   {pad.degrees && <span className="text-slate-400">{pad.degrees}</span>}
                 </div>
               </div>
             </div>
 
-            {/* Footer note (user-editable) */}
-            {pad.footerNote && (
-              <div className="mt-4 pt-2 border-t border-slate-200 text-xs text-slate-400 text-center">
-                {pad.footerNote}
-              </div>
-            )}
-
-            {/* Fixed Vyasa branding — always visible, non-removable */}
-            <div className="mt-5 pt-2 border-t border-slate-200 flex items-center justify-between gap-2">
+            {/* Fixed footer — QR | footer note | Vyasa branding */}
+            <div className="mt-5 pt-2 border-t border-slate-200 flex items-center gap-2">
               {bookingUrl && (
-                <div className="flex flex-col items-center">
+                <div className="flex flex-col items-center flex-shrink-0">
                   <img src={qrSrc} width={44} height={44} alt="Scan to book" className="rounded border border-slate-200" />
                   <span className="text-[8px] text-slate-400 mt-0.5">Scan to Book</span>
                 </div>
               )}
-              <div className="flex-1 flex items-center justify-end gap-1.5">
+              <div className="flex-1 text-center text-[9px] text-slate-400 px-2">
+                {pad.footerNote}
+              </div>
+              <div className="flex items-center gap-1.5 flex-shrink-0">
                 <img src="/logos/vyasa-logo.svg" width={14} height={14} alt="Vyasa" className="rounded-sm" />
                 <span className="text-[9px] text-slate-400 tracking-wide">
                   Powered by <strong className="text-slate-500">Vyasa Integrated Healthcare</strong>

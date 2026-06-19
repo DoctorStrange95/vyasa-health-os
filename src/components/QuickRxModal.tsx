@@ -18,7 +18,7 @@ export function QuickRxModal() {
   const [mode, setMode] = useState<'search' | 'new'>('search');
   const [form, setForm] = useState({
     name: '', age: '', gender: 'M' as 'M' | 'F' | 'Other',
-    phone: '', complaint: '',
+    phone: '', email: '', complaint: '',
   });
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -47,6 +47,7 @@ export function QuickRxModal() {
       gender: form.gender,
       mrn: `MRN-${Date.now().toString().slice(-6)}`,
       phone: form.phone || undefined,
+      email: form.email || undefined,
       status: 'OPD',
       priority: 'Stable',
       diagnosis: form.complaint || undefined,
@@ -183,9 +184,14 @@ export function QuickRxModal() {
                   placeholder="9876543210" className="input w-full" />
               </div>
               <div>
+                <label className="label">Email (optional)</label>
+                <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                  placeholder="patient@email.com" className="input w-full" />
+              </div>
+              <div className="col-span-2">
                 <label className="label">Chief Complaint (optional)</label>
                 <input value={form.complaint} onChange={e => setForm(f => ({ ...f, complaint: e.target.value }))}
-                  placeholder="e.g. Fever, headache" className="input w-full" />
+                  placeholder="e.g. Fever, headache, follow-up" className="input w-full" />
               </div>
             </div>
             <button type="button" onClick={handleCreate}

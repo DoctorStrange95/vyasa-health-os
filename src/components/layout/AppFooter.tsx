@@ -9,7 +9,7 @@ export function AppFooter() {
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
             System operational
           </span>
-          <span>v1.0.0-beta</span>
+          <span>v1.5.0</span>
         </div>
       </div>
     </footer>

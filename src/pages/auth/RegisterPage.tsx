@@ -263,7 +263,7 @@ function DoctorForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="NMC / MCI Registration Number *" error={errors.mciNumber}>
-              <input className={cn('input', errors.mciNumber && 'border-red-400')} placeholder="e.g. MH-12345" value={form.mciNumber} onChange={e => set('mciNumber', e.target.value)} />
+              <input className={cn('input', errors.mciNumber && 'border-red-400')} placeholder="e.g. MH-12345 or 123456" value={form.mciNumber} onChange={e => set('mciNumber', e.target.value)} />
             </Field>
             <Field label="State of Registration (Medical Council) *" error={errors.regState}>
               <select className={cn('input', errors.regState && 'border-red-400')} value={form.regState} onChange={e => set('regState', e.target.value)}>

@@ -4,7 +4,7 @@ import { Search, UserPlus, FileSpreadsheet, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePadStore } from '@/store/usePadStore';
-import { PriorityBadge, StatusBadge } from '@/components/ui/Badge';
+import { StatusBadge } from '@/components/ui/Badge';
 import { localDate } from '@/lib/utils';
 import type { PatientStatus } from '@/types';
 
@@ -192,7 +192,7 @@ export default function PatientListPage() {
               ))}
             </select>
           )}
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-2 flex-wrap overflow-x-auto pb-0.5" style={{ scrollbarWidth: 'none' }}>
             {(['all', 'IPD', 'OPD', 'Critical', 'Discharged', 'Referred', 'Deceased'] as const).map(f => (
               <button
                 key={f}
@@ -260,22 +260,23 @@ export default function PatientListPage() {
         )}
       </div>
 
-      {/* ── Desktop table (≥ md) ── */}
+      {/* ── Desktop table (≥ md) — 5 merged columns, no horizontal scroll ── */}
       <div className="hidden md:block table-wrapper">
-        <table className="data-table">
+        <table className="data-table w-full table-fixed">
+          <colgroup>
+            <col className="w-[30%]" />
+            <col className="w-[15%]" />
+            <col className="w-[20%] hidden lg:table-column" />
+            <col className="w-[25%]" />
+            <col className="w-[22%] lg:w-[10%]" />
+          </colgroup>
           <thead>
             <tr>
               <th>Patient</th>
-              <th>MRN</th>
-              <th>Age / Sex</th>
               <th>Status</th>
-              <th>Location</th>
-              <th>Last Visit</th>
-              <th>Complaint / Dx</th>
-              <th>Clinic</th>
-              <th>Priority</th>
-              <th>Doctor</th>
-              <th></th>
+              <th className="hidden lg:table-cell">Last Visit</th>
+              <th>Diagnosis / Complaint</th>
+              <th className="text-right pr-4"></th>
             </tr>
           </thead>
           <tbody>
@@ -285,64 +286,67 @@ export default function PatientListPage() {
               const consultedToday = (visits[p.id] ?? []).some(v => v.date.startsWith(todayStr));
               return (
                 <tr key={p.id}>
+                  {/* Patient — name + MRN + age/sex merged */}
                   <td>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
                       <div className="w-8 h-8 rounded-full bg-teal-500/10 flex items-center justify-center text-teal-700 text-xs font-bold flex-shrink-0">
                         {p.name.split(' ').map(w => w[0]).join('').slice(0, 2)}
                       </div>
-                      <div>
-                        <div className="font-semibold text-slate-900 text-sm">{p.name}</div>
-                        <div className="text-xs text-slate-400">{p.bloodGroup || '—'}</div>
+                      <div className="min-w-0">
+                        <div className="font-semibold text-slate-900 text-sm truncate">{p.name}</div>
+                        <div className="text-xs text-slate-400">
+                          {p.age}y {p.gender === 'M' ? '♂' : p.gender === 'F' ? '♀' : '⚧'}
+                          <span className="hidden lg:inline font-mono ml-1.5">{p.mrn}</span>
+                        </div>
                       </div>
                     </div>
                   </td>
-                  <td className="font-mono text-xs text-slate-500">{p.mrn}</td>
-                  <td className="text-sm">{p.age}y {p.gender === 'M' ? '♂' : p.gender === 'F' ? '♀' : '⚧'}</td>
-                  <td><StatusBadge status={p.status} /></td>
-                  <td className="text-sm">
-                    {p.status === 'Deceased' ? (
-                      <div className="text-xs text-slate-400">Deceased{p.deathDate ? ` · ${p.deathDate}` : ''}</div>
-                    ) : p.status === 'Referred' ? (
-                      <div>
-                        <div className="font-medium text-violet-700 text-xs">{p.referredHospital || 'Referred'}</div>
-                        {p.referredDept && <div className="text-xs text-slate-400">{p.referredDept}</div>}
-                      </div>
-                    ) : p.ward ? (
-                      <div>
-                        <div className="font-medium text-slate-700">{p.ward}</div>
-                        <div className="text-xs text-slate-400">{p.bed || '—'}</div>
-                      </div>
-                    ) : <span className="text-slate-400">OPD</span>}
-                  </td>
+
+                  {/* Status + location merged */}
                   <td>
+                    <StatusBadge status={p.status} />
+                    <div className="text-[11px] text-slate-400 mt-0.5 truncate">
+                      {p.status === 'Deceased' && p.deathDate ? p.deathDate
+                        : p.status === 'Referred' ? (p.referredHospital || 'Referred')
+                        : p.ward ? `${p.ward}${p.bed ? ` · ${p.bed}` : ''}`
+                        : patientClinic(p)}
+                    </div>
+                  </td>
+
+                  {/* Last visit — hidden on tablet, shown on lg */}
+                  <td className="hidden lg:table-cell">
                     {lastVisit ? (
                       <div>
-                        <div className="text-xs font-medium text-slate-700">{new Date(lastVisit.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
-                        <div className="text-[10px] text-slate-400">{lastVisit.doctorName}</div>
+                        <div className="text-xs font-medium text-slate-700">
+                          {new Date(lastVisit.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </div>
+                        <div className="text-[10px] text-slate-400 truncate">{lastVisit.doctorName}</div>
                       </div>
                     ) : <span className="text-slate-400 text-xs">No visits</span>}
                   </td>
-                  <td className="max-w-[160px]">
-                    <div className="text-sm text-slate-700 truncate">{lastVisit?.diagnosis || lastVisit?.chiefComplaint || p.diagnosis || '—'}</div>
-                  </td>
-                  <td className="text-xs text-slate-600 whitespace-nowrap">{patientClinic(p)}</td>
-                  <td><PriorityBadge priority={p.priority} /></td>
-                  <td className="text-sm text-slate-600">{p.attendingDoctor || '—'}</td>
+
+                  {/* Complaint / Dx */}
                   <td>
-                    <div className="flex items-center gap-2 flex-wrap">
+                    <div className="text-sm text-slate-700 truncate">
+                      {lastVisit?.diagnosis || lastVisit?.chiefComplaint || p.diagnosis || '—'}
+                    </div>
+                    {p.priority === 'Critical' && (
+                      <span className="text-[10px] font-bold text-red-600">Critical</span>
+                    )}
+                  </td>
+
+                  {/* Actions */}
+                  <td>
+                    <div className="flex items-center gap-1.5 justify-end pr-1">
                       <Link to={`/app/patients/${p.id}`} className="btn-secondary btn-sm">View</Link>
                       {!isReceptionist && (p.status === 'OPD' || p.status === 'IPD' || p.status === 'Critical') && (
                         consultedToday ? (
-                          <>
-                            <span className="inline-flex items-center gap-1 text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-1 rounded-lg font-medium">
-                              <CheckCircle2 className="w-3 h-3" /> Done
-                            </span>
-                            <Link to={`/app/consult/${p.id}`} className="btn-secondary btn-sm">
-                              Edit
-                            </Link>
-                          </>
+                          <Link to={`/app/consult/${p.id}`}
+                            className="inline-flex items-center gap-1 text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-1.5 rounded-lg font-semibold whitespace-nowrap">
+                            <CheckCircle2 className="w-3 h-3" /> Done
+                          </Link>
                         ) : (
-                          <Link to={`/app/consult/${p.id}`} className="btn-primary btn-sm">
+                          <Link to={`/app/consult/${p.id}`} className="btn-primary btn-sm whitespace-nowrap">
                             Consult
                           </Link>
                         )
@@ -355,9 +359,7 @@ export default function PatientListPage() {
           </tbody>
         </table>
         {filtered.length === 0 && (
-          <div className="text-center py-12 text-slate-400 text-sm">
-            No patients found
-          </div>
+          <div className="text-center py-12 text-slate-400 text-sm">No patients found</div>
         )}
       </div>
     </div>

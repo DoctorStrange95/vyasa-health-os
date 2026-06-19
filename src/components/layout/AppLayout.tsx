@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import { AppFooter } from './AppFooter';
@@ -16,9 +16,14 @@ export function AppLayout() {
   const { sidebarCollapsed, mobileSidebarOpen, closeMobileSidebar, quickRegisterOpen, quickRxModalOpen } = useAppStore();
   const { user } = useAuthStore();
   const syncClinicsFromApi = usePadStore(s => s.syncClinicsFromApi);
+  const syncPadFromApi = usePadStore(s => s.syncPadFromApi);
+  const location = useLocation();
 
-  // Hydrate real clinics (with schedules) from the backend on login
-  useEffect(() => { syncClinicsFromApi(); }, [syncClinicsFromApi]);
+  // Hydrate real clinics + pad settings (incl. e-sign) from backend on login
+  useEffect(() => {
+    syncClinicsFromApi();
+    syncPadFromApi();
+  }, [syncClinicsFromApi, syncPadFromApi]);
 
   // Roles that get a mobile bottom nav
   const hasMobileBottomNav = user && ['doctor', 'clinic_admin', 'nurse'].includes(user.role);
@@ -46,7 +51,10 @@ export function AppLayout() {
         <Topbar />
         <main className="flex-1 overflow-y-auto">
           {/* Extra bottom padding on mobile so content clears the bottom nav */}
-          <div className={cn('p-4 md:p-5 min-h-full', hasMobileBottomNav && 'pb-20 lg:pb-5')}>
+          <div
+            key={location.pathname}
+            className={cn('p-4 md:p-5 min-h-full animate-page-enter', hasMobileBottomNav && 'pb-20 lg:pb-5')}
+          >
             <Outlet />
           </div>
         </main>

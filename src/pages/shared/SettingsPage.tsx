@@ -3,13 +3,14 @@ import { useSearchParams } from 'react-router-dom';
 import {
   Pill, Users, Building2, Save, Plus, Trash2, CheckCircle2,
   RefreshCw, Printer, Mail, Phone, Link2, Copy, Check,
-  UserCheck, UserX, Settings, Edit2, MapPin, X, QrCode
+  UserCheck, UserX, Settings, Edit2, MapPin, X, QrCode, PenLine, Upload
 } from 'lucide-react';
 import { usePadStore } from '@/store/usePadStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useAppStore } from '@/store/useAppStore';
 import { api, isApiEnabled } from '@/lib/api';
 import { Modal } from '@/components/ui/Modal';
+import { PWAInstallGuide } from '@/components/PWAInstallGuide';
 import { cn } from '@/lib/utils';
 import type { Role, Staff, Clinic, ClinicBed } from '@/types';
 
@@ -25,9 +26,10 @@ const THEMES = [
 ] as const;
 
 function RxPadTab() {
-  const { settings: S, setSettings, resetSettings } = usePadStore();
+  const { settings: S, setSettings, resetSettings, eSignUrl, setESign } = usePadStore();
   const { user } = useAuthStore();
   const [saved, setSaved] = useState(false);
+  const [eSignUploading, setESignUploading] = useState(false);
   const set = (k: string, v: unknown) => setSettings({ [k]: v } as never);
   const theme = THEMES.find(t => t.id === S.theme)?.color ?? '#0d9488';
 
@@ -57,7 +59,24 @@ function RxPadTab() {
   const displayName = S.doctorName || user?.name || 'Dr. Your Name';
   const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 
-  function handleSave() { setSaved(true); setTimeout(() => setSaved(false), 2500); }
+  async function handleSave() {
+    // Explicit save — push all current settings + esign to backend right now
+    if (isApiEnabled()) {
+      try {
+        await api.put('/clinics/pad', {
+          doctorName: S.doctorName, degrees: S.degrees, specialty: S.specialty,
+          regNumber: S.regNumber, address: S.address, phone: S.phone,
+          email: S.email, timings: S.timings, clinicName: S.clinicName,
+          footerNote: S.footerNote, quote: S.quote, showQuote: S.showQuote,
+          showTimings: S.showTimings, theme: S.theme,
+          customFields: JSON.stringify(S.customFields),
+          eSignUrl,
+        });
+      } catch (e) { console.warn('Save failed:', e); }
+    }
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
+  }
 
   return (
     <div className="space-y-5">
@@ -185,6 +204,49 @@ function RxPadTab() {
               <label className="label">Footer Note</label>
               <input value={S.footerNote} onChange={e => set('footerNote', e.target.value)} placeholder="Prescription valid for 30 days…" className="input" />
             </div>
+            <div>
+              <label className="label flex items-center gap-1.5"><PenLine className="w-3.5 h-3.5 text-teal-500" /> E-Signature</label>
+              <p className="text-xs text-slate-400 mb-2">Upload your signature image (PNG/JPG with transparent background works best). It will appear above your name when printing.</p>
+              {eSignUrl && (
+                <div className="mb-2 flex items-center gap-3">
+                  <img src={eSignUrl} alt="E-Signature" className="h-12 object-contain border border-slate-200 rounded-lg px-3 bg-white" />
+                  <button type="button" onClick={() => setESign('')} className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1"><Trash2 className="w-3 h-3" /> Remove</button>
+                </div>
+              )}
+              <label className={cn('flex items-center gap-2 cursor-pointer btn-secondary btn-sm w-fit', eSignUploading && 'opacity-60 pointer-events-none')}>
+                {eSignUploading
+                  ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Processing…</>
+                  : <><Upload className="w-3.5 h-3.5" />{eSignUrl ? 'Change Signature' : 'Upload Signature'}</>
+                }
+                <input type="file" accept="image/*" className="hidden" disabled={eSignUploading} onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  setESignUploading(true);
+                  const reader = new FileReader();
+                  reader.onload = ev => {
+                    const src = ev.target?.result as string;
+                    const img = new Image();
+                    img.onload = () => {
+                      const MAX_W = 400, MAX_H = 150;
+                      const scale = Math.min(MAX_W / img.width, MAX_H / img.height, 1);
+                      const canvas = document.createElement('canvas');
+                      canvas.width = Math.round(img.width * scale);
+                      canvas.height = Math.round(img.height * scale);
+                      const ctx = canvas.getContext('2d')!;
+                      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                      const compressed = canvas.toDataURL('image/png', 0.9);
+                      setESign(compressed);
+                      setESignUploading(false);
+                    };
+                    img.onerror = () => setESignUploading(false);
+                    img.src = src;
+                  };
+                  reader.onerror = () => setESignUploading(false);
+                  reader.readAsDataURL(file);
+                  e.target.value = '';
+                }} />
+              </label>
+            </div>
           </div>
 
           <div className="card p-5 space-y-3">
@@ -259,12 +321,19 @@ function RxPadTab() {
                   <div key={i} className="text-xs mt-1"><span className="text-slate-400">{cf.label}: </span>{cf.value}</div>
                 ))}
                 <div className="mt-5 flex justify-end">
-                  <div className="text-center">
-                    <div className="w-28 border-t border-slate-400 pt-1 text-xs text-slate-500">{displayName}</div>
+                  <div className="text-center min-w-[112px]">
+                    {eSignUrl && (
+                      <img src={eSignUrl} alt="Signature" className="max-h-10 max-w-[112px] object-contain mx-auto mb-1" />
+                    )}
+                    <div className="border-t border-slate-400 pt-1 text-xs text-slate-500">{displayName}</div>
                   </div>
                 </div>
-                {S.footerNote && (
-                  <div className="mt-3 pt-2 border-t border-slate-200 text-xs text-slate-400 text-center">{S.footerNote}</div>
+                {(S.footerNote || true) && (
+                  <div className="mt-3 pt-2 border-t border-slate-200 flex items-center justify-between gap-1 text-[9px] text-slate-400">
+                    <span>QR</span>
+                    <span className="flex-1 text-center">{S.footerNote}</span>
+                    <span>Vyasa</span>
+                  </div>
                 )}
               </div>
             </div>
@@ -651,8 +720,8 @@ function InviteLinkModal({ open, onClose }: { open: boolean; onClose: () => void
 
 const CLINIC_COLORS = ['#0d9488', '#0a3d62', '#7f1d1d', '#1e293b', '#7c3aed', '#b45309'];
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const TIME_SLOTS = Array.from({ length: 33 }, (_, i) => {
-  const h = Math.floor(i / 2) + 6;
+const TIME_SLOTS = Array.from({ length: 48 }, (_, i) => {
+  const h = Math.floor(i / 2);
   const m = i % 2 === 0 ? '00' : '30';
   return `${String(h).padStart(2, '0')}:${m}`;
 });
@@ -742,8 +811,10 @@ function ClinicModal({ clinic: init, onSave, onClose }: {
 
   function addSession(day: number) {
     const d = c.schedule.find(x => x.day === day)!;
-    if (d.sessions.length >= 2) return;
-    updateDay(day, { sessions: [...d.sessions, { start: '17:00', end: '20:00' }] });
+    if (d.sessions.length >= 3) return;
+    const defaults = [{ start: '17:00', end: '20:00' }, { start: '21:00', end: '23:30' }];
+    const def = defaults[d.sessions.length - 1] ?? { start: '17:00', end: '20:00' };
+    updateDay(day, { sessions: [...d.sessions, def] });
   }
 
   function removeSession(day: number, idx: number) {
@@ -851,7 +922,9 @@ function ClinicModal({ clinic: init, onSave, onClose }: {
                       <div className="flex-1 space-y-2">
                         {d.sessions.map((s, si) => (
                           <div key={si} className="flex items-center gap-2 flex-wrap">
-                            <span className="text-[10px] text-slate-400 w-12 text-right flex-shrink-0">{si === 0 ? 'Morning' : 'Evening'}</span>
+                            <span className="text-[10px] text-slate-400 w-14 text-right flex-shrink-0">
+                              {['Morning', 'Evening', 'Night'][si] ?? `Slot ${si + 1}`}
+                            </span>
                             <select value={s.start} onChange={e => updateSession(d.day, si, 'start', e.target.value)}
                               className="input py-1.5 text-sm w-24 flex-shrink-0">
                               {TIME_SLOTS.map(t => <option key={t}>{t}</option>)}
@@ -866,24 +939,36 @@ function ClinicModal({ clinic: init, onSave, onClose }: {
                             </button>
                           </div>
                         ))}
-                        {d.sessions.length < 2 && (
-                          <button type="button" onClick={() => addSession(d.day)}
-                            className="text-xs text-teal-600 hover:text-teal-700 flex items-center gap-1">
-                            <Plus className="w-3 h-3" /> Add evening session
-                          </button>
-                        )}
+                        <div className="flex items-center gap-4">
+                          {d.sessions.length < 3 && !(d.sessions.length === 1 && d.sessions[0].start === '00:00' && d.sessions[0].end === '23:30') && (
+                            <button type="button" onClick={() => addSession(d.day)}
+                              className="text-xs text-teal-600 hover:text-teal-700 flex items-center gap-1">
+                              <Plus className="w-3 h-3" /> Add {['evening', 'night'][d.sessions.length - 1] ?? 'another'} session
+                            </button>
+                          )}
+                          <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                            <input type="checkbox"
+                              checked={d.sessions.length === 1 && d.sessions[0].start === '00:00' && d.sessions[0].end === '23:30'}
+                              onChange={e => {
+                                updateDay(d.day, { sessions: e.target.checked ? [{ start: '00:00', end: '23:30' }] : [{ start: '09:00', end: '13:00' }] });
+                              }}
+                              className="w-3.5 h-3.5 accent-teal-600 cursor-pointer"
+                            />
+                            <span className="text-xs text-slate-500 font-medium">24 hrs</span>
+                          </label>
+                        </div>
                       </div>
                     ) : (
-                      <span className="text-xs text-slate-400 mt-1.5">Closed</span>
+                      <span className="text-xs text-slate-400 mt-1.5 italic">Closed · tap day to open</span>
                     )}
 
                     {/* Cap */}
                     {d.open && (
                       <div className="flex items-center gap-1.5 flex-shrink-0 ml-auto">
                         <span className="text-[10px] text-slate-400">Max</span>
-                        <input type="number" min={1} max={100} value={d.maxPatients}
+                        <input type="number" min={1} max={999} value={d.maxPatients}
                           onChange={e => updateDay(d.day, { maxPatients: Number(e.target.value) })}
-                          className="w-14 text-center input py-1.5 text-sm font-semibold" />
+                          className="w-20 text-center input py-1.5 text-sm font-semibold" />
                         <span className="text-[10px] text-slate-400">pts</span>
                       </div>
                     )}
@@ -1063,7 +1148,16 @@ function ClinicsTab() {
             <p className="text-sm text-slate-500">This won't delete any patient data.</p>
             <div className="flex gap-2">
               <button onClick={() => setConfirmDelete(null)} className="btn-secondary flex-1">Cancel</button>
-              <button onClick={() => { removeClinic(confirmDelete); showToast('Clinic removed', 'info'); setConfirmDelete(null); }}
+              <button onClick={async () => {
+                const id = confirmDelete;
+                setConfirmDelete(null);
+                try {
+                  await removeClinic(id);
+                  showToast('Clinic removed', 'info');
+                } catch {
+                  showToast('Could not remove clinic — server error. Please try again.', 'error');
+                }
+              }}
                 className="flex-1 bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-4 rounded-xl">Remove</button>
             </div>
           </div>
@@ -1119,6 +1213,9 @@ export default function SettingsPage() {
         {activeTab === 'staff'   && <StaffTab />}
         {activeTab === 'clinics' && <ClinicsTab />}
       </div>
+
+      {/* Install App banner — always visible at the bottom of Settings */}
+      <PWAInstallGuide compact />
     </div>
   );
 }

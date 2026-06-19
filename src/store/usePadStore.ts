@@ -80,15 +80,18 @@ const DEMO_CLINICS: Clinic[] = [
 
 interface PadStore {
   settings: PadSettings;
+  eSignUrl: string;
   clinics: Clinic[];
   favDrugs: FavDrug[];
   favPrescriptions: FavPrescription[];
   setSettings: (s: Partial<PadSettings>) => void;
+  setESign: (url: string) => void;
   resetSettings: () => void;
   addClinic: (c: Clinic) => void;
   updateClinic: (c: Clinic) => void;
-  removeClinic: (id: string) => void;
+  removeClinic: (id: string) => Promise<void>;
   syncClinicsFromApi: () => Promise<void>;
+  syncPadFromApi: () => Promise<void>;
   recordPrescriptionUsage: (drugs: Partial<Medication>[], diagnosis: string) => void;
   saveFavBundle: (label: string, drugs: Partial<Medication>[], tags: string[]) => void;
   deleteFavBundle: (id: string) => void;
@@ -98,9 +101,28 @@ export const usePadStore = create<PadStore>()(
   persist(
     (set, get) => ({
       settings: DEFAULT,
+      eSignUrl: '',
       clinics: DEMO_CLINICS,
       favDrugs: [],
       favPrescriptions: [],
+      setESign: (url) => {
+        set({ eSignUrl: url });
+        // Persist to backend so the signature survives across devices
+        import('@/lib/api').then(({ isApiEnabled, api }) => {
+          if (isApiEnabled()) {
+            const { settings: s } = get();
+            api.put('/clinics/pad', {
+              doctorName: s.doctorName, degrees: s.degrees, specialty: s.specialty,
+              regNumber: s.regNumber, address: s.address, phone: s.phone,
+              email: s.email, timings: s.timings, clinicName: s.clinicName,
+              footerNote: s.footerNote, quote: s.quote, showQuote: s.showQuote,
+              showTimings: s.showTimings, theme: s.theme,
+              customFields: JSON.stringify(s.customFields),
+              eSignUrl: url,
+            }).catch(e => console.warn('eSign sync failed:', e));
+          }
+        });
+      },
       setSettings: (s) => {
         set(state => {
           const updated = { ...state.settings, ...s };
@@ -108,21 +130,22 @@ export const usePadStore = create<PadStore>()(
           import('@/lib/api').then(({ isApiEnabled, api }) => {
             if (isApiEnabled()) {
               api.put('/clinics/pad', {
-                doctor_name: updated.doctorName,
+                doctorName: updated.doctorName,
                 degrees: updated.degrees,
                 specialty: updated.specialty,
-                reg_number: updated.regNumber,
+                regNumber: updated.regNumber,
                 address: updated.address,
                 phone: updated.phone,
                 email: updated.email,
                 timings: updated.timings,
-                clinic_name: updated.clinicName,
-                footer_note: updated.footerNote,
+                clinicName: updated.clinicName,
+                footerNote: updated.footerNote,
                 quote: updated.quote,
-                show_quote: updated.showQuote,
-                show_timings: updated.showTimings,
+                showQuote: updated.showQuote,
+                showTimings: updated.showTimings,
                 theme: updated.theme,
-                custom_fields: JSON.stringify(updated.customFields),
+                customFields: JSON.stringify(updated.customFields),
+                eSignUrl: get().eSignUrl,
               }).catch((e) => console.warn('PAD sync failed:', e));
             }
           });
@@ -139,9 +162,22 @@ export const usePadStore = create<PadStore>()(
         // POST upserts on the backend, so it works for clinics not yet synced
         if (isApiEnabled()) api.post('/clinics', c).catch(() => {});
       },
-      removeClinic: (id) => {
+      removeClinic: async (id) => {
+        const prev = get().clinics;
+        // Optimistic remove
         set(state => ({ clinics: state.clinics.filter(x => x.id !== id) }));
-        if (isApiEnabled()) api.del(`/clinics/${id}`).catch(() => {});
+        if (isApiEnabled()) {
+          try {
+            await api.del(`/clinics/${id}`);
+          } catch (err) {
+            // 404 = not on server (was only local) — keep the local removal
+            if (err instanceof Error && err.message.includes('404')) return;
+            if (err instanceof Error && err.message.includes('not found')) return;
+            // Any other error — revert so we don't silently lose a real clinic
+            set({ clinics: prev });
+            throw new Error('Failed to delete clinic from server');
+          }
+        }
       },
 
       // Pull the doctor's real clinics from the backend; replaces local/demo data
@@ -153,6 +189,63 @@ export const usePadStore = create<PadStore>()(
             set({ clinics: rows.map(r => ({ ...r, schedule: r.schedule ?? [] })) });
           }
         } catch { /* offline / demo — keep local clinics */ }
+      },
+
+      syncPadFromApi: async () => {
+        if (!isApiEnabled()) return;
+        try {
+          const d = await api.get<Record<string, unknown>>('/clinics/pad');
+          if (!d || typeof d !== 'object') return;
+
+          const localESign = get().eSignUrl;
+          const remoteESign = (d.eSignUrl as string) || '';
+
+          set(state => {
+            const s = state.settings;
+            let cf = s.customFields;
+            if (d.customFields !== undefined) {
+              cf = Array.isArray(d.customFields)
+                ? d.customFields as PadSettings['customFields']
+                : typeof d.customFields === 'string'
+                  ? JSON.parse(d.customFields as string) as PadSettings['customFields']
+                  : cf;
+            }
+            const merged: PadSettings = {
+              ...s,
+              doctorName:  d.doctorName  !== undefined ? String(d.doctorName)  : s.doctorName,
+              degrees:     d.degrees     !== undefined ? String(d.degrees)     : s.degrees,
+              specialty:   d.specialty   !== undefined ? String(d.specialty)   : s.specialty,
+              regNumber:   d.regNumber   !== undefined ? String(d.regNumber)   : s.regNumber,
+              address:     d.address     !== undefined ? String(d.address)     : s.address,
+              phone:       d.phone       !== undefined ? String(d.phone)       : s.phone,
+              email:       d.email       !== undefined ? String(d.email)       : s.email,
+              timings:     d.timings     !== undefined ? String(d.timings)     : s.timings,
+              clinicName:  d.clinicName  !== undefined ? String(d.clinicName)  : s.clinicName,
+              footerNote:  d.footerNote  !== undefined ? String(d.footerNote)  : s.footerNote,
+              quote:       d.quote       !== undefined ? String(d.quote)       : s.quote,
+              showQuote:   d.showQuote   !== undefined ? Boolean(d.showQuote)  : s.showQuote,
+              showTimings: d.showTimings !== undefined ? Boolean(d.showTimings): s.showTimings,
+              theme:       d.theme       !== undefined ? (d.theme as PadSettings['theme']) : s.theme,
+              customFields: cf,
+            };
+            // Backend wins if it has an esign; otherwise keep local
+            return { eSignUrl: remoteESign || state.eSignUrl, settings: merged };
+          });
+
+          // If backend has no esign but this device does, push it up so other devices get it
+          if (!remoteESign && localESign) {
+            const s = get().settings;
+            api.put('/clinics/pad', {
+              doctorName: s.doctorName, degrees: s.degrees, specialty: s.specialty,
+              regNumber: s.regNumber, address: s.address, phone: s.phone,
+              email: s.email, timings: s.timings, clinicName: s.clinicName,
+              footerNote: s.footerNote, quote: s.quote, showQuote: s.showQuote,
+              showTimings: s.showTimings, theme: s.theme,
+              customFields: JSON.stringify(s.customFields),
+              eSignUrl: localESign,
+            }).catch(() => {});
+          }
+        } catch { /* offline — keep local */ }
       },
 
       recordPrescriptionUsage: (drugs, _diagnosis) => {

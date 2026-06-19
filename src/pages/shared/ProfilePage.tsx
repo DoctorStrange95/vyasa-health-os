@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { User, Mail, Phone, Building2, Stethoscope, Edit3, Save, Shield, Key, Bell, CheckCircle2, Loader2, Globe, Copy, ExternalLink, MessageCircle, LogOut, Eye, EyeOff } from 'lucide-react';
+import { User, Mail, Phone, Building2, Stethoscope, Edit3, Save, Shield, Key, Bell, CheckCircle2, Loader2, Globe, Copy, ExternalLink, MessageCircle, LogOut, Eye, EyeOff, Camera, Smartphone } from 'lucide-react';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePadStore } from '@/store/usePadStore';
 import { api, isApiEnabled } from '@/lib/api';
 import { cn, initials } from '@/lib/utils';
+import { PWAInstallGuide } from '@/components/PWAInstallGuide';
 
-type Tab = 'profile' | 'security' | 'notifications';
+type Tab = 'profile' | 'security' | 'notifications' | 'app';
 
 const INDIAN_STATES = [
   'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat',
@@ -34,6 +35,7 @@ export default function ProfilePage() {
   const { user, approvalStatus } = useAuthStore();
   const { settings: padSettings } = usePadStore();
   const [tab, setTab] = useState<Tab>('profile');
+  const [showPhotoMenu, setShowPhotoMenu] = useState(false);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -94,6 +96,24 @@ export default function ProfilePage() {
       .catch(() => {})
       .finally(() => setPubLoading(false));
   }, [user?.role]);
+
+  // Immediately persist a single visibility/accepting field — no extra button click needed
+  async function saveVisibilityField(field: 'public_profile_enabled' | 'accepting_patients' | 'show_reg_number', value: boolean) {
+    if (!isApiEnabled()) return;
+    setPubSaving(true);
+    try {
+      const updated = await api.patch<typeof pubProfile>('/auth/me/public-profile', { [field]: value });
+      setPubProfile(p => ({ ...p, ...updated }));
+      setPubSaved(true);
+      setTimeout(() => setPubSaved(false), 2000);
+    } catch {
+      // revert UI if save fails
+      setPubProfile(p => p ? { ...p, [field]: !value } : p);
+      alert('Could not save. Please try again.');
+    } finally {
+      setPubSaving(false);
+    }
+  }
 
   async function handlePubSave() {
     if (!pubProfile) return;
@@ -385,6 +405,11 @@ export default function ProfilePage() {
     }
   }
 
+  async function handleSaveAll() {
+    await handleSave();
+    if (isApiEnabled() && pubProfile) await handlePubSave();
+  }
+
   async function handleChangePassword() {
     setPwError('');
     if (!pwForm.newPassword || !pwForm.currentPassword) {
@@ -426,93 +451,185 @@ export default function ProfilePage() {
   const SaveCancelButtons = () => (
     <div className="flex gap-2">
       <button onClick={() => setEditing(false)} className="btn-secondary btn-sm">Cancel</button>
-      <button onClick={handleSave} disabled={saving} className="btn-primary btn-sm">
-        {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-        {saving ? 'Saving…' : 'Save'}
+      <button onClick={handleSaveAll} disabled={saving || pubSaving} className="btn-primary btn-sm">
+        {(saving || pubSaving) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+        {(saving || pubSaving) ? 'Saving…' : 'Save & Publish'}
       </button>
     </div>
   );
 
   return (
-    <div className="p-0 md:p-6 max-w-3xl space-y-6 pb-24 md:pb-6">
-      {/* ── Header card ── */}
-      <div className="card p-6">
-        <div className="flex items-start gap-5">
-          {/* Profile photo / initials */}
-          <div className="flex-shrink-0">
-            {pubProfile?.profile_photo_url ? (
-              <img
-                src={pubProfile.profile_photo_url}
-                alt={user?.name ?? 'Profile'}
-                className="w-20 h-20 rounded-2xl object-cover"
-              />
-            ) : (
-              <div className="w-20 h-20 rounded-2xl bg-teal-600 flex items-center justify-center text-white text-2xl font-bold">
-                {initials(user?.name || 'U')}
+    <div className="max-w-3xl space-y-4 pb-28 md:pb-8">
+
+      {/* ══ Hero Header Card ══ */}
+      <div className="card p-0 overflow-hidden animate-fade-up">
+        {/* Gradient banner — decorative top strip */}
+        <div className="h-14 rounded-t-2xl" style={{ background: 'linear-gradient(135deg,#0a1628 0%,#0891b2 60%,#06b6d4 100%)' }} />
+
+        {/* Profile content — sits cleanly below the banner */}
+        <div className="px-5 pt-4 pb-5">
+          <div className="flex items-start gap-4">
+            {/* Avatar — pulled up to overlap the banner bottom */}
+            <div className="relative flex-shrink-0 -mt-10">
+              {pubProfile?.profile_photo_url ? (
+                <img
+                  src={pubProfile.profile_photo_url}
+                  alt={user?.name ?? 'Profile'}
+                  className="w-20 h-20 rounded-2xl object-cover ring-[3px] ring-white shadow-lg"
+                />
+              ) : (
+                <div className="w-20 h-20 rounded-2xl bg-teal-600 flex items-center justify-center text-white text-2xl font-bold ring-[3px] ring-white shadow-lg">
+                  {initials(user?.name || 'U')}
+                </div>
+              )}
+
+              {/* Edit button — bottom-right of avatar */}
+              <button
+                onClick={() => setShowPhotoMenu(m => !m)}
+                className="absolute -bottom-2 -right-2 w-7 h-7 rounded-full bg-white border-2 border-slate-200 shadow flex items-center justify-center hover:bg-slate-50 transition-colors cursor-pointer"
+                title="Edit photo"
+              >
+                {photoUploading ? <Loader2 className="w-3.5 h-3.5 text-slate-500 animate-spin" /> : <Camera className="w-3.5 h-3.5 text-slate-600" />}
+              </button>
+
+              {/* Photo menu dropdown */}
+              {showPhotoMenu && (
+                <div className="absolute left-0 top-[88px] z-50 bg-white rounded-xl shadow-xl border border-slate-100 py-1 w-44 animate-fade-in">
+                  <label className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 cursor-pointer transition-colors">
+                    <Camera className="w-3.5 h-3.5 text-teal-600 flex-shrink-0" />
+                    {pubProfile?.profile_photo_url ? 'Change Photo' : 'Upload Photo'}
+                    <input type="file" accept="image/*" className="hidden"
+                      onChange={e => { handlePhotoUpload(e); setShowPhotoMenu(false); }}
+                      disabled={photoUploading} />
+                  </label>
+                  {pubProfile?.profile_photo_url && (
+                    <button
+                      onClick={() => { setPubProfile(p => ({ ...p, profile_photo_url: '' })); setShowPhotoMenu(false); }}
+                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 cursor-pointer transition-colors"
+                    >
+                      <Edit3 className="w-3.5 h-3.5 flex-shrink-0" />
+                      Remove Photo
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Name / role / meta */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-lg font-bold text-slate-900 leading-tight">{user?.name}</h1>
+                {isApproved && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-semibold">
+                    <CheckCircle2 className="w-3 h-3" /> Verified
+                  </span>
+                )}
+                <button
+                  onClick={() => { const { logout } = useAuthStore.getState(); logout(); }}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 text-[10px] font-semibold transition-colors cursor-pointer"
+                  title="Logout"
+                >
+                  <LogOut className="w-2.5 h-2.5" /> Logout
+                </button>
+              </div>
+              <div className="text-teal-600 font-semibold text-xs mt-0.5">
+                {ROLE_LABELS[user?.role ?? ''] ?? user?.role}
+              </div>
+              <div className="text-[11px] text-slate-500 mt-0.5 flex flex-wrap items-center gap-2">
+                {form.specialty && <span className="flex items-center gap-1"><Stethoscope className="w-3 h-3" />{form.specialty}</span>}
+                {user?.email && <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{user.email}</span>}
+              </div>
+            </div>
+
+            {/* QR — always visible, doctor only */}
+            {isDoctor && (
+              <div className="flex-shrink-0 text-center">
+                <button
+                  onClick={() => downloadBrandedQR(bookingLink, user?.name || 'Doctor', slug, {
+                    specialty: form.specialty,
+                    experience: pubProfile?.years_experience,
+                    qualification: form.qualification,
+                    city: pubProfile?.city,
+                  }, true)}
+                  className="inline-block bg-white rounded-xl p-1 border border-slate-200 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                  title="Preview & download QR"
+                >
+                  <img
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${encodeURIComponent(bookingLink)}&bgcolor=ffffff&color=0a1628&margin=2`}
+                    alt="Booking QR"
+                    width={68} height={68}
+                    className="rounded-lg"
+                  />
+                </button>
+                <p className="text-[9px] text-slate-400 mt-1 leading-none">Tap to preview</p>
               </div>
             )}
           </div>
 
-          {/* Name / role / meta */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-xl font-bold text-slate-900">{user?.name}</h1>
-              {isApproved && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-semibold">
-                  <CheckCircle2 className="w-3 h-3" /> Verified
-                </span>
-              )}
-            </div>
-            <div className="text-teal-600 font-medium text-sm mt-0.5">
-              {ROLE_LABELS[user?.role ?? ''] ?? user?.role}
-            </div>
-            <div className="text-sm text-slate-500 mt-1 flex flex-wrap items-center gap-3">
-              {form.specialty && <span className="flex items-center gap-1"><Stethoscope className="w-3.5 h-3.5" />{form.specialty}</span>}
-              {user?.email && <span className="flex items-center gap-1"><Mail className="w-3.5 h-3.5" />{user.email}</span>}
-            </div>
-          </div>
-
-          {/* QR code — top-right, only for doctors */}
+          {/* Booking link quick-action bar — doctor only */}
           {isDoctor && (
-            <div className="flex-shrink-0 hidden sm:block">
-              <a href={bookingLink} target="_blank" rel="noopener noreferrer"
-                className="inline-block bg-white rounded-xl p-1 border border-slate-200 hover:shadow-md transition-shadow">
-                <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${encodeURIComponent(bookingLink)}&bgcolor=ffffff&color=0a1628&margin=2`}
-                  alt="Booking QR"
-                  width={80} height={80}
-                  className="rounded-lg"
-                />
-              </a>
-              <p className="text-[10px] text-slate-400 text-center mt-1">Scan to book</p>
-            </div>
-          )}
-
-          {saved && (
-            <div className="flex items-center gap-1.5 text-emerald-600 text-sm font-medium">
-              <CheckCircle2 className="w-4 h-4" /> Saved
+            <div className="mt-4 flex items-center gap-2 bg-slate-50 rounded-xl px-3 py-2.5 border border-slate-100">
+              <Globe className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+              <span className="flex-1 text-[11px] font-mono text-slate-600 truncate">{bookingLink}</span>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <button
+                  onClick={() => copyLink(bookingLink)}
+                  className="p-1.5 rounded-lg hover:bg-slate-200 transition-colors cursor-pointer"
+                  title={copied ? 'Copied!' : 'Copy link'}
+                >
+                  {copied ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5 text-slate-500" />}
+                </button>
+                <a
+                  href={`https://wa.me/?text=${encodeURIComponent(`Book an appointment with Dr. ${padSettings.doctorName || user?.name}: ${bookingLink}`)}`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="p-1.5 rounded-lg hover:bg-green-100 transition-colors cursor-pointer"
+                  title="Share on WhatsApp"
+                >
+                  <MessageCircle className="w-3.5 h-3.5 text-[#25D366]" />
+                </a>
+                <a
+                  href={bookingLink} target="_blank" rel="noopener noreferrer"
+                  className="p-1.5 rounded-lg hover:bg-slate-200 transition-colors cursor-pointer"
+                  title="Open booking page"
+                >
+                  <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
+                </a>
+              </div>
             </div>
           )}
         </div>
       </div>
 
-      {/* ── Tabs ── */}
-      <div className="tab-bar overflow-x-auto">
+      {/* ══ Segmented Tab Bar ══ */}
+      <div className="flex bg-slate-100 rounded-2xl p-1 gap-1 animate-fade-up delay-50">
         {([
-          { id: 'profile', label: 'Profile', icon: User },
-          { id: 'security', label: 'Security', icon: Shield },
-          { id: 'notifications', label: 'Notifications', icon: Bell },
+          { id: 'profile',       label: 'Profile',       icon: User },
+          { id: 'security',      label: 'Security',      icon: Shield },
+          { id: 'notifications', label: 'Alerts',        icon: Bell },
+          { id: 'app',           label: 'Install',       icon: Smartphone },
         ] as const).map(t => (
-          <button key={t.id} onClick={() => setTab(t.id as Tab)}
-            className={cn('tab-btn flex items-center gap-2 whitespace-nowrap', tab === t.id && 'active')}>
-            <t.icon className="w-4 h-4" />{t.label}
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={cn(
+              'flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold rounded-xl transition-all duration-200 cursor-pointer',
+              tab === t.id
+                ? 'bg-white shadow-sm text-teal-700'
+                : 'text-slate-500 hover:text-slate-700'
+            )}
+          >
+            <t.icon className="w-3.5 h-3.5" />
+            {t.label}
           </button>
         ))}
       </div>
 
+      {/* ══ Tab Content (animated on switch) ══ */}
+      <div key={tab} className="animate-fade-up space-y-4">
+
       {/* ── Profile tab ── */}
       {tab === 'profile' && (
-        <div className="space-y-6">
+        <div className="space-y-5">
           {/* Personal Information card */}
           <div className="card p-6 space-y-5">
             <div className="flex items-center justify-between">
@@ -579,43 +696,28 @@ export default function ProfilePage() {
           {isDoctor && (() => {
             return (
               <div className="space-y-4">
-                {/* Booking link card */}
-                <div className="rounded-2xl p-5 text-white" style={{ background: 'linear-gradient(135deg, #0a1628 0%, #1B4F8A 100%)' }}>
-                  <div className="flex items-start gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs font-bold uppercase tracking-widest opacity-60 mb-2">Your Patient Booking Link</div>
-                      <div className="text-sm font-mono font-semibold break-all mb-4 opacity-95 bg-white/10 rounded-lg px-3 py-2">{bookingLink}</div>
+                {/* QR & Share card */}
+                <div className="card p-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="font-semibold text-slate-800">Booking QR & Share</h2>
+                    <a href={bookingLink} target="_blank" rel="noopener noreferrer"
+                      className="text-xs text-teal-600 hover:underline flex items-center gap-1 cursor-pointer">
+                      <ExternalLink className="w-3 h-3" /> Preview page
+                    </a>
+                  </div>
+                  <div className="flex items-center gap-5">
+                    <a href={bookingLink} target="_blank" rel="noopener noreferrer"
+                      className="inline-block bg-white rounded-xl p-1.5 border border-slate-200 hover:shadow-md transition-shadow cursor-pointer flex-shrink-0">
+                      <img
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(bookingLink)}&bgcolor=ffffff&color=0a1628&margin=4`}
+                        alt="QR Code - Click to open booking page"
+                        width={96} height={96}
+                        className="rounded-lg"
+                      />
+                    </a>
+                    <div className="flex-1 space-y-3">
+                      <p className="text-xs text-slate-500 leading-relaxed">Print this QR and place it at your clinic. Patients scan to book instantly.</p>
                       <div className="flex gap-2 flex-wrap">
-                        <button onClick={() => copyLink(bookingLink)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/15 hover:bg-white/25 transition-colors">
-                          {copied ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                          {copied ? 'Copied!' : 'Copy Link'}
-                        </button>
-                        <a href={bookingLink} target="_blank" rel="noopener noreferrer"
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/15 hover:bg-white/25 transition-colors">
-                          <ExternalLink className="w-3.5 h-3.5" /> Preview
-                        </a>
-                        <a href={`https://wa.me/?text=${encodeURIComponent(`Book an appointment with Dr. ${padSettings.doctorName || user?.name}: ${bookingLink}`)}`}
-                          target="_blank" rel="noopener noreferrer"
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#25D366] hover:bg-[#1ebe58] transition-colors">
-                          <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
-                        </a>
-                      </div>
-                      <p className="text-xs mt-3 opacity-50">Add this link to your Google Business Profile so patients can book directly from Google Maps.</p>
-                    </div>
-                    {/* QR Code */}
-                    <div className="flex-shrink-0 text-center">
-                      <a href={bookingLink} target="_blank" rel="noopener noreferrer"
-                        className="inline-block bg-white rounded-xl p-1.5 hover:shadow-lg transition-shadow duration-200 cursor-pointer">
-                        <img
-                          src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(bookingLink)}&bgcolor=ffffff&color=0a1628&margin=4`}
-                          alt="QR Code - Click to open booking page"
-                          width={100} height={100}
-                          className="rounded-lg hover:opacity-80 transition-opacity"
-                        />
-                      </a>
-                      <p className="text-xs opacity-60 mt-1.5">Scan or click to book</p>
-                      <div className="flex flex-col gap-1.5 mt-2">
                         <button
                           onClick={() => downloadBrandedQR(bookingLink, user?.name || 'Doctor', slug, {
                             specialty: form.specialty,
@@ -623,9 +725,9 @@ export default function ProfilePage() {
                             qualification: form.qualification,
                             city: pubProfile?.city
                           }, true)}
-                          className="text-xs opacity-75 hover:opacity-100 underline hover:text-teal-600 font-medium"
+                          className="btn-secondary btn-sm cursor-pointer"
                         >
-                          Preview
+                          Preview QR
                         </button>
                         <button
                           onClick={() => downloadBrandedQR(bookingLink, user?.name || 'Doctor', slug, {
@@ -634,10 +736,15 @@ export default function ProfilePage() {
                             qualification: form.qualification,
                             city: pubProfile?.city
                           }, false)}
-                          className="text-xs opacity-75 hover:opacity-100 underline hover:text-teal-600 font-medium"
+                          className="btn-primary btn-sm cursor-pointer"
                         >
                           Download JPG
                         </button>
+                        <a href={`https://wa.me/?text=${encodeURIComponent(`Book an appointment with Dr. ${padSettings.doctorName || user?.name}: ${bookingLink}`)}`}
+                          target="_blank" rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#25D366] text-white hover:bg-[#1ebe58] transition-colors cursor-pointer">
+                          <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
+                        </a>
                       </div>
                     </div>
                   </div>
@@ -652,66 +759,66 @@ export default function ProfilePage() {
                     </div>
                   </div>
 
-                  {/* Profile photo */}
-                  <div>
-                    <label className="label">Profile Photo</label>
-                    <div className="flex items-center gap-4">
-                      <div className="w-16 h-16 rounded-2xl bg-slate-100 border-2 border-dashed border-slate-300 flex items-center justify-center overflow-hidden flex-shrink-0">
-                        {pubProfile?.profile_photo_url ? (
-                          <img src={pubProfile.profile_photo_url} alt="Profile" className="w-full h-full object-cover" />
-                        ) : (
-                          <span className="text-2xl font-bold text-slate-400">{initials(user?.name || 'DR')}</span>
-                        )}
-                      </div>
-                      <div>
-                        <label className="btn-secondary text-xs cursor-pointer inline-flex items-center gap-1.5">
-                          {photoUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-                          {photoUploading ? 'Uploading…' : 'Upload Photo'}
-                          <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} disabled={photoUploading} />
-                        </label>
-                        <p className="text-xs text-slate-400 mt-1">JPG/PNG, max 2MB. Shown on your public booking page.</p>
-                        {pubProfile?.profile_photo_url && (
-                          <button onClick={() => setPubProfile(p => ({ ...p, profile_photo_url: '' }))}
-                            className="text-xs text-red-500 hover:text-red-700 mt-1 block">Remove photo</button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Visibility toggles */}
+                  {/* Visibility toggles — auto-saved immediately on change */}
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div className="border border-slate-200 rounded-xl p-4">
-                      <div className="text-sm font-semibold text-slate-700 mb-2">Profile Visibility</div>
+                    <div className="border-2 border-slate-200 rounded-xl p-4 relative">
+                      <div className="text-sm font-semibold text-slate-700 mb-1">Profile Visibility</div>
+                      <div className="text-xs text-slate-400 mb-2">Saves instantly</div>
                       <div className="flex gap-3">
                         {[{v:true,l:'Public'},{v:false,l:'Hidden'}].map(o=>(
-                          <label key={String(o.v)} className="flex items-center gap-1.5 cursor-pointer text-sm">
-                            <input type="radio" name="pub-enabled" checked={(pubProfile?.public_profile_enabled ?? true) === o.v}
-                              onChange={() => setPubProfile(p => ({...p, public_profile_enabled: o.v}))} className="accent-teal-500" />
-                            {o.l}
+                          <label key={String(o.v)} className={`flex items-center gap-1.5 cursor-pointer text-sm font-medium px-3 py-1.5 rounded-lg border-2 transition-all ${
+                            (pubProfile?.public_profile_enabled ?? true) === o.v
+                              ? (o.v ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-red-400 bg-red-50 text-red-700')
+                              : 'border-slate-200 text-slate-500'
+                          }`}>
+                            <input type="radio" name="pub-enabled" className="sr-only"
+                              checked={(pubProfile?.public_profile_enabled ?? true) === o.v}
+                              onChange={() => {
+                                setPubProfile(p => ({...p, public_profile_enabled: o.v}));
+                                saveVisibilityField('public_profile_enabled', o.v);
+                              }} />
+                            {o.v ? 'Public' : 'Hidden'}
                           </label>
                         ))}
                       </div>
                     </div>
-                    <div className="border border-slate-200 rounded-xl p-4">
-                      <div className="text-sm font-semibold text-slate-700 mb-2">Accepting Patients</div>
+                    <div className="border-2 border-slate-200 rounded-xl p-4">
+                      <div className="text-sm font-semibold text-slate-700 mb-1">Accepting Patients</div>
+                      <div className="text-xs text-slate-400 mb-2">Saves instantly</div>
                       <div className="flex gap-3">
                         {[{v:true,l:'Yes'},{v:false,l:'No'}].map(o=>(
-                          <label key={String(o.v)} className="flex items-center gap-1.5 cursor-pointer text-sm">
-                            <input type="radio" name="pub-accepting" checked={(pubProfile?.accepting_patients ?? true) === o.v}
-                              onChange={() => setPubProfile(p => ({...p, accepting_patients: o.v}))} className="accent-teal-500" />
-                            {o.l}
+                          <label key={String(o.v)} className={`flex items-center gap-1.5 cursor-pointer text-sm font-medium px-3 py-1.5 rounded-lg border-2 transition-all ${
+                            (pubProfile?.accepting_patients ?? true) === o.v
+                              ? (o.v ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-slate-400 bg-slate-50 text-slate-600')
+                              : 'border-slate-200 text-slate-500'
+                          }`}>
+                            <input type="radio" name="pub-accepting" className="sr-only"
+                              checked={(pubProfile?.accepting_patients ?? true) === o.v}
+                              onChange={() => {
+                                setPubProfile(p => ({...p, accepting_patients: o.v}));
+                                saveVisibilityField('accepting_patients', o.v);
+                              }} />
+                            {o.v ? 'Yes' : 'No'}
                           </label>
                         ))}
                       </div>
                     </div>
-                    <div className="border border-slate-200 rounded-xl p-4">
+                    <div className="border-2 border-slate-200 rounded-xl p-4">
                       <div className="text-sm font-semibold text-slate-700 mb-1">Show MCI Reg. No.</div>
-                      <div className="text-xs text-slate-400 mb-2">Hidden by default for privacy</div>
+                      <div className="text-xs text-slate-400 mb-2">Saves instantly</div>
                       <div className="flex gap-3">
                         {[{v:true,l:'Show'},{v:false,l:'Hide'}].map(o=>(
-                          <label key={String(o.v)} className="flex items-center gap-1.5 cursor-pointer text-sm">
-                            <input type="radio" name="pub-reg" checked={(pubProfile?.show_reg_number ?? false) === o.v}
-                              onChange={() => setPubProfile(p => ({...p, show_reg_number: o.v}))} className="accent-teal-500" />
+                          <label key={String(o.v)} className={`flex items-center gap-1.5 cursor-pointer text-sm font-medium px-3 py-1.5 rounded-lg border-2 transition-all ${
+                            (pubProfile?.show_reg_number ?? false) === o.v
+                              ? 'border-teal-500 bg-teal-50 text-teal-700'
+                              : 'border-slate-200 text-slate-500'
+                          }`}>
+                            <input type="radio" name="pub-reg" className="sr-only"
+                              checked={(pubProfile?.show_reg_number ?? false) === o.v}
+                              onChange={() => {
+                                setPubProfile(p => ({...p, show_reg_number: o.v}));
+                                saveVisibilityField('show_reg_number', o.v);
+                              }} />
                             {o.l}
                           </label>
                         ))}
@@ -867,10 +974,10 @@ export default function ProfilePage() {
                     </div>
                   )}
 
-                  <button onClick={handlePubSave} disabled={pubSaving || !isApiEnabled()}
+                  <button onClick={handleSaveAll} disabled={saving || pubSaving || !isApiEnabled()}
                     className="btn-primary w-full">
-                    {pubSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
-                    {pubSaving ? 'Saving…' : 'Save & Publish Profile'}
+                    {(saving || pubSaving) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    {(saving || pubSaving) ? 'Saving…' : 'Save & Publish All'}
                   </button>
                 </div>
               </div>
@@ -1051,19 +1158,10 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {/* ── Logout Button ── */}
-      <div className="mt-8 pt-6 border-t border-slate-200 flex flex-col gap-3">
-        <p className="text-xs text-slate-400 px-1">Actions</p>
-        <button
-          onClick={() => {
-            const { logout } = useAuthStore.getState();
-            logout();
-          }}
-          className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 font-semibold transition-colors"
-        >
-          <LogOut className="w-4 h-4" /> Logout
-        </button>
-      </div>
+      {/* ── Install App tab ── */}
+      {tab === 'app' && <PWAInstallGuide />}
+
+      </div>{/* end keyed tab content */}
 
       {/* ── Sticky Save/Cancel bar — mobile only, when editing ── */}
       {editing && (
@@ -1075,51 +1173,75 @@ export default function ProfilePage() {
             Cancel
           </button>
           <button
-            onClick={handleSave}
-            disabled={saving}
+            onClick={handleSaveAll}
+            disabled={saving || pubSaving}
             className="flex-1 px-4 py-2.5 rounded-lg bg-teal-600 text-white font-semibold text-sm hover:bg-teal-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
           >
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            {saving ? 'Saving…' : 'Save Changes'}
+            {(saving || pubSaving) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {(saving || pubSaving) ? 'Saving…' : 'Save & Publish'}
           </button>
         </div>
       )}
 
       {/* ── QR Preview Modal ── */}
       {qrPreview && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-auto">
-            <div className="sticky top-0 bg-white border-b border-slate-200 p-4 flex items-center justify-between">
-              <h3 className="font-semibold text-slate-900">QR Code Preview</h3>
+        <div
+          className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-[9999] p-0 sm:p-4"
+          style={{ animation: 'fade-in 0.18s ease both' }}
+          onClick={() => setQrPreview(null)}
+        >
+          <div
+            className="bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-2xl flex flex-col overflow-hidden"
+            style={{ animation: 'slide-in-from-bottom 0.3s cubic-bezier(0.34,1.56,0.64,1) both' }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Drag handle (mobile) */}
+            <div className="flex justify-center pt-3 pb-1 sm:hidden">
+              <div className="w-10 h-1 rounded-full bg-slate-200" />
+            </div>
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-3">
+              <div>
+                <h3 className="font-bold text-slate-900">Booking QR Code</h3>
+                <p className="text-xs text-slate-400 mt-0.5">Share with patients to book instantly</p>
+              </div>
               <button
                 onClick={() => setQrPreview(null)}
-                className="text-slate-400 hover:text-slate-600 text-2xl leading-none"
-              >
-                ×
-              </button>
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center cursor-pointer transition-colors text-lg leading-none"
+              >×</button>
             </div>
-            <div className="p-6 flex flex-col items-center gap-4">
-              <img src={qrPreview} alt="QR Code Preview" className="w-full rounded-xl border border-slate-200" />
-              <div className="flex gap-3 w-full">
-                <button
-                  onClick={() => {
-                    const a = document.createElement('a');
-                    a.href = qrPreview;
-                    a.download = 'booking-qr.jpg';
-                    a.click();
-                    setQrPreview(null);
-                  }}
-                  className="flex-1 px-4 py-2.5 rounded-lg bg-teal-600 text-white font-semibold hover:bg-teal-700 transition-colors"
-                >
-                  Download
-                </button>
-                <button
-                  onClick={() => setQrPreview(null)}
-                  className="flex-1 px-4 py-2.5 rounded-lg bg-slate-200 text-slate-900 font-semibold hover:bg-slate-300 transition-colors"
-                >
-                  Close
-                </button>
-              </div>
+
+            {/* QR image */}
+            <div className="px-5 pb-2 flex justify-center">
+              <img
+                src={qrPreview}
+                alt="Booking QR Code"
+                className="rounded-2xl border border-slate-100 shadow-sm w-full max-h-[45vh] object-contain"
+              />
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex gap-3 px-5 py-4">
+              <button
+                onClick={() => setQrPreview(null)}
+                className="flex-1 py-3 rounded-2xl bg-slate-100 text-slate-700 font-semibold text-sm hover:bg-slate-200 transition-all duration-150 active:scale-95 cursor-pointer"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => {
+                  const a = document.createElement('a');
+                  a.href = qrPreview;
+                  a.download = 'booking-qr.jpg';
+                  a.click();
+                  setQrPreview(null);
+                }}
+                className="flex-1 py-3 rounded-2xl font-semibold text-sm flex items-center justify-center gap-2 text-white transition-all duration-150 active:scale-95 cursor-pointer"
+                style={{ background: 'linear-gradient(135deg,#0891b2,#059669)' }}
+              >
+                <Save className="w-4 h-4" /> Download
+              </button>
             </div>
           </div>
         </div>

@@ -1,6 +1,6 @@
 import { useParams, Link } from 'react-router-dom';
 import { useState } from 'react';
-import { ArrowLeft, Activity, Pill, FlaskConical, MessageSquare, ClipboardList, FileText, Info, Send, Plus, AlertTriangle, Printer, History, Syringe, Scissors, Camera, Skull, Calendar } from 'lucide-react';
+import { ArrowLeft, Activity, Pill, FlaskConical, MessageSquare, ClipboardList, FileText, Info, Send, Plus, AlertTriangle, Printer, History, Syringe, Scissors, Camera, Skull, Calendar, MoreVertical } from 'lucide-react';
 import { useAppStore, uid, nowIso } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePadStore } from '@/store/usePadStore';
@@ -23,6 +23,7 @@ export default function PatientDetailPage() {
   const [deathDate, setDeathDate] = useState(new Date().toISOString().slice(0, 16));
   const [deathCause, setDeathCause] = useState('');
   const [showSchedule, setShowSchedule] = useState(false);
+  const [ipdMenuOpen, setIpdMenuOpen] = useState(false);
   const [showTopPrint, setShowTopPrint] = useState(false);
   const { settings: padTop } = usePadStore();
 
@@ -162,6 +163,7 @@ export default function PatientDetailPage() {
               <FileText className="w-3.5 h-3.5" /> Consult
             </Link>
           )}
+          {/* Desktop: show buttons inline */}
           {isIPD && (
             <Link to={`/app/discharge?pid=${id}`} className="btn-secondary btn-sm hidden sm:flex">
               <FileText className="w-3.5 h-3.5" /> Discharge
@@ -171,6 +173,37 @@ export default function PatientDetailPage() {
             <button onClick={() => setDeathModal(true)} className="btn-sm bg-slate-100 hover:bg-red-50 text-slate-500 hover:text-red-600 border border-slate-200 hover:border-red-200 transition-colors hidden sm:flex">
               <Skull className="w-3.5 h-3.5" />
             </button>
+          )}
+          {/* Mobile: 3-dot kebab for IPD actions */}
+          {(isIPD || patient.status !== 'Deceased') && (
+            <div className="relative sm:hidden">
+              <button onClick={() => setIpdMenuOpen(o => !o)}
+                className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors">
+                <MoreVertical className="w-4 h-4" />
+              </button>
+              {ipdMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setIpdMenuOpen(false)} />
+                  <div className="absolute right-0 top-full mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden w-44">
+                    {isIPD && (
+                      <Link to={`/app/discharge?pid=${id}`}
+                        onClick={() => setIpdMenuOpen(false)}
+                        className="flex items-center gap-3 px-4 py-3 text-sm text-slate-700 hover:bg-slate-50">
+                        <FileText className="w-4 h-4 text-slate-400" />
+                        Discharge Patient
+                      </Link>
+                    )}
+                    {patient.status !== 'Deceased' && (
+                      <button onClick={() => { setDeathModal(true); setIpdMenuOpen(false); }}
+                        className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-600 hover:bg-red-50">
+                        <Skull className="w-4 h-4" />
+                        Record Death
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
           )}
         </div>
       </div>

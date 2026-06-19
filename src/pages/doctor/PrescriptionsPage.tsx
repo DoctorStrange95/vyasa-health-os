@@ -46,7 +46,7 @@ export default function PrescriptionsPage() {
   }, [patients, prescriptions]);
 
   function updateRxForm(id: string, form: RxRow['form']) {
-    const FORM_ROUTES: Record<RxRow['form'], string> = { Tab: 'Oral', Cap: 'Oral', Syr: 'Oral', MDI: 'Inhaled', Drops: 'Topical', Cream: 'Topical', Inj: 'IM' };
+    const FORM_ROUTES: Record<RxRow['form'], string> = { Tab: 'Oral', Cap: 'Oral', Syr: 'Oral', MDI: 'Inhaled', Drops: 'Topical', Cream: 'Topical', Inj: 'IM', Sachet: 'Oral' };
     setRxRows(rows => rows.map(r => r.id === id ? { ...r, form, route: FORM_ROUTES[form] } : r));
   }
 

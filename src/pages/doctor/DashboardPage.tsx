@@ -1,15 +1,16 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useAppStore } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePadStore } from '@/store/usePadStore';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { PriorityBadge, StatusBadge } from '@/components/ui/Badge';
 import {
   Users, BedDouble, Bell, Clock, TrendingUp, AlertTriangle, Activity,
   CheckCircle2, Pencil, X, UserPlus,
-  Building2, ChevronDown, Edit2, Calendar, CalendarDays, Settings2, BarChart3, DollarSign, Eye
+  Building2, ChevronDown, Edit2, Calendar, CalendarDays, Settings2, BarChart3, DollarSign, ChevronRight, PlayCircle
 } from 'lucide-react';
 import { formatDateTime, cn, localDate } from '@/lib/utils';
+import type { AppointmentEntry, QueueEntry } from '@/types';
 
 // ─── Today's Clinic Widget ─────────────────────────────────────────────────────
 
@@ -22,7 +23,7 @@ function TodayClinicWidget() {
   const avail = todayAvailability?.date === todayStr ? todayAvailability : null;
   const todayCount = queue.filter(q => q.status !== 'no-show').length;
 
-  const todayDow = new Date().getDay(); // 0=Sun
+  const todayDow = new Date().getDay();
   function defaultsForClinic(id: string) {
     const clinic = clinics.find(c => c.id === id);
     const daySchedule = clinic?.schedule?.find(d => d.day === todayDow);
@@ -53,13 +54,12 @@ function TodayClinicWidget() {
 
   if (clinics.length === 0) return null;
 
-  // Collapsed state — show banner if set, else show setup prompt
   if (!open) {
     if (avail) {
       const pct = Math.min((todayCount / avail.maxPatients) * 100, 100);
       const atLimit = todayCount >= avail.maxPatients;
       return (
-        <div className="rounded-2xl p-4 flex items-center gap-4 flex-wrap mb-6 cursor-pointer hover:shadow-md transition-shadow"
+        <div className="rounded-2xl p-4 flex items-center gap-4 flex-wrap mb-6 cursor-pointer hover:shadow-md transition-shadow animate-fade-up"
           style={{ background: 'linear-gradient(135deg, #0d948812, #0d948805)', border: '1.5px solid #0d948840' }}
           onClick={() => setOpen(true)}>
           <div className="w-10 h-10 rounded-xl bg-teal-500 flex items-center justify-center flex-shrink-0">
@@ -89,7 +89,7 @@ function TodayClinicWidget() {
     }
     return (
       <button onClick={() => setOpen(true)}
-        className="w-full rounded-2xl p-4 border-2 border-dashed border-teal-200 bg-teal-50 flex items-center gap-3 hover:border-teal-400 transition-colors mb-6 text-left">
+        className="w-full rounded-2xl p-4 border-2 border-dashed border-teal-200 bg-teal-50 flex items-center gap-3 hover:border-teal-400 transition-colors mb-6 text-left animate-fade-up">
         <div className="w-9 h-9 rounded-xl bg-teal-100 flex items-center justify-center flex-shrink-0">
           <Building2 className="w-4.5 h-4.5 text-teal-600" />
         </div>
@@ -102,15 +102,12 @@ function TodayClinicWidget() {
     );
   }
 
-  // Expanded editor
   return (
-    <div className="rounded-2xl p-5 border-2 border-teal-300 bg-teal-50 space-y-4 mb-6">
+    <div className="rounded-2xl p-5 border-2 border-teal-300 bg-teal-50 space-y-4 mb-6 animate-fade-up">
       <div className="flex items-center justify-between">
         <div className="font-bold text-teal-800 flex items-center gap-2"><Building2 className="w-4 h-4" /> Today's Clinic Setup</div>
         <button onClick={() => setOpen(false)} className="text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
       </div>
-
-      {/* Clinic selector */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
         {clinics.map(c => (
           <button key={c.id} onClick={() => {
@@ -139,8 +136,6 @@ function TodayClinicWidget() {
           Add new clinic
         </Link>
       </div>
-
-      {/* Time and limit */}
       <div className="grid grid-cols-3 gap-3">
         <div>
           <label className="label text-teal-700">Start</label>
@@ -155,7 +150,6 @@ function TodayClinicWidget() {
           <input type="number" min={1} max={100} className="input bg-white text-sm" value={maxPat} onChange={e => setMaxPat(Number(e.target.value))} />
         </div>
       </div>
-
       <div className="flex gap-2">
         {avail && <button onClick={closeClinic} className="btn-secondary btn-sm text-red-600 border-red-200 hover:bg-red-50">Close clinic today</button>}
         <button onClick={save} className="btn-primary flex-1" disabled={!clinicId}>
@@ -170,11 +164,36 @@ function TodayClinicWidget() {
 
 export default function DashboardPage() {
   const { user } = useAuthStore();
-  const { patients, alerts, queue, vitals, appointments, bills, visits, openQuickRxModal } = useAppStore();
+  const { patients, alerts, queue, setQueue, vitals, appointments, bills, openQuickRxModal, updateAppointment, showToast } = useAppStore();
+  const navigate = useNavigate();
+
+  // One-click: auto-check patient into queue (assigns token) then open consult
+  const startConsult = useCallback((apt: AppointmentEntry) => {
+    const consultPath = apt.patientId ? `/app/consult/${apt.patientId}` : `/app/consult/apt-${apt.id}`;
+    const qPatientId = apt.patientId ?? `apt-${apt.id}`;
+    const alreadyInQueue = queue.some(q => q.patientId === qPatientId);
+    if (!alreadyInQueue) {
+      const token = queue.length + 1;
+      const entry: QueueEntry = {
+        id: `Q${Date.now()}`,
+        patientId: qPatientId,
+        patientName: apt.patientName,
+        reason: apt.reason ?? 'OPD Appointment',
+        token,
+        status: 'in-progress',
+        waitMins: 0,
+        registeredAt: new Date().toISOString(),
+        assignedDoctor: user?.name,
+      };
+      setQueue([...queue, entry]);
+      updateAppointment(apt.id, { status: 'checked-in' as never });
+      showToast(`${apt.patientName} — Token ${token}`, 'success');
+    }
+    navigate(consultPath);
+  }, [queue, setQueue, updateAppointment, showToast, navigate, user]);
 
   const myPatients = patients.filter(p => p.attendingDoctorId === user?.id);
   const ipd = myPatients.filter(p => p.status === 'IPD');
-  const opd = myPatients.filter(p => p.status === 'OPD');
   const critical = myPatients.filter(p => p.priority === 'Critical');
   const unackAlerts = alerts.filter(a => !a.acknowledged);
   const waitingQueue = queue.filter(q => q.status === 'waiting' || q.status === 'in-progress');
@@ -191,7 +210,7 @@ export default function DashboardPage() {
   return (
     <div>
       {/* Greeting + CTAs */}
-      <div className="flex items-start justify-between gap-4 mb-6 flex-wrap">
+      <div className="flex items-start justify-between gap-4 mb-6 flex-wrap animate-fade-up">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">
             {greeting}, {user?.name?.split(' ').slice(0, 2).join(' ')} 👋
@@ -199,71 +218,39 @@ export default function DashboardPage() {
           <p className="text-slate-500 mt-1 text-sm">Here's your clinical overview for today.</p>
         </div>
         <div className="flex gap-2 flex-shrink-0">
-          <a
-            href="https://apps.apple.com/in/app/vyasa-health/id1234567890"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 px-4 py-2 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-700 font-medium text-sm transition-colors"
-            title="Download Vyasa app from App Store"
-          >
-            📱 App
-          </a>
           <button
             onClick={openQuickRxModal}
             className="flex-shrink-0 flex items-center gap-2.5 bg-teal-600 hover:bg-teal-700 active:scale-95 text-white font-bold px-5 py-3 rounded-2xl shadow-lg shadow-teal-500/30 transition-all text-sm"
           >
-            <Pencil className="w-4.5 h-4.5" />
-            <span className="hidden sm:inline">Write Rx</span>
-            <span className="sm:hidden">Rx</span>
+            <Pencil className="w-4 h-4" />
+            Write Rx
           </button>
         </div>
       </div>
 
-      {/* Today's clinic check-in — only for clinic_admin */}
       {user?.role === 'clinic_admin' && <TodayClinicWidget />}
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard
-          icon={<BedDouble className="w-5 h-5 text-blue-500" />}
-          label="IPD Patients"
-          value={ipd.length}
-          sub={`${critical.length} critical`}
-          subColor="text-red-500"
-          bg="bg-blue-50"
-          to="/app/patients"
-        />
-        <StatCard
-          icon={<Users className="w-5 h-5 text-teal-500" />}
-          label="OPD Today"
-          value={opd.length}
-          sub={`${waitingQueue.length} in queue`}
-          subColor="text-slate-500"
-          bg="bg-teal-50"
-          to="/app/queue"
-        />
-        <StatCard
-          icon={<Bell className="w-5 h-5 text-red-500" />}
-          label="Active Alerts"
-          value={unackAlerts.length}
-          sub="Unacknowledged"
-          subColor={unackAlerts.length > 0 ? 'text-red-500' : 'text-slate-500'}
-          bg="bg-red-50"
-          to="/app/alerts"
-        />
-        <StatCard
-          icon={<Activity className="w-5 h-5 text-emerald-500" />}
-          label="Upcoming Appts"
-          value={upcomingCount}
-          sub={`${todayAppointments.length} today`}
-          subColor="text-slate-500"
-          bg="bg-emerald-50"
-          to="/app/schedule"
-        />
+        {[
+          { icon: <BedDouble className="w-5 h-5 text-blue-500" />, label: 'IPD Patients', value: ipd.length, sub: `${critical.length} critical`, subColor: 'text-red-500', bg: 'bg-blue-50', to: '/app/patients', delay: 'delay-0' },
+          { icon: <Users className="w-5 h-5 text-teal-500" />, label: 'OPD Queue', value: waitingQueue.length, sub: 'waiting now', subColor: waitingQueue.length > 0 ? 'text-teal-600' : 'text-slate-400', bg: 'bg-teal-50', to: '/app/queue', delay: 'delay-50' },
+          { icon: <Bell className="w-5 h-5 text-red-500" />, label: 'Active Alerts', value: unackAlerts.length, sub: 'Unacknowledged', subColor: unackAlerts.length > 0 ? 'text-red-500' : 'text-slate-500', bg: 'bg-red-50', to: '/app/alerts', delay: 'delay-100' },
+          { icon: <Activity className="w-5 h-5 text-emerald-500" />, label: 'Upcoming Appts', value: upcomingCount, sub: `${todayAppointments.length} today`, subColor: 'text-slate-500', bg: 'bg-emerald-50', to: '/app/schedule', delay: 'delay-150' },
+        ].map(s => (
+          <Link key={s.label} to={s.to} className={cn('stat-card hover:shadow-md transition-all duration-200 animate-fade-up', s.delay)}>
+            <div className="flex items-center justify-between mb-2">
+              <div className={`w-9 h-9 rounded-lg ${s.bg} flex items-center justify-center`}>{s.icon}</div>
+            </div>
+            <div className="text-3xl font-black text-slate-900">{s.value}</div>
+            <div className="text-sm font-medium text-slate-600">{s.label}</div>
+            <div className={`text-xs mt-0.5 font-medium ${s.subColor}`}>{s.sub}</div>
+          </Link>
+        ))}
       </div>
 
-      {/* Quick actions row */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+      {/* Quick actions */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6 animate-fade-up delay-200">
         {[
           { icon: UserPlus, label: 'New Patient', color: '#0d9488', bg: '#f0fdfa', action: openQuickRxModal },
           { icon: CalendarDays, label: "Today's Schedule", color: '#7c3aed', bg: '#f5f3ff', to: '/app/schedule' },
@@ -272,8 +259,7 @@ export default function DashboardPage() {
         ].map(q => (
           q.to ? (
             <Link key={q.label} to={q.to}
-              className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 bg-white hover:shadow-sm transition-all group"
-            >
+              className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 bg-white hover:shadow-sm hover:border-slate-300 transition-all group">
               <div style={{ width: 36, height: 36, borderRadius: 10, background: q.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <q.icon style={{ width: 16, height: 16, color: q.color }} />
               </div>
@@ -281,8 +267,7 @@ export default function DashboardPage() {
             </Link>
           ) : (
             <button key={q.label} onClick={q.action}
-              className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 bg-white hover:shadow-sm transition-all group text-left"
-            >
+              className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 bg-white hover:shadow-sm hover:border-slate-300 transition-all group text-left">
               <div style={{ width: 36, height: 36, borderRadius: 10, background: q.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <q.icon style={{ width: 16, height: 16, color: q.color }} />
               </div>
@@ -293,92 +278,193 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
-        {/* Patient list */}
-        <div className="xl:col-span-2 card">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-            <div>
-              <h3 className="font-bold text-slate-900">My Patients</h3>
-              <p className="text-xs text-slate-500">{myPatients.length} total · {critical.length} critical</p>
+
+        {/* ── Left column (2/3) ── */}
+        <div className="xl:col-span-2 space-y-5">
+
+          {/* OPD Queue — large, actionable */}
+          <div className="card animate-fade-up delay-200">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <div>
+                <h3 className="font-bold text-slate-900 flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-teal-500" />
+                  OPD Queue
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {waitingQueue.length > 0 ? `${waitingQueue.length} patient${waitingQueue.length > 1 ? 's' : ''} waiting` : 'No patients waiting'}
+                </p>
+              </div>
+              <Link to="/app/queue"
+                className="btn-secondary btn-sm flex items-center gap-1.5">
+                Manage Queue <ChevronRight className="w-3.5 h-3.5" />
+              </Link>
             </div>
-            <div className="flex items-center gap-2">
-              <button onClick={openQuickRxModal}
-                className="btn-secondary btn-sm text-teal-600 border-teal-200 hover:bg-teal-50">
-                <Pencil className="w-3.5 h-3.5" /> New Consult
-              </button>
-              <Link to="/app/patients" className="btn-secondary btn-sm">View all</Link>
+
+            <div className="divide-y divide-slate-100">
+              {waitingQueue.map((q, i) => (
+                <div key={q.id}
+                  className={cn('flex items-center gap-4 px-5 py-4 hover:bg-teal-50/60 transition-colors group animate-fade-up',
+                    i === 0 ? 'delay-50' : i === 1 ? 'delay-100' : 'delay-150')}>
+                  {/* Token */}
+                  <div className={cn('w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-black flex-shrink-0 shadow-sm',
+                    q.status === 'in-progress' ? 'bg-teal-500' : 'bg-slate-400')}>
+                    {q.token}
+                  </div>
+
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-slate-900 text-sm group-hover:text-teal-800">{q.patientName}</div>
+                    <div className="text-xs text-slate-500 truncate">{q.reason || 'Walk-in'}</div>
+                  </div>
+
+                  {/* Status + wait */}
+                  <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
+                    <span className={cn('badge text-[11px]',
+                      q.status === 'in-progress' ? 'bg-teal-100 text-teal-700' : 'bg-amber-100 text-amber-700')}>
+                      {q.status === 'in-progress' ? 'In Consult' : 'Waiting'}
+                    </span>
+                    {q.waitMins != null && (
+                      <span className="text-[10px] text-slate-400">{q.waitMins}m wait</span>
+                    )}
+                  </div>
+
+                  {/* Action */}
+                  <Link to={`/app/consult/${q.patientId}`}
+                    className="btn-primary btn-sm flex-shrink-0 shadow-sm">
+                    Consult <ChevronRight className="w-3.5 h-3.5" />
+                  </Link>
+                </div>
+              ))}
+
+              {waitingQueue.length === 0 && (
+                <div className="px-5 py-10 text-center">
+                  <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
+                    <Clock className="w-6 h-6 text-slate-300" />
+                  </div>
+                  <p className="text-sm text-slate-400 mb-2">Queue is empty right now</p>
+                  <Link to="/app/queue" className="text-xs font-semibold text-teal-600 hover:underline">
+                    Add a walk-in patient
+                  </Link>
+                </div>
+              )}
             </div>
           </div>
-          <div className="divide-y divide-slate-100">
-            {myPatients.slice(0, 6).map(p => {
-              const latest = vitals[p.id]?.[0];
-              return (
-                <div key={p.id} className="flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50 transition-colors group">
-                  <Link to={`/app/patients/${p.id}`} className="flex items-center gap-4 flex-1 min-w-0">
-                    <div className="w-9 h-9 rounded-full bg-teal-500/10 flex items-center justify-center text-teal-700 font-bold text-sm flex-shrink-0">
-                      {p.name.split(' ').map(w => w[0]).join('').slice(0, 2)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-slate-900 text-sm">{p.name}</span>
-                        <span className="text-xs text-slate-400">{p.age}y {p.gender}</span>
-                      </div>
-                      <div className="text-xs text-slate-500 truncate">{p.diagnosis || 'No diagnosis'}</div>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      {latest && (
-                        <span className="text-xs text-slate-500 hidden md:inline">
-                          BP {latest.bp} · SpO2 {latest.spo2}%
-                        </span>
-                      )}
-                      <StatusBadge status={p.status} />
-                      <PriorityBadge priority={p.priority} />
-                    </div>
-                  </Link>
-                  {/* Action button: View for consulted, Rx for new */}
-                  {visits[p.id]?.length > 0 ? (
-                    <Link to={`/app/patients/${p.id}`}
-                      className="btn-secondary btn-sm text-teal-600 border-teal-200 hover:bg-teal-50 flex-shrink-0">
-                      <Eye className="w-3 h-3" /> View
-                    </Link>
-                  ) : (
-                    <Link to={`/app/consult/${p.id}`}
-                      className="btn-secondary btn-sm text-teal-600 border-teal-200 hover:bg-teal-50 flex-shrink-0">
-                      <Pencil className="w-3 h-3" /> Rx
-                    </Link>
-                  )}
-                </div>
-              );
-            })}
-            {myPatients.length === 0 && (
-              <div className="px-5 py-10 text-center">
-                <p className="text-slate-400 text-sm mb-3">No patients assigned yet</p>
-                <button onClick={openQuickRxModal}
-                  className="btn-primary btn-sm gap-2">
-                  <UserPlus className="w-3.5 h-3.5" /> Register first patient
-                </button>
+
+          {/* My Patients — compact */}
+          <div className="card animate-fade-up delay-250">
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100">
+              <div>
+                <h3 className="font-semibold text-slate-900 text-sm">My Patients</h3>
+                <p className="text-xs text-slate-400">{myPatients.length} total · {critical.length} critical</p>
               </div>
-            )}
+              <Link to="/app/patients"
+                className="btn-primary btn-sm">
+                View all {myPatients.length > 0 ? `(${myPatients.length})` : ''}
+              </Link>
+            </div>
+
+            <div className="divide-y divide-slate-100">
+              {myPatients.slice(0, 6).map(p => (
+                <div key={p.id} className="flex items-center gap-3 px-5 py-2.5 hover:bg-slate-50 transition-colors group">
+                  <div className="w-7 h-7 rounded-full bg-teal-500/10 flex items-center justify-center text-teal-700 font-bold text-xs flex-shrink-0">
+                    {p.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2)}
+                  </div>
+                  <Link to={`/app/patients/${p.id}`} className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-slate-900 group-hover:text-teal-700 truncate">{p.name}</div>
+                    <div className="text-xs text-slate-400 truncate">{p.age}y {p.gender} · {p.diagnosis || 'No diagnosis'}</div>
+                  </Link>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <StatusBadge status={p.status} />
+                    <PriorityBadge priority={p.priority} />
+                  </div>
+                  <Link to={`/app/consult/${p.id}`}
+                    className="btn-ghost btn-sm !px-2 !py-1 text-teal-600 hover:bg-teal-50 flex-shrink-0">
+                    <Pencil className="w-3.5 h-3.5" />
+                  </Link>
+                </div>
+              ))}
+              {myPatients.length === 0 && (
+                <div className="px-5 py-8 text-center">
+                  <p className="text-slate-400 text-sm mb-3">No patients assigned yet</p>
+                  <button onClick={openQuickRxModal} className="btn-primary btn-sm gap-2">
+                    <UserPlus className="w-3.5 h-3.5" /> Register first patient
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Right column */}
+        {/* ── Right column (1/3) ── */}
         <div className="space-y-5">
-          {/* Unack Alerts */}
-          <div className="card">
+
+          {/* Today's Appointments — actionable */}
+          <div className="card animate-fade-up delay-200">
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-              <h3 className="font-bold text-slate-900 flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-red-500" />
+              <h3 className="font-bold text-slate-900 flex items-center gap-2 text-sm">
+                <Calendar className="w-4 h-4 text-teal-500" />
+                Today's Appointments
+              </h3>
+              <span className={cn('badge text-xs',
+                todayAppointments.length > 0 ? 'bg-teal-100 text-teal-700' : 'bg-slate-100 text-slate-500')}>
+                {todayAppointments.length} scheduled
+              </span>
+            </div>
+
+            <div className="divide-y divide-slate-100">
+              {todayAppointments.map((apt, i) => (
+                <div key={apt.id}
+                  className={cn('flex items-center gap-3 px-4 py-3.5 hover:bg-slate-50 transition-colors animate-fade-up',
+                    i === 0 ? 'delay-50' : i === 1 ? 'delay-100' : 'delay-150')}>
+                  <div className="w-10 h-10 rounded-xl bg-teal-50 flex flex-col items-center justify-center flex-shrink-0 border border-teal-100">
+                    <span className="text-[10px] font-bold text-teal-700 leading-tight">{apt.time}</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold text-slate-900 truncate">{apt.patientName}</div>
+                    <div className="text-xs text-slate-500 truncate">{apt.reason}</div>
+                    {apt.clinicName && <div className="text-[10px] text-slate-400">{apt.clinicName}</div>}
+                  </div>
+                  {(apt.status === 'scheduled' || apt.status === 'confirmed' || apt.status === ('checked-in' as never)) && (() => {
+                    const qPid = apt.patientId ?? `apt-${apt.id}`;
+                    const inQueue = queue.some(q => q.patientId === qPid);
+                    return (
+                      <button
+                        onClick={() => startConsult(apt)}
+                        className={cn('btn-sm flex-shrink-0 !px-3 flex items-center gap-1.5',
+                          inQueue ? 'btn-primary' : 'bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-semibold')}
+                      >
+                        {inQueue ? null : <PlayCircle className="w-3.5 h-3.5" />}
+                        {inQueue ? 'Consult' : 'Start'}
+                      </button>
+                    );
+                  })()}
+                </div>
+              ))}
+              {todayAppointments.length === 0 && (
+                <div className="px-5 py-6 text-center">
+                  <p className="text-sm text-slate-400">No appointments today</p>
+                  <Link to="/app/schedule" className="text-xs text-teal-600 hover:underline mt-1 inline-block">View schedule</Link>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Active Alerts */}
+          <div className="card animate-fade-up delay-250">
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100">
+              <h3 className="font-semibold text-slate-900 text-sm flex items-center gap-2">
+                <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
                 Active Alerts
               </h3>
               <Link to="/app/alerts" className="text-xs text-teal-600 hover:underline">View all</Link>
             </div>
-            <div className="divide-y divide-slate-100 max-h-52 overflow-y-auto">
+            <div className="divide-y divide-slate-100 max-h-48 overflow-y-auto">
               {unackAlerts.slice(0, 5).map(a => (
-                <div key={a.id} className="px-5 py-3">
+                <div key={a.id} className="px-5 py-2.5">
                   <div className="flex items-start gap-2">
-                    <span className="w-2 h-2 mt-1.5 rounded-full bg-red-500 flex-shrink-0" />
+                    <span className="w-1.5 h-1.5 mt-1.5 rounded-full bg-red-500 flex-shrink-0" />
                     <div className="min-w-0">
-                      <div className="text-sm font-semibold text-slate-900">{a.patientName}</div>
+                      <div className="text-xs font-semibold text-slate-900">{a.patientName}</div>
                       <div className="text-xs text-slate-500 truncate">{a.message}</div>
                       <div className="text-[10px] text-slate-400 mt-0.5">{formatDateTime(a.time)}</div>
                     </div>
@@ -386,103 +472,35 @@ export default function DashboardPage() {
                 </div>
               ))}
               {unackAlerts.length === 0 && (
-                <div className="px-5 py-5 flex items-center gap-2 text-sm text-emerald-600">
-                  <CheckCircle2 className="w-4 h-4" /> All clear
+                <div className="px-5 py-4 flex items-center gap-2 text-xs text-emerald-600">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> All clear
                 </div>
               )}
             </div>
           </div>
 
-          {/* Today's Appointments */}
-          {todayAppointments.length > 0 && (
-            <div className="card">
-              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-                <h3 className="font-bold text-slate-900 flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-teal-500" />
-                  Today's Appointments
-                </h3>
-                <span className="text-xs text-slate-400">{todayAppointments.length} scheduled</span>
-              </div>
-              <div className="divide-y divide-slate-100 max-h-52 overflow-y-auto">
-                {todayAppointments.map(apt => (
-                  <div key={apt.id} className="flex items-center gap-3 px-5 py-3">
-                    <div className="w-9 h-9 rounded-xl bg-teal-50 flex items-center justify-center flex-shrink-0">
-                      <span className="text-[10px] font-bold text-teal-700">{apt.time}</span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold text-slate-900">{apt.patientName}</div>
-                      <div className="text-xs text-slate-500 truncate">{apt.reason}</div>
-                      {apt.clinicName && <div className="text-[10px] text-slate-400">{apt.clinicName}</div>}
-                    </div>
-                    {(apt.status === 'scheduled' || apt.status === 'confirmed') && (
-                      <Link to={`/app/consult/${apt.patientId}`}
-                        className="flex-shrink-0 text-xs font-semibold text-teal-600 hover:underline">
-                        Consult
-                      </Link>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* OPD Queue */}
-          <div className="card">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-              <h3 className="font-bold text-slate-900 flex items-center gap-2">
-                <Clock className="w-4 h-4 text-teal-500" />
-                OPD Queue
-              </h3>
-              <Link to="/app/queue" className="text-xs text-teal-600 hover:underline">Manage</Link>
-            </div>
-            <div className="divide-y divide-slate-100 max-h-52 overflow-y-auto">
-              {waitingQueue.slice(0, 4).map(q => (
-                <Link key={q.id} to={`/app/consult/${q.patientId}`}
-                  className="flex items-center gap-3 px-5 py-3 hover:bg-teal-50 transition-colors group">
-                  <div className="w-7 h-7 rounded-full bg-teal-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                    {q.token}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-slate-900 group-hover:text-teal-700">{q.patientName}</div>
-                    <div className="text-xs text-slate-500 truncate">{q.reason}</div>
-                  </div>
-                  <div className="flex flex-col items-end flex-shrink-0">
-                    <span className={`badge text-[10px] ${q.status === 'in-progress' ? 'bg-teal-100 text-teal-700' : 'bg-slate-100 text-slate-600'}`}>
-                      {q.status === 'in-progress' ? 'In Consult' : 'Waiting'}
-                    </span>
-                    {q.waitMins != null && <span className="text-[10px] text-slate-400 mt-0.5">{q.waitMins}m wait</span>}
-                  </div>
-                </Link>
-              ))}
-              {waitingQueue.length === 0 && (
-                <div className="px-5 py-5 text-sm text-slate-400 text-center">Queue empty</div>
-              )}
-            </div>
-          </div>
-
-          {/* Revenue snapshot — only when billing data exists */}
+          {/* Revenue snapshot */}
           {bills.length > 0 && (() => {
-            const todayStr = localDate();
             const todayBills = bills.filter(b => b.createdAt.slice(0, 10) === todayStr);
             const todayRevenue = todayBills.filter(b => b.status === 'paid').reduce((s, b) => s + b.total, 0);
             const pendingRevenue = bills.filter(b => b.status === 'pending').reduce((s, b) => s + b.total, 0);
             return (
-              <div className="card px-5 py-4">
-                <h3 className="font-bold text-slate-900 mb-3 flex items-center gap-2">
-                  <DollarSign className="w-4 h-4 text-emerald-500" />
-                  Revenue Snapshot
+              <div className="card px-5 py-4 animate-fade-up delay-300">
+                <h3 className="font-semibold text-slate-900 mb-3 flex items-center gap-2 text-sm">
+                  <DollarSign className="w-3.5 h-3.5 text-emerald-500" />
+                  Revenue
                 </h3>
-                <div className="space-y-2.5">
+                <div className="space-y-2">
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-slate-600">Today's collections</span>
+                    <span className="text-xs text-slate-600">Today's collections</span>
                     <span className="font-bold text-emerald-600 text-sm">₹{todayRevenue.toLocaleString('en-IN')}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-slate-600">Bills today</span>
+                    <span className="text-xs text-slate-600">Bills today</span>
                     <span className="font-bold text-slate-900 text-sm">{todayBills.length}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-slate-600">Pending payment</span>
+                    <span className="text-xs text-slate-600">Pending</span>
                     <span className="font-bold text-amber-600 text-sm">₹{pendingRevenue.toLocaleString('en-IN')}</span>
                   </div>
                 </div>
@@ -490,13 +508,13 @@ export default function DashboardPage() {
             );
           })()}
 
-          {/* Quick stats */}
-          <div className="card px-5 py-4">
-            <h3 className="font-bold text-slate-900 mb-3 flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-teal-500" />
+          {/* Today's summary */}
+          <div className="card px-5 py-4 animate-fade-up delay-300">
+            <h3 className="font-semibold text-slate-900 mb-3 flex items-center gap-2 text-sm">
+              <TrendingUp className="w-3.5 h-3.5 text-teal-500" />
               Today's Summary
             </h3>
-            <div className="space-y-2.5">
+            <div className="space-y-2">
               {[
                 { label: 'Discharges today', value: myPatients.filter(p => p.status === 'Discharged').length },
                 { label: 'Labs pending', value: Object.values(vitals).flat().length > 0 ? 2 : 0 },
@@ -504,7 +522,7 @@ export default function DashboardPage() {
                 { label: 'Consult notes', value: 3 },
               ].map(s => (
                 <div key={s.label} className="flex justify-between items-center">
-                  <span className="text-sm text-slate-600">{s.label}</span>
+                  <span className="text-xs text-slate-600">{s.label}</span>
                   <span className="font-bold text-slate-900 text-sm">{s.value}</span>
                 </div>
               ))}
@@ -512,30 +530,6 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
-
     </div>
-  );
-}
-
-function StatCard({
-  icon, label, value, sub, subColor, bg, to
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: number;
-  sub: string;
-  subColor: string;
-  bg: string;
-  to: string;
-}) {
-  return (
-    <Link to={to} className="stat-card hover:shadow-md transition-shadow">
-      <div className="flex items-center justify-between mb-2">
-        <div className={`w-9 h-9 rounded-lg ${bg} flex items-center justify-center`}>{icon}</div>
-      </div>
-      <div className="text-3xl font-black text-slate-900">{value}</div>
-      <div className="text-sm font-medium text-slate-600">{label}</div>
-      <div className={`text-xs mt-0.5 font-medium ${subColor}`}>{sub}</div>
-    </Link>
   );
 }

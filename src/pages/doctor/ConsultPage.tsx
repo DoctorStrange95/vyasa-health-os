@@ -14,6 +14,8 @@ import { ClinicalCalculators } from '@/components/ClinicalCalculators';
 import { PrintPreview } from '@/components/PrintPreview';
 import { RxSection, type RxRow, type RxForm } from '@/components/prescription/RxSection';
 import { FavDrugsPanel } from '@/components/prescription/FavDrugsPanel';
+import { SpecialtyExamSection, detectSpecialty, specialtyLabel, ALL_SPECIALTY_MODULES, MODULE_META, SPECIALTY_COLORS } from '@/components/prescription/SpecialtyExamSection';
+import type { SpecialtyKey } from '@/components/prescription/SpecialtyExamSection';
 import { cn } from '@/lib/utils';
 import type { VaccineEntry, ProcedureEntry, AttachmentEntry } from '@/types';
 
@@ -42,6 +44,7 @@ interface ConsultDraft {
   referredTo: string;
   privateNote: string;
   vitals: { bp: string; hr: string; temp: string; spo2: string; weight: string; height: string; rr: string; };
+  specialtyExam: Record<string, string>;
 }
 
 const BLANK_RX_ROW = (): RxRow => ({ id: String(Date.now()), form: 'Tab', drug: '', dose: '', strength: '', puffs: '', doseML: '', route: 'Oral', frequency: 'OD', duration: '5 days', instructions: '' });
@@ -56,9 +59,10 @@ const BLANK_DRAFT: ConsultDraft = {
   vitals: { bp: '', hr: '', temp: '', spo2: '', weight: '', height: '', rr: '' },
   bodyNotes: {},
   bodySigns: [],
+  specialtyExam: {},
 };
 
-const FORM_ROUTES: Record<RxForm, string> = { Tab: 'Oral', Cap: 'Oral', Syr: 'Oral', MDI: 'Inhaled', Drops: 'Topical', Cream: 'Topical', Inj: 'IM' };
+const FORM_ROUTES: Record<RxForm, string> = { Tab: 'Oral', Cap: 'Oral', Syr: 'Oral', MDI: 'Inhaled', Drops: 'Topical', Cream: 'Topical', Inj: 'IM', Sachet: 'Oral' };
 const FOLLOW_UPS = ['2 days', '3 days', '1 week', '2 weeks', '1 month', '3 months', 'As needed', 'No follow-up'];
 
 // ─── Section wrapper ──────────────────────────────────────────────────────────
@@ -88,13 +92,64 @@ function Section({ id, title, icon: Icon, filled, children }: {
 export default function ConsultPage() {
   const { patientId } = useParams<{ patientId: string }>();
   const navigate = useNavigate();
-  const { patients, prescriptions, labOrders, vitals, visits, addPrescription, addVitals, upsertPatient, addVisit, updateVisit, showToast } = useAppStore();
+  const { patients, appointments, queue, prescriptions, labOrders, vitals, visits, addPrescription, addVitals, upsertPatient, addVisit, updateVisit, updateAppointment, showToast } = useAppStore();
   const { user } = useAuthStore();
   const { settings: pad, clinics, recordPrescriptionUsage } = usePadStore();
   const [selectedClinicId, setSelectedClinicId] = useState<string>(clinics[0]?.id ?? '');
   const activeClinic = clinics.find(c => c.id === selectedClinicId) ?? clinics[0];
 
   const patient = patients.find(p => p.id === patientId);
+
+  // For booking-derived (apt-) or walk-in (WI) patients, the patient record may not exist yet.
+  // Recreate from the queue/appointment so the doctor never sees "Patient not found".
+  useEffect(() => {
+    if (patient || !patientId) return;
+
+    // Walk-in: look up the queue entry or appointment
+    if (patientId.startsWith('WI')) {
+      const qEntry = queue.find(q => q.patientId === patientId);
+      const apt = appointments.find(a => a.patientId === patientId);
+      const name = qEntry?.patientName ?? apt?.patientName ?? 'Walk-in Patient';
+      upsertPatient({
+        id: patientId,
+        name,
+        age: (apt as any)?.patientAge ?? 0,
+        gender: ((apt as any)?.patientGender as 'M' | 'F' | 'Other') ?? 'M',
+        mrn: `MRN-OPD-${patientId.slice(2)}`,
+        phone: '',
+        status: 'OPD',
+        priority: 'Stable',
+        clinicId: apt?.clinicId ?? '',
+        attendingDoctor: user?.name,
+        attendingDoctorId: typeof user?.id === 'number' ? user.id : undefined,
+        diagnosis: qEntry?.reason ?? apt?.reason ?? '',
+        allergies: [],
+      });
+      return;
+    }
+
+    // Booking-derived patient (apt- prefix)
+    const aptId = patientId.startsWith('apt-') ? patientId.slice(4) : null;
+    if (!aptId) return;
+    const apt = appointments.find(a => a.id === aptId);
+    if (apt) {
+      upsertPatient({
+        id: patientId,
+        name: apt.patientName,
+        age: apt.patientAge ?? 0,
+        gender: 'M',
+        mrn: `MRN-BOOK-${aptId}`,
+        phone: '',
+        status: 'OPD',
+        priority: 'Stable',
+        clinicId: apt.clinicId ?? '',
+        attendingDoctor: apt.doctorName ?? user?.name,
+        attendingDoctorId: typeof apt.doctorId === 'number' ? apt.doctorId : undefined,
+        diagnosis: apt.reason ?? '',
+        allergies: [],
+      });
+    }
+  }, [patientId, patient, appointments]);
   const prevRx = prescriptions[patientId ?? ''] ?? [];
   const prevLabs = labOrders[patientId ?? ''] ?? [];
   const prevVitals = (vitals[patientId ?? ''] ?? []).slice(-1)[0];
@@ -103,6 +158,7 @@ export default function ConsultPage() {
   const [saving, setSaving] = useState(false);
   const [autoSaved, setAutoSaved] = useState(false);
   const [showPrint, setShowPrint] = useState(false);
+  const [printFromSave, setPrintFromSave] = useState(false);
   const [showCalc, setShowCalc] = useState(false);
   const [showAdmit, setShowAdmit] = useState(false);
   const [showRefer, setShowRefer] = useState(false);
@@ -115,6 +171,10 @@ export default function ConsultPage() {
   const [attachments, setAttachments] = useState<AttachmentEntry[]>([]);
   const [customVaxName, setCustomVaxName] = useState('');
   const [customProcName, setCustomProcName] = useState('');
+  const [vaxDropOpen, setVaxDropOpen] = useState(false);
+  const [vaxSearch, setVaxSearch] = useState('');
+  const [procDropOpen, setProcDropOpen] = useState(false);
+  const [procSearch, setProcSearch] = useState('');
   const [editVisitId, setEditVisitId] = useState<string | null>(null);
   const autoSaveTimer = useRef<number>(0);
 
@@ -172,6 +232,7 @@ export default function ConsultPage() {
       advice: todayVisit.advice,
       followUp: todayVisit.followUp,
       privateNote: todayVisit.privateNote ?? '',
+      specialtyExam: todayVisit.specialtyExam ?? {},
       vitals: todayVisit.vitalsSnapshot ? {
         bp: todayVisit.vitalsSnapshot.bp ?? '',
         hr: todayVisit.vitalsSnapshot.hr ?? '',
@@ -226,7 +287,12 @@ export default function ConsultPage() {
   }
 
   function updateRxForm(id: string, form: RxForm) {
-    set('rxRows', draft.rxRows.map(r => r.id === id ? { ...r, form, route: FORM_ROUTES[form] } : r));
+    // Strip any stale form prefix from drug name when switching form type
+    const FORM_PREFIXES = /^(tab\.?|cap\.?|syr\.?|syrup|mdi\.?|drops?\.?|cream\.?|inj\.?|injection\.?|sachet\.?)\s+/i;
+    set('rxRows', draft.rxRows.map(r => {
+      if (r.id !== id) return r;
+      return { ...r, form, route: FORM_ROUTES[form], drug: r.drug.replace(FORM_PREFIXES, '') };
+    }));
   }
 
   function updateRx(id: string, field: keyof RxRow, val: string) {
@@ -337,6 +403,7 @@ export default function ConsultPage() {
       followUp: draft.followUp,
       referral: referForm.specialty || referForm.reason ? referForm : undefined,
       privateNote: draft.privateNote,
+      specialtyExam: Object.keys(draft.specialtyExam).length ? draft.specialtyExam : undefined,
     };
 
     if (editVisitId) {
@@ -348,6 +415,7 @@ export default function ConsultPage() {
     showToast(editVisitId ? 'Consultation updated' : 'Consultation saved', 'success');
     setSaving(false);
     // Show the customised PAD print preview (NOT the raw page print)
+    setPrintFromSave(true);
     setShowPrint(true);
   }
 
@@ -441,6 +509,37 @@ export default function ConsultPage() {
   const patientWeightKg = parseFloat(draft.vitals.weight) || null;
 
   // ─── Completeness ──────────────────────────────────────────────────────────
+  // user.specialty from backend profile; pad.specialty from Rx header settings — use either
+  const specialtyKey = detectSpecialty(user?.specialty || pad.specialty);
+
+  // Default open modules: detected specialty auto-opens; GPs/MBBS get Eye + Surgery by default
+  const [openModules, setOpenModules] = useState<Set<SpecialtyKey>>(() => {
+    if (specialtyKey && specialtyKey !== 'general_medicine') return new Set([specialtyKey]);
+    return new Set<SpecialtyKey>(['ophthalmology', 'surgery']);
+  });
+  // Track whether the doctor has manually toggled any module this session
+  const [modulesManuallySet, setModulesManuallySet] = useState(false);
+
+  // If specialty resolves after first render (e.g., user data loads from API),
+  // sync the default open module — but only if the doctor hasn't touched the toggles
+  useEffect(() => {
+    if (modulesManuallySet) return;
+    if (specialtyKey && specialtyKey !== 'general_medicine') {
+      setOpenModules(new Set([specialtyKey]));
+    } else {
+      setOpenModules(new Set<SpecialtyKey>(['ophthalmology', 'surgery']));
+    }
+  }, [specialtyKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function toggleModule(key: SpecialtyKey) {
+    setModulesManuallySet(true);
+    setOpenModules(prev => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  }
+
   const filled = {
     vitals: Object.values(draft.vitals).some(Boolean),
     complaint: draft.chiefComplaint.trim().length > 0,
@@ -451,6 +550,7 @@ export default function ConsultPage() {
     diagnosis: draft.diagnosis.trim().length > 0,
     rx: draft.rxRows.some(r => r.drug.trim().length > 0),
     advice: draft.advice.trim().length > 0,
+    specialty: Object.values(draft.specialtyExam).some(v => v.trim().length > 0),
   };
   const completePct = Math.round((Object.values(filled).filter(Boolean).length / Object.values(filled).length) * 100);
 
@@ -671,6 +771,71 @@ export default function ConsultPage() {
                 rows={3} className="input resize-none text-sm w-full"
                 placeholder="CVS: S1S2 heard, no murmurs | RS: Clear | Abd: Soft, non-tender | CNS: Intact…" />
             </div>
+
+            {/* ── Specialty Exam Modules ──────────────────────────────────────── */}
+            <div className="mt-4 border border-slate-200 rounded-xl overflow-hidden">
+              <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Specialty Exam Modules</span>
+                {openModules.size > 0 && (
+                  <span className="text-[10px] font-bold bg-indigo-500 text-white px-2 py-0.5 rounded-full">
+                    {openModules.size} open
+                  </span>
+                )}
+              </div>
+              {/* Horizontally scrollable chip row */}
+              <div className="px-3 py-2.5 bg-white overflow-x-auto">
+                <div className="flex gap-2 min-w-max sm:min-w-0 sm:flex-wrap">
+                  {ALL_SPECIALTY_MODULES.map(key => {
+                    const m = MODULE_META[key];
+                    const isOpen = openModules.has(key);
+                    const color = SPECIALTY_COLORS[key];
+                    return (
+                      <button key={key} type="button" onClick={() => toggleModule(key)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all duration-150 whitespace-nowrap"
+                        style={isOpen
+                          ? { borderColor: color, background: `${color}15`, color }
+                          : { borderColor: '#e2e8f0', color: '#64748b' }}>
+                        <span className="w-2 h-2 rounded-full flex-shrink-0 transition-colors"
+                          style={{ background: isOpen ? color : '#cbd5e1' }} />
+                        {m.short}
+                        {isOpen
+                          ? <span className="ml-0.5 text-[10px] opacity-70">✕</span>
+                          : <span className="ml-0.5 text-[10px] opacity-40">+</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              {/* Expanded module panels */}
+              {openModules.size > 0 && (
+                <div className="divide-y divide-slate-100">
+                  {ALL_SPECIALTY_MODULES.filter(key => openModules.has(key)).map(key => {
+                    const color = SPECIALTY_COLORS[key];
+                    return (
+                      <div key={key}>
+                        <div className="flex items-center justify-between px-4 py-2.5"
+                          style={{ borderLeft: `3px solid ${color}`, background: `${color}08` }}>
+                          <span className="text-xs font-bold text-slate-700 tracking-wide">
+                            {MODULE_META[key].icon} {specialtyLabel(key)}
+                          </span>
+                          <button type="button" onClick={() => toggleModule(key)}
+                            className="text-slate-400 hover:text-slate-700 text-[11px] px-2 py-0.5 rounded-md border border-slate-200 hover:border-slate-300 transition-colors">
+                            Close ✕
+                          </button>
+                        </div>
+                        <div className="px-4 py-4 bg-white">
+                          <SpecialtyExamSection
+                            specialtyKey={key}
+                            data={draft.specialtyExam}
+                            onChange={(k, val) => set('specialtyExam', { ...draft.specialtyExam, [k]: val })}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         </Section>
 
@@ -722,6 +887,7 @@ export default function ConsultPage() {
           </div>
         </Section>
 
+
         {/* 8. Prescription */}
         <Section id="s-rx" title="Prescription" icon={Pill} filled={filled.rx}>
           <div className="pt-4 space-y-3">
@@ -765,144 +931,316 @@ export default function ConsultPage() {
 
         {/* 9. Vaccines Given */}
         <Section id="s-vax" title="Vaccines Given" icon={Syringe} filled={vaccines.length > 0}>
-          <div className="pt-4 space-y-3">
-            <div>
-              <div className="text-xs font-medium text-slate-500 mb-2">Quick add</div>
-              <div className="flex flex-wrap gap-2">
-                {['BCG', 'OPV', 'COVID-19', 'Influenza', 'Tetanus (TT)', 'Hepatitis B', 'MMR', 'Typhoid', 'Rabies', 'Varicella'].map(v => (
-                  <button key={v} type="button"
-                    onClick={() => {
-                      if (!vaccines.find(vx => vx.name === v)) {
-                        setVaccines(vs => [...vs, {
-                          id: `vax-${Date.now()}-${Math.random()}`,
-                          name: v, givenDate: new Date().toISOString().slice(0, 10),
-                          givenBy: user?.name ?? 'Doctor',
-                        }]);
-                      }
-                    }}
-                    className={cn('text-xs px-3 py-1.5 rounded-full border transition-all',
-                      vaccines.find(vx => vx.name === v)
-                        ? 'bg-teal-500 text-white border-teal-500'
-                        : 'border-slate-300 text-slate-600 hover:border-teal-400 hover:text-teal-600')}>
-                    {v}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {/* Custom vaccine */}
-            <div className="flex gap-2">
-              <input value={customVaxName} onChange={e => setCustomVaxName(e.target.value)}
-                placeholder="Other vaccine name…" className="input text-sm flex-1"
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && customVaxName.trim()) {
-                    setVaccines(vs => [...vs, { id: `vax-${Date.now()}`, name: customVaxName.trim(), givenDate: new Date().toISOString().slice(0, 10), givenBy: user?.name ?? 'Doctor' }]);
-                    setCustomVaxName('');
-                  }
-                }} />
-              <button type="button" onClick={() => {
-                if (customVaxName.trim()) {
-                  setVaccines(vs => [...vs, { id: `vax-${Date.now()}`, name: customVaxName.trim(), givenDate: new Date().toISOString().slice(0, 10), givenBy: user?.name ?? 'Doctor' }]);
-                  setCustomVaxName('');
-                }
-              }} className="btn-secondary btn-sm">
-                <Plus className="w-4 h-4" /> Add
-              </button>
-            </div>
-            {/* Added vaccines list */}
-            {vaccines.length > 0 && (
-              <div className="space-y-2">
-                {vaccines.map(vax => (
-                  <div key={vax.id} className="flex items-center gap-2 bg-teal-50 border border-teal-200 rounded-xl px-3 py-2 flex-wrap">
-                    <Syringe className="w-3.5 h-3.5 text-teal-600 flex-shrink-0" />
-                    <span className="text-sm font-medium text-teal-800 flex-1">{vax.name}</span>
-                    <input value={vax.batchNo ?? ''} onChange={e => setVaccines(vs => vs.map(v => v.id === vax.id ? { ...v, batchNo: e.target.value } : v))}
-                      placeholder="Batch no." className="input text-xs w-28 py-1" />
-                    <select value={vax.site ?? ''} onChange={e => setVaccines(vs => vs.map(v => v.id === vax.id ? { ...v, site: e.target.value } : v))}
-                      className="input text-xs py-1 w-36">
-                      <option value="">Site…</option>
-                      <option>IM – Left arm</option>
-                      <option>IM – Right arm</option>
-                      <option>SC – Left arm</option>
-                      <option>SC – Right arm</option>
-                      <option>Oral</option>
-                      <option>Intradermal – Left arm</option>
-                    </select>
-                    <input type="date" value={vax.nextDueDate ?? ''} onChange={e => setVaccines(vs => vs.map(v => v.id === vax.id ? { ...v, nextDueDate: e.target.value } : v))}
-                      title="Next due date" className="input text-xs py-1 w-36" />
-                    <button type="button" onClick={() => setVaccines(vs => vs.filter(v => v.id !== vax.id))}
-                      className="p-1 text-red-400 hover:text-red-600 rounded-lg ml-auto">
-                      <X className="w-3.5 h-3.5" />
-                    </button>
+          {(() => {
+            const VAX_LIST = [
+              // Neonatal / Infants
+              { name: 'BCG', schedule: '1 dose at birth', route: 'ID', nextDue: '' },
+              { name: 'OPV (Oral Polio)', schedule: '4 doses: birth + 6w + 10w + 14w; boosters at 18m, 5y', route: 'Oral', nextDue: '' },
+              { name: 'IPV (Inactivated Polio)', schedule: '2 doses: 6w + 14w', route: 'IM', nextDue: '' },
+              { name: 'Hepatitis B (0)', schedule: '1st dose at birth; total 3 doses (0-6w-14w)', route: 'IM', nextDue: '' },
+              { name: 'Pentavalent (DPT+HiB+HepB)', schedule: '3 primary doses: 6w, 10w, 14w', route: 'IM', nextDue: '' },
+              { name: 'PCV (Pneumococcal)', schedule: '3 doses: 6w, 10w, 14w + booster at 15m', route: 'IM', nextDue: '' },
+              { name: 'Rotavirus', schedule: '2-3 doses starting at 6w (brand-dependent)', route: 'Oral', nextDue: '' },
+              // Older infants
+              { name: 'MMR', schedule: '2 doses: 9–12m + 15–18m; catch-up up to 12y', route: 'SC', nextDue: '' },
+              { name: 'Varicella', schedule: '2 doses: 15–18m + 4–6y', route: 'SC', nextDue: '' },
+              { name: 'Hepatitis A', schedule: '2 doses: from 1y, 2nd dose 6–18m later', route: 'IM', nextDue: '' },
+              { name: 'Typhoid (Vi conjugate)', schedule: '1 dose from 6m; booster every 3y', route: 'IM', nextDue: '' },
+              { name: 'JE (Japanese Encephalitis)', schedule: '2 doses: 28 days apart (from 1y in endemic areas)', route: 'IM', nextDue: '' },
+              // DPT Boosters
+              { name: 'DPT Booster 1', schedule: '1st booster at 18 months', route: 'IM', nextDue: '' },
+              { name: 'DPT Booster 2', schedule: '2nd booster at 5 years', route: 'IM', nextDue: '' },
+              // Pre-adolescent / Adult
+              { name: 'HPV', schedule: '2 doses 9–14y (0, 6m); 3 doses 15+y (0, 1–2m, 6m)', route: 'IM', nextDue: '' },
+              { name: 'Meningococcal (MCV4)', schedule: '1 dose at 11–12y; booster at 16y', route: 'IM', nextDue: '' },
+              { name: 'Td (Tetanus + Diphtheria)', schedule: 'Booster every 10 years', route: 'IM', nextDue: '' },
+              { name: 'Tdap', schedule: 'Once (replaces 1 Td dose); 1 dose in each pregnancy', route: 'IM', nextDue: '' },
+              { name: 'Tetanus Toxoid (TT)', schedule: 'Wound prophylaxis: 1–2 doses; Pregnancy: 2 doses', route: 'IM', nextDue: '' },
+              { name: 'Influenza', schedule: 'Annual; children < 9y: 2 doses first time', route: 'IM', nextDue: '' },
+              { name: 'COVID-19', schedule: '2 primary doses (4–8w apart) + booster', route: 'IM', nextDue: '' },
+              { name: 'Rabies (post-exposure)', schedule: '4 doses: Day 0, 3, 7, 14 (+ immunoglobulin if needed)', route: 'IM', nextDue: '' },
+              { name: 'Rabies (pre-exposure)', schedule: '3 doses: Day 0, 7, 28; booster after 1–3y (titre-based)', route: 'IM', nextDue: '' },
+              { name: 'Typhoid Vi (Polysaccharide)', schedule: '1 dose from 2y; booster every 3y', route: 'IM', nextDue: '' },
+              { name: 'Cholera (Oral)', schedule: '2 doses: 1–6 weeks apart; booster every 2y', route: 'Oral', nextDue: '' },
+              { name: 'Yellow Fever', schedule: '1 dose; lifetime protection (10y certificate)', route: 'SC', nextDue: '' },
+            ];
+            const vaxFiltered = VAX_LIST.filter(v =>
+              v.name.toLowerCase().includes(vaxSearch.toLowerCase()) ||
+              v.schedule.toLowerCase().includes(vaxSearch.toLowerCase())
+            );
+            return (
+              <div className="pt-4 space-y-3">
+                {/* Inline panel trigger */}
+                <button type="button"
+                  onClick={() => setVaxDropOpen(o => !o)}
+                  className={cn(
+                    'w-full flex items-center justify-between px-3 py-2.5 rounded-xl border text-sm font-medium transition-all duration-100',
+                    vaxDropOpen
+                      ? 'border-teal-400 bg-teal-50 text-teal-700'
+                      : 'border-slate-300 bg-white text-slate-600 hover:border-teal-300 hover:bg-teal-50/40'
+                  )}>
+                  <span className="flex items-center gap-2">
+                    <Syringe className="w-4 h-4 text-teal-500" />
+                    Select vaccine to add
+                  </span>
+                  <ChevronDown className={cn('w-4 h-4 transition-transform duration-200', vaxDropOpen && 'rotate-180')} />
+                </button>
+
+                {/* Inline expanding panel — no absolute, no overflow-hidden conflict */}
+                {vaxDropOpen && (
+                  <div className="border border-slate-200 rounded-xl overflow-hidden bg-white">
+                    <div className="p-2 border-b border-slate-100">
+                      <input
+                        autoFocus
+                        value={vaxSearch}
+                        onChange={e => setVaxSearch(e.target.value)}
+                        placeholder="Search vaccine…"
+                        className="input text-sm py-1.5 w-full"
+                      />
+                    </div>
+                    <div className="max-h-60 overflow-y-auto divide-y divide-slate-50">
+                      {vaxFiltered.map(v => {
+                        const already = !!vaccines.find(vx => vx.name === v.name);
+                        return (
+                          <button key={v.name} type="button"
+                            onClick={() => {
+                              if (!already) {
+                                setVaccines(vs => [...vs, {
+                                  id: `vax-${Date.now()}-${Math.random()}`,
+                                  name: v.name,
+                                  givenDate: new Date().toISOString().slice(0, 10),
+                                  givenBy: user?.name ?? 'Doctor',
+                                  site: v.route === 'Oral' ? 'Oral' : '',
+                                }]);
+                              } else {
+                                setVaccines(vs => vs.filter(vx => vx.name !== v.name));
+                              }
+                            }}
+                            className={cn(
+                              'w-full text-left px-3 py-2.5 flex items-start gap-3 transition-colors',
+                              already ? 'bg-teal-50/80' : 'hover:bg-slate-50'
+                            )}>
+                            <span className={cn('mt-0.5 w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center',
+                              already ? 'bg-teal-500 border-teal-500' : 'border-slate-300')}>
+                              {already && <CheckCircle2 className="w-3 h-3 text-white" />}
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block text-sm font-medium text-slate-800">{v.name}</span>
+                              <span className="block text-xs text-slate-400 mt-0.5">{v.schedule} · {v.route}</span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                      {vaxFiltered.length === 0 && (
+                        <div className="text-xs text-slate-400 py-4 text-center">No vaccine found</div>
+                      )}
+                    </div>
+                    {/* Custom vaccine footer */}
+                    <div className="p-2 border-t border-slate-100 flex gap-2 bg-slate-50">
+                      <input value={customVaxName} onChange={e => setCustomVaxName(e.target.value)}
+                        placeholder="Other vaccine (type + Enter)…" className="input text-xs py-1.5 flex-1"
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && customVaxName.trim()) {
+                            setVaccines(vs => [...vs, { id: `vax-${Date.now()}`, name: customVaxName.trim(), givenDate: new Date().toISOString().slice(0, 10), givenBy: user?.name ?? 'Doctor' }]);
+                            setCustomVaxName('');
+                          }
+                        }} />
+                      <button type="button" onClick={() => {
+                        if (customVaxName.trim()) {
+                          setVaccines(vs => [...vs, { id: `vax-${Date.now()}`, name: customVaxName.trim(), givenDate: new Date().toISOString().slice(0, 10), givenBy: user?.name ?? 'Doctor' }]);
+                          setCustomVaxName('');
+                        }
+                      }} className="btn-secondary btn-sm px-3">
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
+                      <button type="button" onClick={() => { setVaxDropOpen(false); setVaxSearch(''); }}
+                        className="btn-ghost btn-sm px-2 text-xs">Done</button>
+                    </div>
                   </div>
-                ))}
+                )}
+
+                {/* Added vaccines list */}
+                {vaccines.length > 0 && (
+                  <div className="space-y-2">
+                    {vaccines.map(vax => (
+                      <div key={vax.id} className="flex items-center gap-2 bg-teal-50 border border-teal-200 rounded-xl px-3 py-2 flex-wrap">
+                        <Syringe className="w-3.5 h-3.5 text-teal-600 flex-shrink-0" />
+                        <span className="text-sm font-medium text-teal-800 flex-1 min-w-0">{vax.name}</span>
+                        <input value={vax.batchNo ?? ''} onChange={e => setVaccines(vs => vs.map(v => v.id === vax.id ? { ...v, batchNo: e.target.value } : v))}
+                          placeholder="Batch no." className="input text-xs w-28 py-1" />
+                        <select value={vax.site ?? ''} onChange={e => setVaccines(vs => vs.map(v => v.id === vax.id ? { ...v, site: e.target.value } : v))}
+                          className="input text-xs py-1 w-36">
+                          <option value="">Site…</option>
+                          <option>IM – Left arm</option>
+                          <option>IM – Right arm</option>
+                          <option>SC – Left arm</option>
+                          <option>SC – Right arm</option>
+                          <option>Oral</option>
+                          <option>Intradermal – Left arm</option>
+                        </select>
+                        <input type="date" value={vax.nextDueDate ?? ''} onChange={e => setVaccines(vs => vs.map(v => v.id === vax.id ? { ...v, nextDueDate: e.target.value } : v))}
+                          title="Next due date" className="input text-xs py-1 w-36" />
+                        <button type="button" onClick={() => setVaccines(vs => vs.filter(v => v.id !== vax.id))}
+                          className="p-1 text-red-400 hover:text-red-600 active:scale-90 transition-transform rounded-lg ml-auto">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            );
+          })()}
         </Section>
 
         {/* 10. Procedures */}
         <Section id="s-proc" title="Procedures Performed" icon={Scissors} filled={procedures.length > 0}>
-          <div className="pt-4 space-y-3">
-            <div>
-              <div className="text-xs font-medium text-slate-500 mb-2">Quick add</div>
-              <div className="flex flex-wrap gap-2">
-                {['Dressing', 'Suturing', 'IV Cannulation', 'Blood Draw', 'Nebulization', 'ECG', 'Urinary Catheter', 'Splinting', 'Incision & Drainage', 'NG Tube', 'Wound Debridement'].map(p => (
-                  <button key={p} type="button"
-                    onClick={() => {
-                      if (!procedures.find(pr => pr.name === p)) {
-                        setProcedures(ps => [...ps, {
-                          id: `proc-${Date.now()}-${Math.random()}`,
-                          name: p, time: new Date().toISOString(),
-                          performedBy: user?.name ?? 'Doctor',
-                        }]);
-                      }
-                    }}
-                    className={cn('text-xs px-3 py-1.5 rounded-full border transition-all',
-                      procedures.find(pr => pr.name === p)
-                        ? 'bg-blue-500 text-white border-blue-500'
-                        : 'border-slate-300 text-slate-600 hover:border-blue-400 hover:text-blue-600')}>
-                    {p}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {/* Custom procedure */}
-            <div className="flex gap-2">
-              <input value={customProcName} onChange={e => setCustomProcName(e.target.value)}
-                placeholder="Other procedure…" className="input text-sm flex-1"
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && customProcName.trim()) {
-                    setProcedures(ps => [...ps, { id: `proc-${Date.now()}`, name: customProcName.trim(), time: new Date().toISOString(), performedBy: user?.name ?? 'Doctor' }]);
-                    setCustomProcName('');
-                  }
-                }} />
-              <button type="button" onClick={() => {
-                if (customProcName.trim()) {
-                  setProcedures(ps => [...ps, { id: `proc-${Date.now()}`, name: customProcName.trim(), time: new Date().toISOString(), performedBy: user?.name ?? 'Doctor' }]);
-                  setCustomProcName('');
-                }
-              }} className="btn-secondary btn-sm">
-                <Plus className="w-4 h-4" /> Add
-              </button>
-            </div>
-            {/* Added procedures list */}
-            {procedures.length > 0 && (
-              <div className="space-y-2">
-                {procedures.map(proc => (
-                  <div key={proc.id} className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2">
-                    <Scissors className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
-                    <span className="text-sm font-medium text-blue-800 flex-1">{proc.name}</span>
-                    <input value={proc.notes ?? ''} onChange={e => setProcedures(ps => ps.map(p => p.id === proc.id ? { ...p, notes: e.target.value } : p))}
-                      placeholder="Notes (optional)…" className="input text-xs py-1 flex-1 max-w-48" />
-                    <button type="button" onClick={() => setProcedures(ps => ps.filter(p => p.id !== proc.id))}
-                      className="p-1 text-red-400 hover:text-red-600 rounded-lg">
-                      <X className="w-3.5 h-3.5" />
-                    </button>
+          {(() => {
+            const PROC_LIST = [
+              { name: 'Wound Dressing', category: 'Wound Care' },
+              { name: 'Suturing / Wound Closure', category: 'Wound Care' },
+              { name: 'Incision & Drainage (I&D)', category: 'Wound Care' },
+              { name: 'Wound Debridement', category: 'Wound Care' },
+              { name: 'Wound Packing', category: 'Wound Care' },
+              { name: 'IV Cannulation', category: 'Vascular Access' },
+              { name: 'Blood Draw (Venepuncture)', category: 'Vascular Access' },
+              { name: 'Arterial Blood Gas (ABG)', category: 'Vascular Access' },
+              { name: 'Central Line Insertion', category: 'Vascular Access' },
+              { name: 'Nebulization', category: 'Respiratory' },
+              { name: 'Oxygen Therapy', category: 'Respiratory' },
+              { name: 'Intubation / Intubation Assistance', category: 'Respiratory' },
+              { name: 'Spirometry', category: 'Respiratory' },
+              { name: 'ECG (12-lead)', category: 'Cardiac' },
+              { name: 'Cardioversion / Defibrillation', category: 'Cardiac' },
+              { name: 'Urinary Catheterisation', category: 'Urological' },
+              { name: 'Bladder Irrigation', category: 'Urological' },
+              { name: 'NG Tube Insertion', category: 'GI' },
+              { name: 'Ryle\'s Tube Feeding', category: 'GI' },
+              { name: 'Splinting / Slab Application', category: 'Orthopaedic' },
+              { name: 'Plaster of Paris (POP) Cast', category: 'Orthopaedic' },
+              { name: 'Joint Aspiration', category: 'Orthopaedic' },
+              { name: 'Lumbar Puncture (LP)', category: 'Neurological' },
+              { name: 'Circumcision', category: 'Surgical' },
+              { name: 'Ear Syringing / Wax Removal', category: 'ENT' },
+              { name: 'Nasal Packing', category: 'ENT' },
+              { name: 'Foreign Body Removal (Ear/Nose/Eye)', category: 'ENT' },
+              { name: 'Laceration Repair', category: 'Emergency' },
+              { name: 'CPR', category: 'Emergency' },
+              { name: 'Burn Dressing', category: 'Emergency' },
+              { name: 'Reduction (Fracture/Dislocation)', category: 'Emergency' },
+            ];
+            const procFiltered = PROC_LIST.filter(p =>
+              p.name.toLowerCase().includes(procSearch.toLowerCase()) ||
+              p.category.toLowerCase().includes(procSearch.toLowerCase())
+            );
+            return (
+              <div className="pt-4 space-y-3">
+                {/* Inline panel trigger */}
+                <button type="button"
+                  onClick={() => setProcDropOpen(o => !o)}
+                  className={cn(
+                    'w-full flex items-center justify-between px-3 py-2.5 rounded-xl border text-sm font-medium transition-all duration-100',
+                    procDropOpen
+                      ? 'border-blue-400 bg-blue-50 text-blue-700'
+                      : 'border-slate-300 bg-white text-slate-600 hover:border-blue-300 hover:bg-blue-50/40'
+                  )}>
+                  <span className="flex items-center gap-2">
+                    <Scissors className="w-4 h-4 text-blue-500" />
+                    Select procedure to add
+                  </span>
+                  <ChevronDown className={cn('w-4 h-4 transition-transform duration-200', procDropOpen && 'rotate-180')} />
+                </button>
+
+                {/* Inline expanding panel */}
+                {procDropOpen && (
+                  <div className="border border-slate-200 rounded-xl overflow-hidden bg-white">
+                    <div className="p-2 border-b border-slate-100">
+                      <input
+                        autoFocus
+                        value={procSearch}
+                        onChange={e => setProcSearch(e.target.value)}
+                        placeholder="Search procedure…"
+                        className="input text-sm py-1.5 w-full"
+                      />
+                    </div>
+                    <div className="max-h-60 overflow-y-auto divide-y divide-slate-50">
+                      {procFiltered.map(p => {
+                        const already = !!procedures.find(pr => pr.name === p.name);
+                        return (
+                          <button key={p.name} type="button"
+                            onClick={() => {
+                              if (!already) {
+                                setProcedures(ps => [...ps, {
+                                  id: `proc-${Date.now()}-${Math.random()}`,
+                                  name: p.name, time: new Date().toISOString(),
+                                  performedBy: user?.name ?? 'Doctor',
+                                }]);
+                              } else {
+                                setProcedures(ps => ps.filter(pr => pr.name !== p.name));
+                              }
+                            }}
+                            className={cn(
+                              'w-full text-left px-3 py-2.5 flex items-start gap-3 transition-colors',
+                              already ? 'bg-blue-50/80' : 'hover:bg-slate-50'
+                            )}>
+                            <span className={cn('mt-0.5 w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center',
+                              already ? 'bg-blue-500 border-blue-500' : 'border-slate-300')}>
+                              {already && <CheckCircle2 className="w-3 h-3 text-white" />}
+                            </span>
+                            <span>
+                              <span className="block text-sm font-medium text-slate-800">{p.name}</span>
+                              <span className="block text-xs text-slate-400">{p.category}</span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                      {procFiltered.length === 0 && (
+                        <div className="text-xs text-slate-400 py-4 text-center">No procedure found</div>
+                      )}
+                    </div>
+                    <div className="p-2 border-t border-slate-100 flex gap-2 bg-slate-50">
+                      <input value={customProcName} onChange={e => setCustomProcName(e.target.value)}
+                        placeholder="Other procedure (type + Enter)…" className="input text-xs py-1.5 flex-1"
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && customProcName.trim()) {
+                            setProcedures(ps => [...ps, { id: `proc-${Date.now()}`, name: customProcName.trim(), time: new Date().toISOString(), performedBy: user?.name ?? 'Doctor' }]);
+                            setCustomProcName('');
+                          }
+                        }} />
+                      <button type="button" onClick={() => {
+                        if (customProcName.trim()) {
+                          setProcedures(ps => [...ps, { id: `proc-${Date.now()}`, name: customProcName.trim(), time: new Date().toISOString(), performedBy: user?.name ?? 'Doctor' }]);
+                          setCustomProcName('');
+                        }
+                      }} className="btn-secondary btn-sm px-3">
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
+                      <button type="button" onClick={() => { setProcDropOpen(false); setProcSearch(''); }}
+                        className="btn-ghost btn-sm px-2 text-xs">Done</button>
+                    </div>
                   </div>
-                ))}
+                )}
+
+                {/* Added procedures list */}
+                {procedures.length > 0 && (
+                  <div className="space-y-2">
+                    {procedures.map(proc => (
+                      <div key={proc.id} className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2">
+                        <Scissors className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
+                        <span className="text-sm font-medium text-blue-800 flex-1">{proc.name}</span>
+                        <input value={proc.notes ?? ''} onChange={e => setProcedures(ps => ps.map(p => p.id === proc.id ? { ...p, notes: e.target.value } : p))}
+                          placeholder="Notes (optional)…" className="input text-xs py-1 flex-1 max-w-48" />
+                        <button type="button" onClick={() => setProcedures(ps => ps.filter(p => p.id !== proc.id))}
+                          className="p-1 text-red-400 hover:text-red-600 active:scale-90 transition-transform rounded-lg">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            );
+          })()}
         </Section>
 
         {/* 11. Photos & Attachments */}
@@ -1271,7 +1609,23 @@ export default function ConsultPage() {
 
       {/* ─── Print Preview Modal ────────────────────────────────────────────── */}
       {showPrint && (
-        <PrintPreview patient={patient} draft={draft} pad={pad} clinicName={activeClinic?.name} clinicAddress={activeClinic?.address} clinicPhone={activeClinic?.phone} onClose={() => setShowPrint(false)} onWhatsApp={sendWhatsApp} />
+        <PrintPreview
+          patient={patient} draft={draft} pad={pad}
+          clinicName={activeClinic?.name} clinicAddress={activeClinic?.address} clinicPhone={activeClinic?.phone}
+          onClose={() => { setShowPrint(false); setPrintFromSave(false); }}
+          onWhatsApp={sendWhatsApp}
+          specialtyExam={Object.keys(draft.specialtyExam).length ? draft.specialtyExam : undefined}
+          doctorSpecialty={user?.specialty}
+          vaccines={vaccines}
+          procedures={procedures}
+          onEndConsult={printFromSave ? () => {
+            const aptId = patientId?.startsWith('apt-') ? patientId.slice(4) : null;
+            if (aptId) updateAppointment(aptId, { status: 'completed' });
+            setShowPrint(false);
+            setPrintFromSave(false);
+            navigate('/app/queue');
+          } : undefined}
+        />
       )}
 
       {/* ─── Clinical Calculators ──────────────────────────────────────────── */}

@@ -251,6 +251,7 @@ export interface VisitRecord {
   referral?: { specialty: string; doctorName: string; reason: string; urgency: string };
   admitted?: boolean;
   privateNote?: string;
+  specialtyExam?: Record<string, string>;
 }
 
 // ─── MAR ─────────────────────────────────────────────────────────────────────
@@ -298,7 +299,7 @@ export interface Alert {
 
 // ─── Appointment ─────────────────────────────────────────────────────────────
 
-export type AppointmentStatus = 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no-show';
+export type AppointmentStatus = 'scheduled' | 'confirmed' | 'checked-in' | 'completed' | 'cancelled' | 'no-show';
 
 export type PaymentMode = 'cash' | 'upi' | 'card' | 'insurance';
 
@@ -307,6 +308,7 @@ export interface AppointmentEntry {
   patientId: string;
   patientName: string;
   patientAge?: number;
+  patientGender?: string;
   clinicId?: string;
   clinicName?: string;
   date: string;          // 'YYYY-MM-DD'

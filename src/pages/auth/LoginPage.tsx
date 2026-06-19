@@ -1,11 +1,30 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { Eye, EyeOff, Loader2, UserPlus, CheckCircle2, WifiOff, ShieldCheck, X, Clock } from 'lucide-react';
+import { Eye, EyeOff, Loader2, UserPlus, CheckCircle2, WifiOff, ShieldCheck, X, Clock, ChevronRight } from 'lucide-react';
 import { useGoogleLogin } from '@react-oauth/google';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useAppStore } from '@/store/useAppStore';
-import { INDIAN_MEDICAL_COUNCILS, INDIAN_STATES } from '@/lib/medicalCouncils';
+import { INDIAN_MEDICAL_COUNCILS } from '@/lib/medicalCouncils';
 import type { Role } from '@/types';
+
+const SPECIALTIES = [
+  'General Medicine', 'Internal Medicine', 'Cardiology', 'Pulmonology',
+  'Neurology', 'Neurosurgery', 'Orthopaedics', 'General Surgery',
+  'Gastroenterology', 'Nephrology', 'Endocrinology', 'Oncology',
+  'Obstetrics & Gynaecology', 'Paediatrics', 'Neonatology',
+  'Psychiatry', 'Dermatology', 'Ophthalmology', 'ENT',
+  'Radiology', 'Pathology', 'Anaesthesiology', 'Emergency Medicine',
+  'Critical Care', 'Urology', 'Plastic Surgery', 'Vascular Surgery',
+];
+
+const STATES = [
+  'Andhra Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Delhi', 'Goa',
+  'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka',
+  'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur', 'Meghalaya',
+  'Mizoram', 'Nagaland', 'Odisha', 'Punjab', 'Rajasthan', 'Sikkim',
+  'Tamil Nadu', 'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand',
+  'West Bengal',
+];
 
 type Portal = 'staff' | 'patient';
 
@@ -30,6 +49,28 @@ const GOOGLE_SVG = (
   </svg>
 );
 
+function roleLabel(role: Role, specialty?: string) {
+  if (role === 'clinic_admin') return specialty ?? 'Solo Practice';
+  if (role === 'doctor') return specialty ?? 'Hospital Doctor';
+  if (role === 'nurse') return 'Nurse';
+  if (role === 'pharmacist') return 'Pharmacist';
+  if (role === 'labtech') return 'Lab Technician';
+  if (role === 'admin') return 'Hospital Admin';
+  if (role === 'billing') return 'Billing';
+  if (role === 'receptionist') return 'Receptionist';
+  return role;
+}
+
+function GField({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{label}</label>
+      {children}
+      {error && <p style={{ fontSize: 11, color: '#DC2626', margin: '3px 0 0', fontWeight: 600 }}>{error}</p>}
+    </div>
+  );
+}
+
 export default function LoginPage() {
   const [params] = useSearchParams();
   const justRegistered = params.get('registered') === '1';
@@ -45,13 +86,18 @@ export default function LoginPage() {
   const [showEmailForm, setShowEmailForm] = useState(false);
 
   const [googleNewUser, setGoogleNewUser] = useState<{ email: string; name: string } | null>(null);
-  const [gRegForm, setGRegForm] = useState({ name: '', specialty: '', degrees: '', phone: '', medicalCouncil: '', licenseNumber: '', registrationState: '' });
+  const [gRegForm, setGRegForm] = useState({ name: '', specialty: '', degrees: '', phone: '', medicalCouncil: '', licenseNumber: '', registrationState: '', city: '', practiceState: '', hospital: '' });
+  const [gRegErrors, setGRegErrors] = useState<Record<string, string>>({});
 
-  const { login, loginWithGoogle, completeGoogleRegister, loginAsDemo } = useAuthStore();
+  const { login, loginWithGoogle, completeGoogleRegister, loginAsDemo, recentAccount } = useAuthStore();
   const { loadDemo } = useAppStore();
   const navigate = useNavigate();
   const [googleLoading, setGoogleLoading] = useState(false);
   const [geoPos, setGeoPos] = useState<{ lat: number; lng: number } | null>(null);
+  const [ignoreRecent, setIgnoreRecent] = useState(false);
+  const [quickLoginMode, setQuickLoginMode] = useState(false);
+
+  const showQuickLogin = !!recentAccount && !ignoreRecent && portal === 'staff';
 
   useEffect(() => {
     if (!navigator.geolocation) return;
@@ -110,12 +156,40 @@ export default function LoginPage() {
     } finally { setGoogleLoading(false); }
   }
 
+  function validateGoogleForm() {
+    const e: Record<string, string> = {};
+    if (!gRegForm.name.trim()) e.name = 'Required';
+    if (!gRegForm.specialty) e.specialty = 'Required';
+    if (!gRegForm.degrees.trim()) e.degrees = 'Required';
+    if (!gRegForm.phone || gRegForm.phone.replace(/\D/g, '').length < 10) e.phone = 'Enter a valid 10-digit number';
+    if (!gRegForm.medicalCouncil) e.medicalCouncil = 'Required';
+    if (!gRegForm.registrationState) e.registrationState = 'Required';
+    if (!gRegForm.licenseNumber.trim()) e.licenseNumber = 'Required';
+    return e;
+  }
+
+  function gSet(k: string, v: string) { setGRegForm(f => ({ ...f, [k]: v })); setGRegErrors(e => ({ ...e, [k]: '' })); }
+
   async function handleGoogleRegister(e: React.FormEvent) {
     e.preventDefault();
     if (!googleNewUser) return;
+    const errs = validateGoogleForm();
+    if (Object.keys(errs).length) { setGRegErrors(errs); return; }
     setLoading(true);
     try {
-      await completeGoogleRegister({ ...gRegForm, email: googleNewUser.email });
+      await completeGoogleRegister({
+        name: gRegForm.name,
+        email: googleNewUser.email,
+        specialty: gRegForm.specialty,
+        degrees: gRegForm.degrees,
+        phone: gRegForm.phone,
+        medicalCouncil: gRegForm.medicalCouncil,
+        licenseNumber: gRegForm.licenseNumber,
+        regState: gRegForm.registrationState,
+        city: gRegForm.city,
+        state: gRegForm.practiceState,
+        clinicName: gRegForm.hospital,
+      });
       afterLogin();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed');
@@ -171,7 +245,7 @@ export default function LoginPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 18, marginBottom: 48 }}>
             {[
               { icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>, label: 'Multi-specialty Prescriptions', desc: 'Write, print & WhatsApp Rx in seconds', color: '#0d9488', bg: 'rgba(13,148,136,0.15)' },
-              { icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>, label: 'Hospital Marketplace', desc: 'Book beds & infrastructure like Airbnb', color: '#6366f1', bg: 'rgba(99,102,241,0.15)' },
+              { icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>, label: 'Hospital Marketplace', desc: 'Book beds & infrastructure on demand', color: '#6366f1', bg: 'rgba(99,102,241,0.15)' },
               { icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>, label: 'Real-time HMIS', desc: 'Live vitals, orders, nurse-doctor chat', color: '#06b6d4', bg: 'rgba(6,182,212,0.15)' },
             ].map(f => (
               <div key={f.label} style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
@@ -190,7 +264,7 @@ export default function LoginPage() {
           <div style={{ display: 'flex', gap: 0, borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: 24 }}>
             {[
               { n: '10,000+', label: 'Patients served' },
-              { n: '500+',    label: 'Doctors' },
+              { n: '10+',     label: 'Healthcare Modules' },
               { n: '36',      label: 'States' },
             ].map((s, i) => (
               <div key={s.label} style={{ flex: 1, paddingRight: i < 2 ? 16 : 0, borderRight: i < 2 ? '1px solid rgba(255,255,255,0.1)' : 'none', paddingLeft: i > 0 ? 16 : 0 }}>
@@ -245,6 +319,56 @@ export default function LoginPage() {
             </div>
 
             <div style={{ padding: '0 28px 28px' }}>
+              {/* ── QUICK LOGIN (returning user) ── */}
+              {showQuickLogin && recentAccount ? (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14, background: '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: 16, padding: '16px 18px', marginBottom: 14 }}>
+                    <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'linear-gradient(135deg, #0d9488, #0891b2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 18, fontWeight: 800, flexShrink: 0 }}>
+                      {recentAccount.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: '#0f2040', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{recentAccount.name}</div>
+                      <div style={{ fontSize: 12, color: '#64748b', marginTop: 1 }}>{roleLabel(recentAccount.role, recentAccount.specialty)}</div>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setError('');
+                      if (recentAccount.loginMethod === 'google') {
+                        googleLogin();
+                      } else {
+                        setUsername(recentAccount.email);
+                        setShowEmailForm(true);
+                        setQuickLoginMode(true);
+                        setIgnoreRecent(true);
+                      }
+                    }}
+                    disabled={googleLoading}
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: 'linear-gradient(135deg, #0d9488, #0891b2)', color: 'white', border: 'none', borderRadius: 13, padding: '13px 16px', cursor: googleLoading ? 'not-allowed' : 'pointer', fontFamily: 'inherit', fontSize: 15, fontWeight: 700, boxShadow: '0 4px 14px rgba(13,148,136,0.35)', marginBottom: 12, opacity: googleLoading ? 0.7 : 1 }}
+                  >
+                    {googleLoading ? <Loader2 style={{ width: 16, height: 16, animation: 'spin 1s linear infinite' }} /> : null}
+                    {googleLoading ? 'Signing in…' : 'Continue'}
+                    {!googleLoading && <ChevronRight style={{ width: 16, height: 16 }} />}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIgnoreRecent(true)}
+                    style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, color: '#94a3b8', padding: '4px 0', marginBottom: 4 }}
+                  >
+                    Use a different account
+                  </button>
+
+                  {error && error !== 'backend' && (
+                    <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 11, padding: '12px 14px', marginTop: 10 }}>
+                      <p style={{ fontSize: 13, color: '#DC2626', fontWeight: 700, margin: 0 }}>{error}</p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+              <>
               {/* ── GOOGLE BUTTON (primary CTA) ── */}
               <button
                 type="button"
@@ -309,6 +433,17 @@ export default function LoginPage() {
                 </button>
               ) : (
                 <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {quickLoginMode && recentAccount ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: 11, padding: '10px 14px' }}>
+                      <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg, #0d9488, #0891b2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 12, fontWeight: 800, flexShrink: 0 }}>
+                        {recentAccount.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()}
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: '#0f2040' }}>{recentAccount.name}</div>
+                        <div style={{ fontSize: 11, color: '#94a3b8' }}>{recentAccount.email}</div>
+                      </div>
+                    </div>
+                  ) : (
                   <div>
                     <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Email or Username</label>
                     <input type="text" value={username} onChange={e => setUsername(e.target.value)}
@@ -318,6 +453,7 @@ export default function LoginPage() {
                       onBlur={e => (e.target.style.borderColor = '#e2e8f0')}
                     />
                   </div>
+                  )}
                   <div>
                     <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Password</label>
                     <div style={{ position: 'relative' }}>
@@ -348,6 +484,8 @@ export default function LoginPage() {
                     {loading ? 'Signing in…' : 'Sign In'}
                   </button>
                 </form>
+              )}
+              </>
               )}
 
               {/* Demo mode */}
@@ -412,8 +550,9 @@ export default function LoginPage() {
       {/* ── Google New-User Modal ── */}
       {googleNewUser && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(15,32,64,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div style={{ background: 'white', borderRadius: 24, boxShadow: '0 24px 80px rgba(15,32,64,0.3)', width: '100%', maxWidth: 460, overflow: 'hidden', fontFamily: "'Figtree', Inter, sans-serif" }}>
-            <div style={{ background: 'linear-gradient(135deg, #0f2040, #163560)', padding: '20px 24px', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+          <div style={{ background: 'white', borderRadius: 24, boxShadow: '0 24px 80px rgba(15,32,64,0.3)', width: '100%', maxWidth: 560, maxHeight: '92vh', overflowY: 'auto', fontFamily: "'Figtree', Inter, sans-serif" }}>
+            {/* Header */}
+            <div style={{ background: 'linear-gradient(135deg, #0f2040, #163560)', padding: '20px 24px', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 1 }}>
               <div>
                 <h3 style={{ color: 'white', fontWeight: 800, fontSize: 18, margin: '0 0 4px' }}>Complete your profile</h3>
                 <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13, margin: 0 }}>Signing in as <span style={{ color: '#2dd4bf', fontWeight: 600 }}>{googleNewUser.email}</span></p>
@@ -422,72 +561,100 @@ export default function LoginPage() {
                 <X style={{ width: 16, height: 16 }} />
               </button>
             </div>
-            <form onSubmit={handleGoogleRegister} style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Full Name *</label>
-                <input type="text" value={gRegForm.name} onChange={e => setGRegForm(f => ({ ...f, name: e.target.value }))}
-                  style={{ width: '100%', border: '1.5px solid #e2e8f0', borderRadius: 11, padding: '11px 14px', fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
-                  required placeholder="Dr. Ramesh Sharma" />
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Specialty</label>
-                  <input type="text" value={gRegForm.specialty} onChange={e => setGRegForm(f => ({ ...f, specialty: e.target.value }))}
-                    style={{ width: '100%', border: '1.5px solid #e2e8f0', borderRadius: 11, padding: '11px 14px', fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
-                    placeholder="General Medicine" />
+
+            <form onSubmit={handleGoogleRegister} style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+              {/* ── Personal Details ── */}
+              <div style={{ border: '1px solid #e2e8f0', borderRadius: 14, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '1px' }}>Personal Details</div>
+
+                <GField label="Full Name (as per MCI) *" error={gRegErrors.name}>
+                  <input type="text" value={gRegForm.name} onChange={e => gSet('name', e.target.value)}
+                    style={{ width: '100%', border: `1.5px solid ${gRegErrors.name ? '#f87171' : '#e2e8f0'}`, borderRadius: 11, padding: '11px 14px', fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
+                    placeholder="Dr. Arjun Mehta" />
+                </GField>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <GField label="Mobile *" error={gRegErrors.phone}>
+                    <input type="tel" value={gRegForm.phone} onChange={e => gSet('phone', e.target.value)}
+                      style={{ width: '100%', border: `1.5px solid ${gRegErrors.phone ? '#f87171' : '#e2e8f0'}`, borderRadius: 11, padding: '11px 14px', fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
+                      placeholder="9876543210" />
+                  </GField>
+                  <GField label="City">
+                    <input type="text" value={gRegForm.city} onChange={e => gSet('city', e.target.value)}
+                      style={{ width: '100%', border: '1.5px solid #e2e8f0', borderRadius: 11, padding: '11px 14px', fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
+                      placeholder="Mumbai" />
+                  </GField>
                 </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Phone *</label>
-                  <input type="tel" value={gRegForm.phone} onChange={e => setGRegForm(f => ({ ...f, phone: e.target.value }))}
-                    required
-                    style={{ width: '100%', border: '1.5px solid #e2e8f0', borderRadius: 11, padding: '11px 14px', fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
-                    placeholder="+91 98765 43210" />
-                </div>
               </div>
-              <div>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Degrees / Qualifications</label>
-                <input type="text" value={gRegForm.degrees} onChange={e => setGRegForm(f => ({ ...f, degrees: e.target.value }))}
-                  style={{ width: '100%', border: '1.5px solid #e2e8f0', borderRadius: 11, padding: '11px 14px', fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
-                  placeholder="MBBS, MD" />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Medical Council / Registration Body *</label>
-                <select value={gRegForm.medicalCouncil} onChange={e => setGRegForm(f => ({ ...f, medicalCouncil: e.target.value }))}
-                  required
-                  style={{ width: '100%', border: '1.5px solid #e2e8f0', borderRadius: 11, padding: '11px 14px', fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box', background: 'white' }}>
-                  <option value="">Select your medical council...</option>
-                  {INDIAN_MEDICAL_COUNCILS.map(council => (
-                    <option key={council.id} value={council.id}>{council.name}</option>
-                  ))}
-                </select>
-              </div>
-              {gRegForm.medicalCouncil && (
-                <div>
-                  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.5px' }}>State of Registration (Medical Council) *</label>
-                  <select value={gRegForm.registrationState} onChange={e => setGRegForm(f => ({ ...f, registrationState: e.target.value }))}
-                    required
-                    style={{ width: '100%', border: '1.5px solid #e2e8f0', borderRadius: 11, padding: '11px 14px', fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box', background: 'white' }}>
-                    <option value="">Which state issued it?</option>
-                    {INDIAN_STATES.map(state => (
-                      <option key={state} value={state}>{state}</option>
-                    ))}
+
+              {/* ── Professional Details ── */}
+              <div style={{ border: '1px solid #e2e8f0', borderRadius: 14, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '1px' }}>Professional Details</div>
+
+                <GField label="Specialty *" error={gRegErrors.specialty}>
+                  <select value={gRegForm.specialty} onChange={e => gSet('specialty', e.target.value)}
+                    style={{ width: '100%', border: `1.5px solid ${gRegErrors.specialty ? '#f87171' : '#e2e8f0'}`, borderRadius: 11, padding: '11px 14px', fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box', background: 'white' }}>
+                    <option value="">Select specialty…</option>
+                    {SPECIALTIES.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
+                </GField>
+
+                <GField label="Degrees / Qualifications *" error={gRegErrors.degrees}>
+                  <input type="text" value={gRegForm.degrees} onChange={e => gSet('degrees', e.target.value)}
+                    style={{ width: '100%', border: `1.5px solid ${gRegErrors.degrees ? '#f87171' : '#e2e8f0'}`, borderRadius: 11, padding: '11px 14px', fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
+                    placeholder="e.g. MBBS, MD" />
+                </GField>
+
+                <GField label="Medical Council / Registration Body *" error={gRegErrors.medicalCouncil}>
+                  <select value={gRegForm.medicalCouncil} onChange={e => gSet('medicalCouncil', e.target.value)}
+                    style={{ width: '100%', border: `1.5px solid ${gRegErrors.medicalCouncil ? '#f87171' : '#e2e8f0'}`, borderRadius: 11, padding: '11px 14px', fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box', background: 'white' }}>
+                    <option value="">Select your medical council…</option>
+                    {INDIAN_MEDICAL_COUNCILS.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </GField>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <GField label="NMC / MCI Registration Number *" error={gRegErrors.licenseNumber}>
+                    <input type="text" inputMode="text" value={gRegForm.licenseNumber} onChange={e => gSet('licenseNumber', e.target.value)}
+                      style={{ width: '100%', border: `1.5px solid ${gRegErrors.licenseNumber ? '#f87171' : '#e2e8f0'}`, borderRadius: 11, padding: '11px 14px', fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
+                      placeholder="e.g. MH-12345 or 123456" />
+                  </GField>
+                  <GField label="State of Registration *" error={gRegErrors.registrationState}>
+                    <select value={gRegForm.registrationState} onChange={e => gSet('registrationState', e.target.value)}
+                      style={{ width: '100%', border: `1.5px solid ${gRegErrors.registrationState ? '#f87171' : '#e2e8f0'}`, borderRadius: 11, padding: '11px 14px', fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box', background: 'white' }}>
+                      <option value="">Which state issued it?</option>
+                      {STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </GField>
                 </div>
-              )}
-              <div>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.5px' }}>MCI / State Council License No. *</label>
-                <input type="text" value={gRegForm.licenseNumber} onChange={e => setGRegForm(f => ({ ...f, licenseNumber: e.target.value }))}
-                  style={{ width: '100%', border: '1.5px solid #e2e8f0', borderRadius: 11, padding: '11px 14px', fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
-                  required placeholder="MH-12345" />
-                <p style={{ fontSize: 11, color: '#94a3b8', margin: '4px 0 0' }}>Required for prescription access. Verified within a few hours.</p>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <GField label="State of Practice">
+                    <select value={gRegForm.practiceState} onChange={e => gSet('practiceState', e.target.value)}
+                      style={{ width: '100%', border: '1.5px solid #e2e8f0', borderRadius: 11, padding: '11px 14px', fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box', background: 'white' }}>
+                      <option value="">Which state do you practice in?</option>
+                      {STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </GField>
+                  <GField label="Primary Hospital / Clinic">
+                    <input type="text" value={gRegForm.hospital} onChange={e => gSet('hospital', e.target.value)}
+                      style={{ width: '100%', border: '1.5px solid #e2e8f0', borderRadius: 11, padding: '11px 14px', fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
+                      placeholder="e.g. Apollo, own clinic…" />
+                  </GField>
+                </div>
+
+                <p style={{ fontSize: 11, color: '#94a3b8', margin: 0 }}>Registration number required for prescription access. Verified within a few hours.</p>
               </div>
+
               {error && <p style={{ fontSize: 13, color: '#DC2626', fontWeight: 600, margin: 0 }}>{error}</p>}
+
               <button type="submit" disabled={loading}
                 style={{ background: loading ? '#94a3b8' : 'linear-gradient(135deg, #0d9488, #0891b2)', color: 'white', border: 'none', borderRadius: 13, padding: '14px', fontSize: 15, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: loading ? 'none' : '0 4px 14px rgba(13,148,136,0.3)' }}>
                 {loading ? <Loader2 style={{ width: 16, height: 16, animation: 'spin 1s linear infinite' }} /> : <ShieldCheck style={{ width: 16, height: 16 }} />}
                 {loading ? 'Submitting…' : 'Submit for Approval'}
               </button>
-              <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 11, padding: '10px 14px', display: 'flex', alignItems: 'flex-start', gap: 9 }}>
+
+              <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 11, padding: '10px 14px', display: 'flex', alignItems: 'flex-start', gap: 9, marginBottom: 4 }}>
                 <Clock style={{ width: 13, height: 13, color: '#D97706', flexShrink: 0, marginTop: 1 }} />
                 <p style={{ fontSize: 12, color: '#78350F', margin: 0, lineHeight: 1.5 }}>Our team will verify your license number. Full access is granted after approval — usually within a few hours.</p>
               </div>

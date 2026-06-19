@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Search, Loader2, MapPin, Clock, Building2 } from 'lucide-react';
+import { useAuthStore } from '@/store/useAuthStore';
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? 'https://vyasa-os-backend.onrender.com';
 
@@ -73,10 +74,14 @@ function avatarColor(name: string) {
 export default function DoctorsDirectoryPage() {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [state, setState] = useState('');
-  const [city, setCity] = useState('');
-  const [specialty, setSpecialty] = useState('');
+  const [error, setError] = useState(false);
+
+  // Seed from URL params so landing-page links like ?search=nila&specialty=Cardiologist work
+  const urlParams = new URLSearchParams(window.location.search);
+  const [search, setSearch] = useState(urlParams.get('search') ?? '');
+  const [state, setState] = useState(urlParams.get('state') ?? '');
+  const [city, setCity] = useState(urlParams.get('city') ?? '');
+  const [specialty, setSpecialty] = useState(urlParams.get('specialty') ?? '');
   const [states, setStates] = useState<string[]>([]);
   const [cities, setCities] = useState<string[]>([]);
   const [specialties, setSpecialties] = useState<string[]>([]);
@@ -84,6 +89,7 @@ export default function DoctorsDirectoryPage() {
 
   const loadDoctors = async (s?: string, c?: string, sp?: string, q?: string) => {
     setLoading(true);
+    setError(false);
     try {
       const params = new URLSearchParams({ limit: '24' });
       if (s) params.set('state', s);
@@ -99,7 +105,6 @@ export default function DoctorsDirectoryPage() {
       setDoctors(Array.isArray(doctorsList) ? doctorsList : []);
       setTotal(data.total || (Array.isArray(doctorsList) ? doctorsList.length : 0));
 
-      // Repopulate filters
       const allStates = [...new Set([...Object.keys(IN_STATES), ...(data.filters?.states || [])])].sort();
       const staticCities = s ? (IN_STATES[s] ?? []) : Object.values(IN_STATES).flat();
       const allCities = [...new Set([...staticCities, ...(data.filters?.cities || [])])].sort();
@@ -110,13 +115,19 @@ export default function DoctorsDirectoryPage() {
       setSpecialties(allSpecs);
     } catch (err) {
       console.error('Failed to load doctors:', err);
+      setError(true);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadDoctors('', '', '', '');
+    loadDoctors(
+      urlParams.get('state') ?? '',
+      urlParams.get('city') ?? '',
+      urlParams.get('specialty') ?? '',
+      urlParams.get('search') ?? '',
+    );
   }, []);
 
   const handleStateChange = (newState: string) => {
@@ -135,9 +146,11 @@ export default function DoctorsDirectoryPage() {
     loadDoctors(state, city, newSpec, search);
   };
 
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleSearch = (q: string) => {
     setSearch(q);
-    loadDoctors(state, city, specialty, q);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => loadDoctors(state, city, specialty, q), 400);
   };
 
   const handleClear = () => {
@@ -151,17 +164,45 @@ export default function DoctorsDirectoryPage() {
   const displayCities = state ? (IN_STATES[state] ?? []) : Object.values(IN_STATES).flat();
   const filteredCities = [...new Set([...displayCities, ...cities])].sort();
 
+  const { user } = useAuthStore();
+  // Logo home destination: logged-in users go to dashboard, public visitors go to vyasaa.com
+  const homeHref = user ? '/app/dashboard' : 'https://vyasaa.com';
+
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Hero Section - Match vyasaa.com */}
+      {/* ── Branded Navbar ── */}
+      <nav className="animate-fade-in" style={{
+        position: 'sticky', top: 0, zIndex: 50,
+        background: 'rgba(6,13,26,0.92)', backdropFilter: 'blur(12px)',
+        borderBottom: '1px solid rgba(255,255,255,0.07)',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '0 24px', height: 56,
+      }}>
+        <a href={homeHref} style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
+          <img src="/logo.svg" alt="Vyasa" style={{ width: 32, height: 32, borderRadius: 9, boxShadow: '0 2px 10px rgba(13,148,136,0.35)' }} />
+          <span style={{ fontFamily: "'Figtree','Inter',sans-serif", fontSize: 15, fontWeight: 800, color: '#f1f5f9', letterSpacing: '1.5px', textTransform: 'uppercase' }}>Vyasa</span>
+        </a>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <a href="https://vyasaa.com#sec-doctors" style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', fontFamily: 'inherit', textDecoration: 'none', fontWeight: 500, padding: '6px 10px' }}>Back to home</a>
+          <a href="/login" style={{
+            fontSize: 13, fontWeight: 700, color: '#0d9488', fontFamily: 'inherit',
+            border: '1.5px solid rgba(13,148,136,0.5)', borderRadius: 8,
+            padding: '6px 14px', textDecoration: 'none', transition: 'all 0.2s',
+          }}>
+            {user ? 'Dashboard' : 'Doctor Login'}
+          </a>
+        </div>
+      </nav>
+
+      {/* Hero Section */}
       <div className="bg-gradient-to-r from-slate-900 via-teal-900 to-slate-900 relative overflow-hidden">
         <div className="absolute inset-0 opacity-10" style={{ backgroundImage: `radial-gradient(circle at 20% 50%, #0d9488 0%, transparent 50%), radial-gradient(circle at 80% 80%, #0ea5e9 0%, transparent 50%)` }} />
         <div className="max-w-7xl mx-auto px-4 py-20 relative z-10">
-          <h1 className="text-4xl md:text-5xl font-bold text-white mb-3">Find & Book a Doctor</h1>
-          <p className="text-lg text-slate-200 mb-10 max-w-2xl">Verified doctors with real-time slot availability. No middlemen, zero commission.</p>
+          <h1 className="text-4xl md:text-5xl font-bold text-white mb-3 animate-fade-up delay-0">Find & Book a Doctor</h1>
+          <p className="text-lg text-slate-200 mb-10 max-w-2xl animate-fade-up delay-100">Verified doctors with real-time slot availability. No middlemen, zero commission.</p>
 
-          {/* Search & Filters - Dark Card */}
-          <div className="bg-white/10 backdrop-blur border border-white/20 rounded-xl p-6 space-y-4">
+          {/* Search & Filters */}
+          <div className="bg-white/10 backdrop-blur border border-white/20 rounded-xl p-6 space-y-4 animate-fade-up delay-200">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
               <div className="lg:col-span-2 relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/50" />
@@ -216,8 +257,19 @@ export default function DoctorsDirectoryPage() {
       {/* Doctors Grid */}
       <div className="max-w-7xl mx-auto px-4 py-12">
         {loading ? (
-          <div className="flex justify-center py-20">
+          <div className="flex flex-col items-center py-20 gap-3">
             <Loader2 className="w-10 h-10 animate-spin text-teal-500" />
+            <p className="text-sm text-slate-400">Loading doctors…</p>
+          </div>
+        ) : error ? (
+          <div className="text-center py-20">
+            <p className="text-lg text-slate-500 mb-4">Unable to load doctors. The server may be starting up — please wait a moment and try again.</p>
+            <button
+              onClick={() => loadDoctors(state, city, specialty, search)}
+              className="px-6 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition font-semibold"
+            >
+              Try again
+            </button>
           </div>
         ) : doctors.length === 0 ? (
           <div className="text-center py-20">
@@ -225,11 +277,14 @@ export default function DoctorsDirectoryPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {doctors.map(doc => (
+            {doctors.map((doc, i) => (
               <a
                 key={doc.id}
                 href={`/dr/${doc.profileSlug}`}
-                className="group block bg-white border border-slate-200 rounded-xl p-6 hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group block bg-white border border-slate-200 rounded-xl p-6 hover:shadow-xl hover:border-teal-300 transition-all duration-300 hover:-translate-y-1.5 animate-fade-up"
+                style={{ animationDelay: `${Math.min(i * 60, 400)}ms` }}
               >
                 {/* Top section - Avatar + Name + Badge */}
                 <div className="flex gap-4 mb-4">
@@ -238,12 +293,12 @@ export default function DoctorsDirectoryPage() {
                       <img
                         src={doc.profilePhotoUrl}
                         alt={`Dr. ${doc.name}`}
-                        className="w-14 h-14 rounded-lg object-cover border border-slate-200"
+                        className="w-14 h-14 rounded-lg object-cover border border-slate-200 group-hover:scale-105 transition-transform duration-300"
                         loading="lazy"
                       />
                     ) : (
                       <div
-                        className="w-14 h-14 rounded-lg flex items-center justify-center text-white font-bold text-lg border-2"
+                        className="w-14 h-14 rounded-lg flex items-center justify-center text-white font-bold text-lg border-2 group-hover:scale-105 transition-transform duration-300"
                         style={{ backgroundColor: avatarColor(doc.name), borderColor: avatarColor(doc.name) + '33' }}
                       >
                         {initials(doc.name)}
@@ -251,17 +306,15 @@ export default function DoctorsDirectoryPage() {
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2 mb-1">
-                      <h3 className="font-bold text-slate-900 text-base truncate group-hover:text-teal-600 transition">Dr. {doc.name}</h3>
-                      {(doc.bookingOpen ?? doc.acceptingPatients) ? (
-                        <span className="text-xs bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full font-semibold flex-shrink-0 whitespace-nowrap border border-emerald-200">● Booking open</span>
-                      ) : (
-                        <span className="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full font-semibold flex-shrink-0 whitespace-nowrap border border-slate-300">Bookings not available</span>
-                      )}
-                    </div>
-                    <p className="text-sm text-teal-600 font-semibold truncate">{doc.specialty || 'Medical Professional'}</p>
+                    <h3 className="font-bold text-slate-900 text-base leading-snug group-hover:text-teal-600 transition mb-1">Dr. {doc.name}</h3>
+                    {(doc.bookingOpen ?? doc.acceptingPatients) ? (
+                      <span className="inline-flex items-center text-xs bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full font-semibold whitespace-nowrap border border-emerald-200 mb-1">● Booking open</span>
+                    ) : (
+                      <span className="inline-flex items-center text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-semibold whitespace-nowrap border border-slate-200 mb-1">Bookings not available</span>
+                    )}
+                    <p className="text-sm text-teal-600 font-semibold">{doc.specialty || 'Medical Professional'}</p>
                     {doc.qualification && (
-                      <p className="text-xs text-slate-500 truncate">{doc.qualification}</p>
+                      <p className="text-xs text-slate-500">{doc.qualification}</p>
                     )}
                   </div>
                 </div>
@@ -271,19 +324,19 @@ export default function DoctorsDirectoryPage() {
                   {doc.clinicName && (
                     <div className="flex items-start gap-2 text-sm text-slate-700">
                       <Building2 className="w-3.5 h-3.5 text-teal-500 flex-shrink-0 mt-0.5" />
-                      <span className="truncate">{doc.clinicName}</span>
+                      <span className="break-words">{doc.clinicName}</span>
                     </div>
                   )}
                   {(doc.city || doc.state) && (
                     <div className="flex items-start gap-2 text-sm text-slate-700">
                       <MapPin className="w-3.5 h-3.5 text-teal-500 flex-shrink-0 mt-0.5" />
-                      <span className="truncate">{[doc.city, doc.state].filter(Boolean).join(', ')}</span>
+                      <span>{[doc.city, doc.state].filter(Boolean).join(', ')}</span>
                     </div>
                   )}
                   {doc.timings && (
                     <div className="flex items-start gap-2 text-sm text-slate-700">
                       <Clock className="w-3.5 h-3.5 text-teal-500 flex-shrink-0 mt-0.5" />
-                      <span className="truncate text-xs">{doc.timings}</span>
+                      <span className="text-xs">{doc.timings}</span>
                     </div>
                   )}
                 </div>
@@ -294,7 +347,9 @@ export default function DoctorsDirectoryPage() {
                     {doc.yearsExperience > 0 && <span className="font-semibold">{doc.yearsExperience}+ yrs</span>}
                     {doc.consultationFee && <span className="font-semibold">₹{doc.consultationFee}</span>}
                   </div>
-                  <span className="text-teal-600 font-semibold text-sm group-hover:translate-x-1 transition">Book →</span>
+                  <span className="text-teal-600 font-semibold text-sm group-hover:translate-x-1 transition flex items-center gap-1">
+                    {(doc.bookingOpen ?? doc.acceptingPatients) ? 'Book' : 'View Profile'} →
+                  </span>
                 </div>
               </a>
             ))}

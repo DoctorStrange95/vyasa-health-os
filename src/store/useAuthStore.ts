@@ -3,11 +3,20 @@ import { persist } from 'zustand/middleware';
 import type { StaffUser, Role } from '@/types';
 import { api, setTokens, clearTokens } from '@/lib/api';
 
+export interface RecentAccount {
+  name: string;
+  email: string;
+  role: Role;
+  specialty?: string;
+  loginMethod: 'google' | 'email';
+}
+
 interface AuthState {
   user: StaffUser | null;
   token: string | null;
   isDemo: boolean;
   approvalStatus: 'pending' | 'approved' | 'rejected' | 'suspended' | null;
+  recentAccount: RecentAccount | null;
   login: (email: string, password: string, geo?: { lat: number; lng: number; locationLabel?: string }) => Promise<void>;
   register: (data: RegisterPayload) => Promise<void>;
   loginWithGoogle: (credential: string, geo?: { lat: number; lng: number }) => Promise<GoogleResult>;
@@ -38,6 +47,11 @@ export interface GoogleRegisterPayload {
   degrees?: string;
   phone?: string;
   licenseNumber?: string;
+  medicalCouncil?: string;
+  regState?: string;
+  city?: string;
+  state?: string;
+  clinicName?: string;
   googleId?: string;
 }
 
@@ -83,16 +97,19 @@ export const useAuthStore = create<AuthState>()(
       token: null,
       isDemo: false,
       approvalStatus: null,
+      recentAccount: null,
 
       // ─── Real backend login ────────────────────────────────────────────────
       login: async (email, password, geo) => {
         const data = await api.post<BackendAuthResponse>('/auth/login', { email, password, ...geo });
         setTokens(data.accessToken, data.refreshToken);
+        const staffUser = toStaffUser(data.user);
         set({
-          user: toStaffUser(data.user),
+          user: staffUser,
           token: data.accessToken,
           isDemo: false,
           approvalStatus: (data.user.approvalStatus ?? 'approved') as AuthState['approvalStatus'],
+          recentAccount: { name: staffUser.name, email: staffUser.email, role: staffUser.role, specialty: staffUser.specialty, loginMethod: 'email' },
         });
         // Sync backend data into app store
         import('./useAppStore').then(({ useAppStore }) =>
@@ -129,11 +146,13 @@ export const useAuthStore = create<AuthState>()(
 
         const r = result as BackendAuthResponse;
         setTokens(r.accessToken, r.refreshToken);
+        const staffUser = toStaffUser(r.user);
         set({
-          user: toStaffUser(r.user),
+          user: staffUser,
           token: r.accessToken,
           isDemo: false,
           approvalStatus: (r.user.approvalStatus ?? 'approved') as AuthState['approvalStatus'],
+          recentAccount: { name: staffUser.name, email: staffUser.email, role: staffUser.role, specialty: staffUser.specialty, loginMethod: 'google' },
         });
         import('./useAppStore').then(({ useAppStore }) =>
           useAppStore.getState().syncFromBackend()
@@ -173,12 +192,13 @@ export const useAuthStore = create<AuthState>()(
         if (rt) api.post('/auth/logout', { refreshToken: rt }).catch(() => {});
         clearTokens();
         import('./useAppStore').then(({ useAppStore }) => useAppStore.getState().resetStore());
-        set({ user: null, token: null, isDemo: false, approvalStatus: null });
+        // recentAccount intentionally kept — used for quick re-login on the login page
+        set(s => ({ user: null, token: null, isDemo: false, approvalStatus: null, recentAccount: s.recentAccount }));
       },
     }),
     {
       name: 'vyasa-auth',
-      partialize: (s) => ({ user: s.user, token: s.token, isDemo: s.isDemo, approvalStatus: s.approvalStatus }),
+      partialize: (s) => ({ user: s.user, token: s.token, isDemo: s.isDemo, approvalStatus: s.approvalStatus, recentAccount: s.recentAccount }),
     }
   )
 );
