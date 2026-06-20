@@ -615,7 +615,7 @@ export default function DoctorPublicPage() {
                         const isSelected = selectedDate === d.date;
                         const todayStr = new Date().toLocaleDateString('en-CA');
                         const isToday = d.date === todayStr;
-                        const count = Math.min(d.slots.length, d.totalSlots);
+                        const count = Math.min(d.slots.length, d.totalSlots - d.bookedCount);
                         return (
                           <button key={d.date} onClick={() => { setSelectedDate(d.date); setSelectedTime(''); setStep('select-time'); }}
                             style={{ flexShrink: 0, width: 72, padding: '14px 6px 12px', borderRadius: 20, border: '1.5px solid', borderColor: isSelected ? TEAL : '#e8edf3', background: isSelected ? `linear-gradient(155deg, #0d9488 0%, #0891b2 100%)` : 'white', cursor: 'pointer', textAlign: 'center', fontFamily: 'inherit', transition: 'all 0.22s cubic-bezier(0.22,1,0.36,1)', boxShadow: isSelected ? '0 8px 24px rgba(13,148,136,0.35)' : '0 1px 6px rgba(15,32,64,0.06)', animation: `chip-pop 0.38s cubic-bezier(0.34,1.56,0.64,1) ${i * 40}ms both` }}>
