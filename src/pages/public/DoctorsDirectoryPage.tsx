@@ -475,11 +475,7 @@ export default function DoctorsDirectoryPage() {
           </div>
           <div className="border-t border-slate-800 pt-6 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-slate-500">
             <p>© {new Date().getFullYear()} Vyasa Health Technologies. Find verified doctors in India — book appointments online.</p>
-            <div className="flex gap-4">
-              <a href="https://vyasaa.com" className="hover:text-teal-400 transition-colors">vyasaa.com</a>
-              <a href="https://vyasaa.com/privacy" className="hover:text-teal-400 transition-colors">Privacy</a>
-              <a href="https://vyasaa.com/terms" className="hover:text-teal-400 transition-colors">Terms</a>
-            </div>
+            <a href="https://vyasaa.com" className="hover:text-teal-400 transition-colors">vyasaa.com</a>
           </div>
         </div>
       </footer>
