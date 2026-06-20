@@ -86,12 +86,17 @@ export default function DoctorsDirectoryPage() {
   const [cities, setCities] = useState<string[]>([]);
   const [specialties, setSpecialties] = useState<string[]>([]);
   const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 12;
 
-  const loadDoctors = async (s?: string, c?: string, sp?: string, q?: string) => {
+  const loadDoctors = async (s?: string, c?: string, sp?: string, q?: string, pg = 1) => {
     setLoading(true);
     setError(false);
     try {
-      const params = new URLSearchParams({ limit: '24' });
+      const params = new URLSearchParams({
+        limit: String(PAGE_SIZE),
+        offset: String((pg - 1) * PAGE_SIZE),
+      });
       if (s) params.set('state', s);
       if (c) params.set('city', c);
       if (sp) params.set('specialty', sp);
@@ -104,6 +109,7 @@ export default function DoctorsDirectoryPage() {
       const doctorsList = data.doctors || data;
       setDoctors(Array.isArray(doctorsList) ? doctorsList : []);
       setTotal(data.total || (Array.isArray(doctorsList) ? doctorsList.length : 0));
+      setPage(pg);
 
       const allStates = [...new Set([...Object.keys(IN_STATES), ...(data.filters?.states || [])])].sort();
       const staticCities = s ? (IN_STATES[s] ?? []) : Object.values(IN_STATES).flat();
@@ -113,6 +119,7 @@ export default function DoctorsDirectoryPage() {
       setStates(allStates);
       setCities(allCities);
       setSpecialties(allSpecs);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err) {
       console.error('Failed to load doctors:', err);
       setError(true);
@@ -132,25 +139,25 @@ export default function DoctorsDirectoryPage() {
 
   const handleStateChange = (newState: string) => {
     setState(newState);
-    setCity(''); // Reset city when state changes
-    loadDoctors(newState, '', specialty, search);
+    setCity('');
+    loadDoctors(newState, '', specialty, search, 1);
   };
 
   const handleCityChange = (newCity: string) => {
     setCity(newCity);
-    loadDoctors(state, newCity, specialty, search);
+    loadDoctors(state, newCity, specialty, search, 1);
   };
 
   const handleSpecialtyChange = (newSpec: string) => {
     setSpecialty(newSpec);
-    loadDoctors(state, city, newSpec, search);
+    loadDoctors(state, city, newSpec, search, 1);
   };
 
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleSearch = (q: string) => {
     setSearch(q);
     if (searchTimer.current) clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => loadDoctors(state, city, specialty, q), 400);
+    searchTimer.current = setTimeout(() => loadDoctors(state, city, specialty, q, 1), 400);
   };
 
   const handleClear = () => {
@@ -158,11 +165,21 @@ export default function DoctorsDirectoryPage() {
     setCity('');
     setSpecialty('');
     setSearch('');
-    loadDoctors('', '', '', '');
+    loadDoctors('', '', '', '', 1);
   };
 
   const displayCities = state ? (IN_STATES[state] ?? []) : Object.values(IN_STATES).flat();
   const filteredCities = [...new Set([...displayCities, ...cities])].sort();
+
+  useEffect(() => {
+    const titleParts: string[] = [];
+    if (specialty) titleParts.push(specialty);
+    if (city) titleParts.push(city);
+    else if (state) titleParts.push(state);
+    const suffix = 'Find & Book a Doctor | Vyasa Health';
+    document.title = titleParts.length > 0 ? `${titleParts.join(', ')} — ${suffix}` : suffix;
+    return () => { document.title = 'Vyasa Health OS'; };
+  }, [specialty, city, state]);
 
   const { user } = useAuthStore();
   // Logo home destination: logged-in users go to dashboard, public visitors go to vyasaa.com
@@ -276,7 +293,7 @@ export default function DoctorsDirectoryPage() {
             <p className="text-lg text-slate-500">No doctors found matching your search</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="dir-grid">
             {doctors.map((doc, i) => (
               <a
                 key={doc.id}
@@ -355,7 +372,117 @@ export default function DoctorsDirectoryPage() {
             ))}
           </div>
         )}
+
+        {/* Pagination */}
+        {total > PAGE_SIZE && (() => {
+          const totalPages = Math.ceil(total / PAGE_SIZE);
+          const pages: (number | '…')[] = [];
+          for (let i = 1; i <= totalPages; i++) {
+            if (i === 1 || i === totalPages || Math.abs(i - page) <= 1) pages.push(i);
+            else if (pages[pages.length - 1] !== '…') pages.push('…');
+          }
+          return (
+            <div className="flex items-center justify-center gap-1.5 mt-10 flex-wrap">
+              <button
+                onClick={() => loadDoctors(state, city, specialty, search, page - 1)}
+                disabled={page === 1 || loading}
+                className="px-3 py-2 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition"
+              >
+                ← Prev
+              </button>
+              {pages.map((p, idx) =>
+                p === '…' ? (
+                  <span key={`ellipsis-${idx}`} className="px-2 py-2 text-slate-400 text-sm">…</span>
+                ) : (
+                  <button
+                    key={p}
+                    onClick={() => loadDoctors(state, city, specialty, search, p)}
+                    disabled={loading}
+                    className={`w-9 h-9 rounded-lg text-sm font-semibold transition ${
+                      page === p
+                        ? 'bg-teal-600 text-white shadow'
+                        : 'text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    {p}
+                  </button>
+                )
+              )}
+              <button
+                onClick={() => loadDoctors(state, city, specialty, search, page + 1)}
+                disabled={page === totalPages || loading}
+                className="px-3 py-2 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition"
+              >
+                Next →
+              </button>
+            </div>
+          );
+        })()}
       </div>
+
+      {/* SEO Footer — keyword-rich static content for Google */}
+      <footer className="bg-slate-900 text-slate-400 mt-16 py-12 px-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-10 mb-10">
+            <div>
+              <h2 className="text-white font-semibold text-sm mb-4 uppercase tracking-wider">Browse by Specialty</h2>
+              <ul className="space-y-2 text-sm">
+                {['Cardiologist','Dermatologist','Pediatrician','Orthopedic','Gynecologist','General Medicine','ENT Specialist','Psychiatrist','Neurologist','Diabetologist','Ophthalmologist','Urologist'].map(sp => (
+                  <li key={sp}>
+                    <a
+                      href={`/doctors?specialty=${encodeURIComponent(sp)}`}
+                      onClick={e => { e.preventDefault(); handleSpecialtyChange(sp); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                      className="hover:text-teal-400 transition-colors cursor-pointer"
+                    >
+                      {sp} Doctors in India
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h2 className="text-white font-semibold text-sm mb-4 uppercase tracking-wider">Browse by City</h2>
+              <ul className="space-y-2 text-sm">
+                {['Mumbai','Delhi','Bengaluru','Hyderabad','Pune','Chennai','Kolkata','Jaipur','Lucknow','Ahmedabad','Chandigarh','Kochi'].map(c => (
+                  <li key={c}>
+                    <a
+                      href={`/doctors?city=${encodeURIComponent(c)}`}
+                      onClick={e => { e.preventDefault(); handleCityChange(c); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                      className="hover:text-teal-400 transition-colors cursor-pointer"
+                    >
+                      Doctors in {c}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h2 className="text-white font-semibold text-sm mb-4 uppercase tracking-wider">About Vyasa Health</h2>
+              <p className="text-sm leading-relaxed mb-4">
+                Vyasa Health connects patients with verified, NMC-registered doctors across India.
+                Book appointments online with zero commission — no middlemen, no hidden charges.
+              </p>
+              <p className="text-sm leading-relaxed mb-4">
+                Our platform lists MBBS, MD, MS, DM, and specialist doctors from General Medicine,
+                Cardiology, Dermatology, Pediatrics, Orthopedics, Gynecology, and 30+ other specialties.
+              </p>
+              <p className="text-sm leading-relaxed">
+                Doctors on Vyasa are verified through NMC (National Medical Commission) registration
+                and state medical council records. Real-time slot availability, digital prescriptions,
+                and online OPD — all in one platform.
+              </p>
+            </div>
+          </div>
+          <div className="border-t border-slate-800 pt-6 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-slate-500">
+            <p>© {new Date().getFullYear()} Vyasa Health Technologies. Find verified doctors in India — book appointments online.</p>
+            <div className="flex gap-4">
+              <a href="https://vyasaa.com" className="hover:text-teal-400 transition-colors">vyasaa.com</a>
+              <a href="https://vyasaa.com/privacy" className="hover:text-teal-400 transition-colors">Privacy</a>
+              <a href="https://vyasaa.com/terms" className="hover:text-teal-400 transition-colors">Terms</a>
+            </div>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

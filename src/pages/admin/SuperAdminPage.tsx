@@ -29,6 +29,7 @@ interface DoctorOverview {
   total_bookings: number; confirmed_bookings: number; pending_bookings: number;
   total_visits: number; total_patients: number;
   login_count: number; last_login: string | null;
+  show_in_directory: boolean;
 }
 
 interface AdminStats {
@@ -76,6 +77,19 @@ type MainTab = 'users' | 'doctors';
 
 function DoctorCard({ doc }: { doc: DoctorOverview }) {
   const [expanded, setExpanded] = useState(false);
+  const [showInDir, setShowInDir] = useState(doc.show_in_directory);
+  const [dirToggling, setDirToggling] = useState(false);
+
+  async function toggleDirectory() {
+    setDirToggling(true);
+    try {
+      const { api } = await import('@/lib/api');
+      await api.patch(`/admin/doctors/${doc.id}/directory`, { show: !showInDir });
+      setShowInDir(v => !v);
+    } catch { /* ignore */ } finally {
+      setDirToggling(false);
+    }
+  }
 
   const statChips = [
     { icon: CalendarCheck, label: 'Bookings', value: doc.total_bookings, color: 'text-violet-600', bg: 'bg-violet-50' },
@@ -174,6 +188,28 @@ function DoctorCard({ doc }: { doc: DoctorOverview }) {
             {doc.profile_slug && (
               <div><span className="text-slate-400 text-xs">Profile Slug</span><div className="font-semibold text-slate-700">/{doc.profile_slug}</div></div>
             )}
+          </div>
+
+          {/* Directory visibility toggle */}
+          <div className="flex items-center justify-between border-t border-slate-100 pt-3">
+            <div>
+              <div className="text-sm font-semibold text-slate-700">Show in Doctor Directory</div>
+              <div className="text-xs text-slate-400">Controls visibility on vyasaa.com/doctors</div>
+            </div>
+            <button
+              onClick={toggleDirectory}
+              disabled={dirToggling}
+              className={cn(
+                'relative w-11 h-6 rounded-full transition-colors duration-200 focus:outline-none',
+                showInDir ? 'bg-teal-500' : 'bg-slate-300',
+                dirToggling && 'opacity-50 cursor-not-allowed'
+              )}
+            >
+              <span className={cn(
+                'absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200',
+                showInDir ? 'translate-x-5' : 'translate-x-0'
+              )} />
+            </button>
           </div>
 
           {/* Timestamps */}

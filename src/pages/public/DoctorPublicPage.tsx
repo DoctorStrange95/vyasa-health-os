@@ -16,7 +16,7 @@ interface PublicClinic {
 
 interface DoctorProfile {
   id: number; name: string; specialty: string; qualification: string;
-  regNumber: string; bio: string; languages: string; acceptingPatients: boolean;
+  regNumber: string; nmcVerified?: boolean; bio: string; languages: string; acceptingPatients: boolean;
   gbpUrl: string; yearsExperience: number; consultationFee: number | null;
   profileSlug: string; profilePhotoUrl: string;
   education: string; services: string; awards: string;
@@ -423,7 +423,7 @@ export default function DoctorPublicPage() {
                 }
               </div>
               {/* Small verified dot */}
-              {doctor.regNumber && (
+              {doctor.nmcVerified && (
                 <div style={{ position: 'absolute', bottom: -4, right: -4, width: 22, height: 22, borderRadius: '50%', background: '#10B981', border: '2px solid rgba(15,32,64,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <Shield style={{ width: 11, height: 11, color: 'white' }} />
                 </div>
@@ -436,9 +436,9 @@ export default function DoctorPublicPage() {
                 <h1 style={{ color: 'white', fontSize: 24, fontWeight: 900, margin: 0, letterSpacing: '-0.5px', lineHeight: 1.2 }}>
                   Dr. {doctor.name}
                 </h1>
-                {doctor.regNumber && (
+                {doctor.nmcVerified && (
                   <span style={{ background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.35)', color: '#6ee7b7', fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, display: 'flex', alignItems: 'center', gap: 3 }}>
-                    <Shield style={{ width: 9, height: 9 }} /> MCI Verified
+                    <Shield style={{ width: 9, height: 9 }} /> NMC Verified
                   </span>
                 )}
               </div>

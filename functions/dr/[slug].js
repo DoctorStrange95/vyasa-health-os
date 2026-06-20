@@ -56,8 +56,27 @@ function buildJsonLd(d, pageUrl) {
   return JSON.stringify(ld).replace(/</g, '\\u003c');
 }
 
+function buildKeywords(d) {
+  const clinic = d.clinics?.[0];
+  const place = [clinic?.city, clinic?.state].filter(Boolean);
+  const parts = [
+    `Dr. ${d.name}`,
+    d.specialty ? `${d.specialty} doctor` : '',
+    ...place.map(p => `doctor in ${p}`),
+    d.specialty && place[0] ? `${d.specialty} in ${place[0]}` : '',
+    'book appointment online',
+    'NMC verified doctor India',
+    'Vyasa Health',
+  ].filter(Boolean);
+  return esc(parts.join(', '));
+}
+
 function injectMeta(html, d, pageUrl) {
-  const title = esc(`Dr. ${d.name} — ${d.specialty || 'Doctor'} | Book Appointment | Vyasa Health`);
+  const clinic = d.clinics?.[0];
+  const city = clinic?.city || '';
+  const title = esc(
+    `Dr. ${d.name} — ${d.specialty || 'Doctor'}${city ? ` in ${city}` : ''} | Book Appointment | Vyasa Health`
+  );
   const desc = esc(buildDescription(d));
 
   html = html
@@ -72,7 +91,15 @@ function injectMeta(html, d, pageUrl) {
 
   const extra =
     `<link rel="canonical" href="${esc(pageUrl)}" />\n` +
-    (d.profilePhotoUrl ? `    <meta property="og:image" content="${esc(d.profilePhotoUrl)}" />\n` : '') +
+    `    <link rel="alternate" hreflang="en-IN" href="${esc(pageUrl)}" />\n` +
+    `    <meta name="keywords" content="${buildKeywords(d)}" />\n` +
+    `    <meta name="geo.region" content="IN" />\n` +
+    `    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />\n` +
+    (d.profilePhotoUrl
+      ? `    <meta property="og:image" content="${esc(d.profilePhotoUrl)}" />\n` +
+        `    <meta name="twitter:image" content="${esc(d.profilePhotoUrl)}" />\n` +
+        `    <meta name="twitter:card" content="summary_large_image" />\n`
+      : '') +
     `    <script type="application/ld+json">${buildJsonLd(d, pageUrl)}</script>\n  `;
   return html.replace('</head>', `${extra}</head>`);
 }

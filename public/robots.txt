@@ -1,8 +1,11 @@
 User-agent: *
-Allow: /
+Allow: /doctors
+Allow: /dr/
 Disallow: /app/
 Disallow: /login
 Disallow: /join
 Disallow: /pending-approval
+Disallow: /register
+Disallow: /org-register
 
 Sitemap: https://app.vyasaa.com/sitemap.xml
