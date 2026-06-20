@@ -43,19 +43,23 @@ export function ConsentModal() {
             Privacy Policy <span className="text-xs">↗</span>
           </a>
           <div className="border-t border-slate-200" />
-          <button
-            onClick={() => window.open('/app/settings?tab=legal', '_blank')}
-            className="flex items-center justify-between w-full text-teal-600 hover:text-teal-700 font-medium"
+          <a
+            href="https://vyasaa.com/privacy"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-between text-teal-600 hover:text-teal-700 font-medium"
           >
             Terms of Service <span className="text-xs">↗</span>
-          </button>
+          </a>
           <div className="border-t border-slate-200" />
-          <button
-            onClick={() => window.open('/app/settings?tab=legal', '_blank')}
-            className="flex items-center justify-between w-full text-teal-600 hover:text-teal-700 font-medium"
+          <a
+            href="https://vyasaa.com/privacy"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-between text-teal-600 hover:text-teal-700 font-medium"
           >
             Cookie Policy <span className="text-xs">↗</span>
-          </button>
+          </a>
         </div>
 
         <p className="text-xs text-slate-400">

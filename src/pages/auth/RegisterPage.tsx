@@ -316,7 +316,7 @@ function DoctorForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =
             I have read and agree to Vyasa Integrated Healthcare Pvt. Ltd.'s{' '}
             <a href="https://vyasaa.com/privacy" target="_blank" rel="noopener noreferrer" className="text-teal-600 hover:underline">Privacy Policy</a>
             {' '}and{' '}
-            <a href="/app/settings?tab=legal" target="_blank" rel="noopener noreferrer" className="text-teal-600 hover:underline">Terms of Service</a>.
+            <a href="https://vyasaa.com/privacy" target="_blank" rel="noopener noreferrer" className="text-teal-600 hover:underline">Terms of Service</a>.
             {' '}I understand my patient data will be stored securely and processed in accordance with Indian healthcare law.
           </span>
         </label>
@@ -472,7 +472,7 @@ function HospitalForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: ()
             I have read and agree to Vyasa Integrated Healthcare Pvt. Ltd.'s{' '}
             <a href="https://vyasaa.com/privacy" target="_blank" rel="noopener noreferrer" className="text-teal-600 hover:underline">Privacy Policy</a>
             {' '}and{' '}
-            <a href="/app/settings?tab=legal" target="_blank" rel="noopener noreferrer" className="text-teal-600 hover:underline">Terms of Service</a>.
+            <a href="https://vyasaa.com/privacy" target="_blank" rel="noopener noreferrer" className="text-teal-600 hover:underline">Terms of Service</a>.
             {' '}I understand my patient data will be stored securely and processed in accordance with Indian healthcare law.
           </span>
         </label>
