@@ -1,10 +1,10 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useAppStore, uid } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useNavigate } from 'react-router-dom';
 import {
   Pencil, Search, UserPlus, X, ArrowRight, Phone,
-  ChevronRight,
+  ChevronRight, Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { StatusBadge } from '@/components/ui/Badge';
@@ -21,13 +21,49 @@ export function QuickRxModal() {
     phone: '', email: '', complaint: '',
   });
   const searchRef = useRef<HTMLInputElement>(null);
+  const [backendResults, setBackendResults] = useState<Patient[]>([]);
+  const [searching, setSearching] = useState(false);
+
+  // Search backend when local results are empty and query >= 2 chars
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) { setBackendResults([]); return; }
+
+    const localHits = patients.filter(p =>
+      p.name.toLowerCase().includes(q.toLowerCase()) ||
+      (p.mrn ?? '').toLowerCase().includes(q.toLowerCase()) ||
+      (p.phone ?? '').includes(q)
+    );
+    if (localHits.length > 0) { setBackendResults([]); return; }
+
+    let cancelled = false;
+    setSearching(true);
+    import('@/lib/api').then(({ api, isApiEnabled }) => {
+      if (!isApiEnabled()) { setSearching(false); return; }
+      return api.get<Patient[]>('/patients');
+    }).then(data => {
+      if (cancelled || !data) return;
+      const hits = data.filter((p: Patient) =>
+        p.name.toLowerCase().includes(q.toLowerCase()) ||
+        (p.mrn ?? '').toLowerCase().includes(q.toLowerCase()) ||
+        (p.phone ?? '').includes(q)
+      );
+      setBackendResults(hits.slice(0, 6));
+    }).catch(() => {}).finally(() => {
+      if (!cancelled) setSearching(false);
+    });
+    return () => { cancelled = true; };
+  }, [query, patients]);
 
   const results = query.trim().length >= 1
-    ? patients.filter(p =>
-        p.name.toLowerCase().includes(query.toLowerCase()) ||
-        p.mrn.toLowerCase().includes(query.toLowerCase()) ||
-        (p.phone ?? '').includes(query)
-      ).slice(0, 6)
+    ? [
+        ...patients.filter(p =>
+          p.name.toLowerCase().includes(query.toLowerCase()) ||
+          (p.mrn ?? '').toLowerCase().includes(query.toLowerCase()) ||
+          (p.phone ?? '').includes(query)
+        ),
+        ...backendResults.filter(b => !patients.some(p => p.id === b.id)),
+      ].slice(0, 6)
     : patients.slice(0, 5);
 
   function startConsult(patient: Patient) {
@@ -109,7 +145,10 @@ export function QuickRxModal() {
                 placeholder="Search by name, MRN or phone…"
                 className="input pl-9 w-full"
               />
-              {query && (
+              {searching && (
+                <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-teal-500 animate-spin" />
+              )}
+              {query && !searching && (
                 <button onClick={() => setQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
                   <X className="w-3.5 h-3.5" />
                 </button>

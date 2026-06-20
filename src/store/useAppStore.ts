@@ -434,22 +434,40 @@ export const useAppStore = create<AppState>()(
   syncFromBackend: async () => {
     const { isApiEnabled, api } = await import('@/lib/api');
     if (!isApiEnabled()) return;
-    try {
-      // Fetch patients
-      const patients = await api.get<Patient[]>('/patients');
-      // Build visits map
-      const visitsArr = await api.get<VisitRecord[]>('/visits/clinic');
+
+    // Fetch each independently so one failure doesn't wipe everything
+    const [patientsResult, visitsResult, appointmentsResult] = await Promise.allSettled([
+      api.get<Patient[]>('/patients'),
+      api.get<VisitRecord[]>('/visits/clinic'),
+      api.get<AppointmentEntry[]>('/appointments'),
+    ]);
+
+    const update: Partial<typeof EMPTY_STATE> = {};
+
+    if (patientsResult.status === 'fulfilled') {
+      update.patients = patientsResult.value;
+    } else {
+      console.warn('[vyasa] patients sync failed:', patientsResult.reason);
+    }
+
+    if (visitsResult.status === 'fulfilled') {
       const visitsMap: Record<string, VisitRecord[]> = {};
-      for (const v of visitsArr) {
+      for (const v of visitsResult.value) {
         if (!visitsMap[v.patientId]) visitsMap[v.patientId] = [];
         visitsMap[v.patientId].push(v);
       }
-      // Fetch appointments (next 30 days)
-      const appointments = await api.get<AppointmentEntry[]>('/appointments');
-      set({ patients, visits: visitsMap, appointments });
-    } catch (err) {
-      console.warn('[vyasa] backend sync failed:', err);
+      update.visits = visitsMap;
+    } else {
+      console.warn('[vyasa] visits sync failed:', visitsResult.reason);
     }
+
+    if (appointmentsResult.status === 'fulfilled') {
+      update.appointments = appointmentsResult.value;
+    } else {
+      console.warn('[vyasa] appointments sync failed:', appointmentsResult.reason);
+    }
+
+    if (Object.keys(update).length > 0) set(update);
   },
     }),
     {
