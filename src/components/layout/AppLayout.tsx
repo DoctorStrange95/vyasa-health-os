@@ -17,13 +17,15 @@ export function AppLayout() {
   const { user } = useAuthStore();
   const syncClinicsFromApi = usePadStore(s => s.syncClinicsFromApi);
   const syncPadFromApi = usePadStore(s => s.syncPadFromApi);
+  const refreshAppointments = useAppStore(s => s.refreshAppointments);
   const location = useLocation();
 
-  // Hydrate real clinics + pad settings (incl. e-sign) from backend on login
+  // Hydrate clinics, pad settings, and appointments (incl. today's pending bookings) on login
   useEffect(() => {
     syncClinicsFromApi();
     syncPadFromApi();
-  }, [syncClinicsFromApi, syncPadFromApi]);
+    refreshAppointments();
+  }, [syncClinicsFromApi, syncPadFromApi, refreshAppointments]);
 
   // Roles that get a mobile bottom nav
   const hasMobileBottomNav = user && ['doctor', 'clinic_admin', 'nurse'].includes(user.role);

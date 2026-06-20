@@ -313,8 +313,44 @@ export const useAppStore = create<AppState>()(
     const { isApiEnabled, api } = await import('@/lib/api');
     if (!isApiEnabled()) return;
     try {
-      const apts = await api.get<AppointmentEntry[]>('/appointments');
-      set({ appointments: apts });
+      // IST today (UTC+5:30) — matches what the backend istDateStr() returns
+      const istNow = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+      const today = istNow.toISOString().slice(0, 10);
+
+      const [apts, rawBookings] = await Promise.all([
+        api.get<AppointmentEntry[]>('/appointments'),
+        api.get<Array<{
+          id: number; patient_name: string; patient_age: number | null;
+          patient_phone: string | null; patient_gender: string | null;
+          preferred_date: string | null; preferred_time: string | null;
+          reason: string | null; clinic_id: string | null; clinic_name?: string | null;
+          created_at: string;
+        }>>('/booking-requests?status=pending').catch(() => [] as never[]),
+      ]);
+
+      // Today's pending bookings → shown as scheduled appointments so doctor can Confirm immediately
+      type AppStatus = AppointmentEntry['status'];
+      const confirmedNums = new Set(apts.filter(a => a.id.startsWith('BOOK-')).map(a => a.id.split('-')[1]));
+      const bookingApts: AppointmentEntry[] = rawBookings
+        .filter(b => b.preferred_date === today && !confirmedNums.has(String(b.id)))
+        .map(b => ({
+          id: `BR-${b.id}`,
+          patientId: '' as string,
+          patientName: b.patient_name,
+          patientAge: b.patient_age ?? undefined,
+          patientGender: b.patient_gender ?? 'M',
+          patientPhone: b.patient_phone ?? undefined,
+          clinicId: b.clinic_id ?? '',
+          clinicName: b.clinic_name ?? undefined,
+          date: today,
+          time: b.preferred_time ?? '09:00',
+          reason: b.reason ?? 'Booking Request',
+          status: 'scheduled' as AppStatus,
+          createdAt: b.created_at,
+          doctorName: undefined,
+        }));
+
+      set({ appointments: [...apts, ...bookingApts] });
     } catch { /* silently ignore — stale data is acceptable */ }
   },
   addVisit: (v) => {

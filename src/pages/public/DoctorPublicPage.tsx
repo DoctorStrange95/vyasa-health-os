@@ -238,7 +238,7 @@ export default function DoctorPublicPage() {
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTime, setSelectedTime] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState({ name: '', phone: '', email: '', age: '', gender: 'M', reason: '' });
+  const [form, setForm] = useState({ name: '', phone: '', email: '', age: '', gender: '', reason: '' });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [slotError, setSlotError] = useState('');
 
@@ -294,6 +294,8 @@ export default function DoctorPublicPage() {
     const phone = form.phone.replace(/\D/g, '').slice(-10);
     if (phone.length !== 10) e.phone = 'Enter a valid 10-digit mobile number';
     if (form.email.trim() && !/^\S+@\S+\.\S+$/.test(form.email.trim())) e.email = 'Enter a valid email';
+    if (!form.age || Number(form.age) < 1) e.age = 'Age is required';
+    if (!form.gender) e.gender = 'Please select gender';
     setErrors(e);
     return !Object.keys(e).length;
   }
@@ -692,20 +694,22 @@ export default function DoctorPublicPage() {
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                       <div>
-                        <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#6b7280', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.7px' }}>Age</label>
+                        <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#6b7280', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.7px' }}>Age *</label>
                         <input value={form.age} onChange={e => setForm(f => ({...f, age: e.target.value}))} placeholder="Years" type="number" min={1} max={120}
-                          style={{ width: '100%', border: '1.5px solid #e2e8f0', borderRadius: 12, padding: '11px 14px', fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                          style={{ width: '100%', border: `1.5px solid ${errors.age ? '#EF4444' : '#e2e8f0'}`, borderRadius: 12, padding: '11px 14px', fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                        {errors.age && <p style={{ color: '#EF4444', fontSize: 11, margin: '4px 0 0' }}>{errors.age}</p>}
                       </div>
                       <div>
-                        <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#6b7280', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.7px' }}>Gender</label>
+                        <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#6b7280', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.7px' }}>Gender *</label>
                         <div style={{ display: 'flex', gap: 6, height: 44 }}>
                           {(['M', 'F', 'Other'] as const).map(g => (
                             <button key={g} type="button" onClick={() => setForm(f => ({...f, gender: g}))}
-                              style={{ flex: 1, borderRadius: 12, border: '1.5px solid', borderColor: form.gender === g ? TEAL : '#e2e8f0', background: form.gender === g ? '#f0fdfa' : 'white', color: form.gender === g ? TEAL : '#64748b', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }}>
+                              style={{ flex: 1, borderRadius: 12, border: '1.5px solid', borderColor: form.gender === g ? TEAL : errors.gender ? '#EF4444' : '#e2e8f0', background: form.gender === g ? '#f0fdfa' : 'white', color: form.gender === g ? TEAL : '#64748b', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }}>
                               {g === 'M' ? '♂ M' : g === 'F' ? '♀ F' : '⚧'}
                             </button>
                           ))}
                         </div>
+                        {errors.gender && <p style={{ color: '#EF4444', fontSize: 11, margin: '4px 0 0' }}>{errors.gender}</p>}
                       </div>
                     </div>
                     <div>
@@ -776,7 +780,7 @@ export default function DoctorPublicPage() {
                         <Phone style={{ width: 14, height: 14 }} /> Call Clinic
                       </a>
                     )}
-                    <button onClick={() => { setStep('select-date'); setSelectedDate(''); setSelectedTime(''); setForm({ name: '', phone: '', email: '', age: '', gender: 'M', reason: '' }); fetchSlots(selectedClinic?.id); }}
+                    <button onClick={() => { setStep('select-date'); setSelectedDate(''); setSelectedTime(''); setForm({ name: '', phone: '', email: '', age: '', gender: '', reason: '' }); fetchSlots(selectedClinic?.id); }}
                       style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'white', color: '#475569', border: '1.5px solid #e2e8f0', borderRadius: 12, padding: '10px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                       Book Another Slot
                     </button>

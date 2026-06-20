@@ -6,6 +6,7 @@ import {
 import { useNavigate, Link } from 'react-router-dom';
 import { useAppStore } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
+import { api, isApiEnabled } from '@/lib/api';
 import { cn, localDate } from '@/lib/utils';
 import type { QueueEntry, AppointmentEntry, AppointmentStatus } from '@/types';
 
@@ -118,6 +119,7 @@ export default function OPDQueuePage() {
         status,
         assignedDoctor: a.doctorName ?? user?.name ?? null,
         assignedNurse: (q as any)?.assignedNurse ?? null,
+        phone: a.patientPhone,
       };
     });
 
@@ -273,12 +275,75 @@ export default function OPDQueuePage() {
     navigate(`/app/consult/${item.patientId}`);
   }
 
-  // One-tap: check patient in (assigns token) AND opens consult immediately
+  // Confirm a pending booking request → creates patient record + moves to Waiting queue
+  function confirmBooking(item: OPDItem) {
+    const bookingId = item.aptId?.replace('BR-', '');
+    if (!bookingId) return;
+    if (atLimit) { showToast(`Queue full — max ${avail!.maxPatients} patients`, 'warning'); return; }
+
+    const stablePatientId = `BR-${bookingId}`;
+    const apt = appointments.find(a => a.id === item.aptId);
+
+    // Create a real patient record so consult works without "patient not found"
+    upsertPatient({
+      id: stablePatientId,
+      name: item.name,
+      age: apt?.patientAge ?? 0,
+      gender: (apt?.patientGender as 'M' | 'F' | 'Other') ?? 'M',
+      mrn: `BK-${bookingId}`,
+      phone: item.phone ?? '',
+      status: 'OPD',
+      priority: 'Stable',
+      diagnosis: item.reason,
+      attendingDoctor: user?.name,
+      attendingDoctorId: typeof user?.id === 'number' ? user.id : undefined,
+      clinicId: avail?.clinicId ?? apt?.clinicId ?? '',
+      allergies: [],
+    });
+
+    const token = queue.length + 1;
+    setQueue([...queue, {
+      id: `Q${Date.now()}`,
+      patientId: stablePatientId,
+      patientName: item.name,
+      reason: item.reason,
+      token,
+      status: 'waiting',
+      waitMins: 0,
+      registeredAt: new Date().toISOString(),
+      assignedDoctor: user?.name,
+    } as QueueEntry]);
+
+    // Confirm on backend (fire-and-forget; refreshAppointments removes the BR- entry)
+    if (isApiEnabled()) {
+      api.patch(`/booking-requests/${bookingId}`, { status: 'confirmed' })
+        .then(() => refreshAppointments())
+        .catch(() => {});
+    }
+    showToast(`${item.name} confirmed — Token ${token}`, 'success');
+  }
+
+  // Cancel a pending booking request
+  function cancelBooking(item: OPDItem) {
+    const bookingId = item.aptId?.replace('BR-', '');
+    if (!bookingId) return;
+    if (isApiEnabled()) {
+      api.patch(`/booking-requests/${bookingId}`, { status: 'cancelled' })
+        .then(() => refreshAppointments())
+        .catch(() => {});
+    } else {
+      refreshAppointments();
+    }
+    showToast('Booking cancelled', 'info');
+  }
+
+  // Start consult for a confirmed scheduled appointment (doctor-only)
+  // Adds to queue as in-progress, then opens consult
   function startConsult(item: OPDItem) {
     if (!item.queueId) {
       if (atLimit) { showToast(`Queue full — max ${avail!.maxPatients} patients`, 'warning'); return; }
       const token = queue.length + 1;
-      const qEntry: QueueEntry = {
+      setQueue([...queue, {
         id: `Q${Date.now()}`,
         patientId: item.patientId,
         patientName: item.name,
@@ -288,8 +353,7 @@ export default function OPDQueuePage() {
         waitMins: 0,
         registeredAt: new Date().toISOString(),
         assignedDoctor: item.assignedDoctor ?? user?.name,
-      };
-      setQueue([...queue, qEntry]);
+      } as QueueEntry]);
       if (item.aptId) updateAppointment(item.aptId, { status: 'checked-in' as AppointmentStatus });
       showToast(`${item.name} — Token ${token}`, 'success');
     }
@@ -413,6 +477,8 @@ export default function OPDQueuePage() {
             patient={patients.find(p => p.id === item.patientId)}
             isReceptionist={user?.role === 'receptionist'}
             onCheckIn={() => user?.role === 'receptionist' ? checkIn(item) : startConsult(item)}
+            onConfirmBooking={() => confirmBooking(item)}
+            onCancelBooking={() => cancelBooking(item)}
             onNoShow={() => markNoShow(item)}
           />
         ))}
@@ -512,45 +578,73 @@ function Section({ title, icon, children, empty, emptyText, titleClass }: {
 
 // ─── Scheduled row (not yet checked in) ──────────────────────────────────────
 
-function ScheduledRow({ item, index, patient, isReceptionist, onCheckIn, onNoShow }: {
+function ScheduledRow({ item, index, patient, isReceptionist, onCheckIn, onNoShow, onConfirmBooking, onCancelBooking }: {
   item: OPDItem; index: number; patient?: any;
-  isReceptionist?: boolean; onCheckIn: () => void; onNoShow: () => void;
+  isReceptionist?: boolean;
+  onCheckIn: () => void; onNoShow: () => void;
+  onConfirmBooking?: () => void; onCancelBooking?: () => void;
 }) {
   const isIPD = patient?.status === 'IPD' || patient?.status === 'Critical';
+  const isBR = item.aptId?.startsWith('BR-') ?? false;
+
   return (
     <div className={cn(
       'flex items-center gap-3 p-3 rounded-xl transition-colors',
-      isIPD ? 'bg-blue-50 border border-blue-200' : 'bg-slate-50 hover:bg-white border border-transparent hover:border-slate-200 hover:shadow-sm'
+      isBR
+        ? 'bg-amber-50 border border-amber-200 hover:shadow-sm'
+        : isIPD ? 'bg-blue-50 border border-blue-200' : 'bg-slate-50 hover:bg-white border border-transparent hover:border-slate-200 hover:shadow-sm'
     )}>
       <div className={cn('w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-xs font-bold',
-        isIPD ? 'bg-blue-100 text-blue-700' : 'bg-teal-100 text-teal-700')}>
+        isBR ? 'bg-amber-100 text-amber-700' : isIPD ? 'bg-blue-100 text-blue-700' : 'bg-teal-100 text-teal-700')}>
         {item.time ?? index}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-semibold text-slate-800 text-sm">{item.name}</span>
+          {isBR && <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">Online Booking</span>}
           {isIPD && <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-600 text-white">IPD · {patient?.ward}</span>}
           {item.clinicName && <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">{item.clinicName}</span>}
         </div>
-        <div className="text-xs text-slate-500 mt-0.5">{item.reason}{item.time ? ` · ${item.time}` : ''}</div>
+        <div className="text-xs text-slate-500 mt-0.5">
+          {item.reason}{item.time ? ` · ${item.time}` : ''}
+          {isBR && item.phone && <span className="ml-2 text-slate-400">· {item.phone}</span>}
+        </div>
       </div>
-      {!isReceptionist && (
+
+      {/* Pending booking: Confirm + Cancel for everyone */}
+      {isBR ? (
         <div className="flex items-center gap-2 flex-shrink-0">
           <button
-            onClick={onNoShow}
-            className="btn-sm text-xs text-red-500 border-red-200 hover:bg-red-50 btn-secondary px-2.5 py-1.5"
-            title="Mark No Show"
+            onClick={onCancelBooking}
+            className="btn-sm text-xs btn-secondary text-red-500 border-red-200 hover:bg-red-50 flex items-center gap-1"
           >
-            <XCircle className="w-3.5 h-3.5" />
+            <XCircle className="w-3.5 h-3.5" /> Cancel
           </button>
           <button
-            onClick={onCheckIn}
-            className={cn('btn-sm text-xs flex items-center gap-1.5', isIPD ? 'btn-secondary border-blue-300 text-blue-700' : 'btn-primary')}
+            onClick={onConfirmBooking}
+            className="btn-sm text-xs btn-primary flex items-center gap-1"
           >
-            {isIPD ? <CheckCircle2 className="w-3.5 h-3.5" /> : <PlayCircle className="w-3.5 h-3.5" />}
-            {isIPD ? 'Round' : 'Start'}
+            <CheckCircle2 className="w-3.5 h-3.5" /> Confirm
           </button>
         </div>
+      ) : (
+        /* Confirmed appointment: Start (doctor) or Check In (receptionist) */
+        !isReceptionist ? (
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button onClick={onNoShow} className="btn-sm text-xs text-red-500 border-red-200 hover:bg-red-50 btn-secondary px-2.5 py-1.5" title="No Show">
+              <XCircle className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={onCheckIn}
+              className={cn('btn-sm text-xs flex items-center gap-1.5', isIPD ? 'btn-secondary border-blue-300 text-blue-700' : 'btn-primary')}>
+              {isIPD ? <CheckCircle2 className="w-3.5 h-3.5" /> : <PlayCircle className="w-3.5 h-3.5" />}
+              {isIPD ? 'Round' : 'Start'}
+            </button>
+          </div>
+        ) : (
+          <button onClick={onCheckIn} className="btn-sm text-xs btn-primary flex items-center gap-1.5 flex-shrink-0">
+            <CheckCircle2 className="w-3.5 h-3.5" /> Check In
+          </button>
+        )
       )}
     </div>
   );

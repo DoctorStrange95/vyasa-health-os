@@ -10,6 +10,7 @@ import {
   Building2, ChevronDown, Edit2, Calendar, CalendarDays, Settings2, BarChart3, DollarSign, ChevronRight, PlayCircle
 } from 'lucide-react';
 import { formatDateTime, cn, localDate } from '@/lib/utils';
+import { api, isApiEnabled } from '@/lib/api';
 import type { AppointmentEntry, QueueEntry } from '@/types';
 
 // ─── Today's Clinic Widget ─────────────────────────────────────────────────────
@@ -164,19 +165,47 @@ function TodayClinicWidget() {
 
 export default function DashboardPage() {
   const { user } = useAuthStore();
-  const { patients, alerts, queue, setQueue, vitals, appointments, bills, openQuickRxModal, updateAppointment, showToast } = useAppStore();
+  const { patients, alerts, queue, setQueue, vitals, appointments, bills, openQuickRxModal, updateAppointment, showToast, refreshAppointments, upsertPatient } = useAppStore();
   const navigate = useNavigate();
 
-  // One-click: auto-check patient into queue (assigns token) then open consult
+  // One-click: confirm (if pending booking) + check in + open consult
   const startConsult = useCallback((apt: AppointmentEntry) => {
-    const consultPath = apt.patientId ? `/app/consult/${apt.patientId}` : `/app/consult/apt-${apt.id}`;
-    const qPatientId = apt.patientId ?? `apt-${apt.id}`;
-    const alreadyInQueue = queue.some(q => q.patientId === qPatientId);
+    const isBR = apt.id.startsWith('BR-');
+    const bookingId = isBR ? apt.id.slice(3) : null;
+    // Stable patient ID: BR-{n} for booking patients, real patientId for registered patients
+    const stablePatientId = isBR ? `BR-${bookingId}` : (apt.patientId || `apt-${apt.id}`);
+    const consultPath = `/app/consult/${stablePatientId}`;
+
+    if (isBR && bookingId) {
+      // Create patient record from booking data so ConsultPage finds it directly
+      upsertPatient({
+        id: `BR-${bookingId}`,
+        name: apt.patientName,
+        age: apt.patientAge ?? 0,
+        gender: (apt.patientGender as 'M' | 'F' | 'Other') ?? 'M',
+        mrn: `BK-${bookingId}`,
+        phone: apt.patientPhone ?? '',
+        status: 'OPD',
+        priority: 'Stable',
+        diagnosis: apt.reason,
+        attendingDoctor: user?.name,
+        attendingDoctorId: typeof user?.id === 'number' ? user.id : undefined,
+        clinicId: apt.clinicId ?? '',
+        allergies: [],
+      });
+      if (isApiEnabled()) {
+        api.patch(`/booking-requests/${bookingId}`, { status: 'confirmed' })
+          .then(() => refreshAppointments())
+          .catch(() => {});
+      }
+    }
+
+    const alreadyInQueue = queue.some(q => q.patientId === stablePatientId);
     if (!alreadyInQueue) {
       const token = queue.length + 1;
-      const entry: QueueEntry = {
+      setQueue([...queue, {
         id: `Q${Date.now()}`,
-        patientId: qPatientId,
+        patientId: stablePatientId,
         patientName: apt.patientName,
         reason: apt.reason ?? 'OPD Appointment',
         token,
@@ -184,13 +213,12 @@ export default function DashboardPage() {
         waitMins: 0,
         registeredAt: new Date().toISOString(),
         assignedDoctor: user?.name,
-      };
-      setQueue([...queue, entry]);
-      updateAppointment(apt.id, { status: 'checked-in' as never });
+      } as QueueEntry]);
+      if (!isBR) updateAppointment(apt.id, { status: 'checked-in' as never });
       showToast(`${apt.patientName} — Token ${token}`, 'success');
     }
     navigate(consultPath);
-  }, [queue, setQueue, updateAppointment, showToast, navigate, user]);
+  }, [queue, setQueue, updateAppointment, showToast, navigate, user, refreshAppointments, upsertPatient]);
 
   const myPatients = patients.filter(p => p.attendingDoctorId === user?.id);
   const ipd = myPatients.filter(p => p.status === 'IPD');
@@ -203,6 +231,23 @@ export default function DashboardPage() {
     .filter(a => a.date === todayStr && a.status !== 'cancelled')
     .sort((a, b) => a.time > b.time ? 1 : -1);
   const upcomingCount = appointments.filter(a => a.date >= todayStr && a.status === 'scheduled').length;
+
+  // Patient IDs tied to today's appointments (so we don't show them twice in OPD Queue)
+  const aptLinkedPatientIds = new Set<string>();
+  todayAppointments.forEach(apt => {
+    if (apt.patientId) aptLinkedPatientIds.add(apt.patientId);
+    aptLinkedPatientIds.add(`apt-${apt.id}`);
+    if (apt.id.startsWith('BR-')) aptLinkedPatientIds.add(`BR-${apt.id.slice(3)}`);
+  });
+  // Walk-in queue: only patients NOT tied to a today's appointment
+  const walkinQueue = waitingQueue.filter(q => !aptLinkedPatientIds.has(q.patientId));
+
+  // Helper: find the queue entry for a given appointment (so we can show token/status on the appointment card)
+  function aptQueueEntry(apt: AppointmentEntry) {
+    const pid = apt.patientId || `apt-${apt.id}`;
+    const brPid = apt.id.startsWith('BR-') ? `BR-${apt.id.slice(3)}` : null;
+    return queue.find(q => q.patientId === pid || (brPid && q.patientId === brPid));
+  }
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
@@ -282,73 +327,142 @@ export default function DashboardPage() {
         {/* ── Left column (2/3) ── */}
         <div className="xl:col-span-2 space-y-5">
 
-          {/* OPD Queue — large, actionable */}
-          <div className="card animate-fade-up delay-200">
+          {/* Today's Appointments — primary action center */}
+          <div className="card animate-fade-up delay-150">
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
               <div>
                 <h3 className="font-bold text-slate-900 flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-teal-500" />
-                  OPD Queue
+                  <Calendar className="w-4 h-4 text-teal-500" />
+                  Today's Appointments
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  {waitingQueue.length > 0 ? `${waitingQueue.length} patient${waitingQueue.length > 1 ? 's' : ''} waiting` : 'No patients waiting'}
+                  {todayAppointments.length > 0
+                    ? `${todayAppointments.length} scheduled — tap Start to consult`
+                    : 'No appointments today'}
                 </p>
               </div>
-              <Link to="/app/queue"
-                className="btn-secondary btn-sm flex items-center gap-1.5">
-                Manage Queue <ChevronRight className="w-3.5 h-3.5" />
+              <Link to="/app/schedule" className="btn-secondary btn-sm flex items-center gap-1.5">
+                Schedule <ChevronRight className="w-3.5 h-3.5" />
               </Link>
             </div>
 
             <div className="divide-y divide-slate-100">
-              {waitingQueue.map((q, i) => (
-                <div key={q.id}
-                  className={cn('flex items-center gap-4 px-5 py-4 hover:bg-teal-50/60 transition-colors group animate-fade-up',
-                    i === 0 ? 'delay-50' : i === 1 ? 'delay-100' : 'delay-150')}>
-                  {/* Token */}
-                  <div className={cn('w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-black flex-shrink-0 shadow-sm',
-                    q.status === 'in-progress' ? 'bg-teal-500' : 'bg-slate-400')}>
-                    {q.token}
-                  </div>
+              {todayAppointments.map((apt, i) => {
+                const isBR = apt.id.startsWith('BR-');
+                const qEntry = aptQueueEntry(apt);
+                const inProgress = qEntry?.status === 'in-progress';
+                const inQueue = !!qEntry;
+                return (
+                  <div key={apt.id}
+                    className={cn('flex items-center gap-4 px-5 py-4 hover:bg-teal-50/40 transition-colors animate-fade-up',
+                      i === 0 ? 'delay-50' : i === 1 ? 'delay-100' : 'delay-150',
+                      isBR && !inQueue && 'bg-amber-50/30')}>
 
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-slate-900 text-sm group-hover:text-teal-800">{q.patientName}</div>
-                    <div className="text-xs text-slate-500 truncate">{q.reason || 'Walk-in'}</div>
-                  </div>
+                    {/* Time chip / Token */}
+                    <div className={cn('w-11 h-11 rounded-xl flex flex-col items-center justify-center flex-shrink-0',
+                      inProgress ? 'bg-teal-500 shadow-sm' : isBR ? 'bg-amber-50 border border-amber-200' : 'bg-teal-50 border border-teal-100')}>
+                      {inProgress && qEntry ? (
+                        <>
+                          <span className="text-[9px] font-bold text-white leading-tight">TOKEN</span>
+                          <span className="text-sm font-black text-white leading-tight">{qEntry.token}</span>
+                        </>
+                      ) : (
+                        <span className={cn('text-[10px] font-bold leading-tight', isBR ? 'text-amber-600' : 'text-teal-700')}>{apt.time}</span>
+                      )}
+                    </div>
 
-                  {/* Status + wait */}
-                  <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
-                    <span className={cn('badge text-[11px]',
-                      q.status === 'in-progress' ? 'bg-teal-100 text-teal-700' : 'bg-amber-100 text-amber-700')}>
-                      {q.status === 'in-progress' ? 'In Consult' : 'Waiting'}
-                    </span>
-                    {q.waitMins != null && (
-                      <span className="text-[10px] text-slate-400">{q.waitMins}m wait</span>
+                    {/* Patient info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-semibold text-slate-900">{apt.patientName}</span>
+                        {apt.patientAge ? <span className="text-xs text-slate-500">{apt.patientAge}y</span> : null}
+                        {apt.patientGender ? <span className="text-xs text-slate-400">{apt.patientGender}</span> : null}
+                        {isBR && !inQueue && <span className="badge text-[10px] bg-amber-100 text-amber-700">Online Booking</span>}
+                        {inProgress && <span className="badge text-[10px] bg-teal-100 text-teal-700">In Consult</span>}
+                        {inQueue && !inProgress && <span className="badge text-[10px] bg-blue-100 text-blue-700">Queued</span>}
+                      </div>
+                      <div className="text-xs text-slate-500 truncate mt-0.5">{apt.reason}</div>
+                      {apt.patientPhone && (
+                        <div className="text-[11px] text-slate-400 mt-0.5">{apt.patientPhone}</div>
+                      )}
+                    </div>
+
+                    {/* Single action button */}
+                    {apt.status !== 'completed' && apt.status !== 'cancelled' && (
+                      <button
+                        onClick={() => startConsult(apt)}
+                        className={cn('btn-sm flex-shrink-0 flex items-center gap-1.5 !px-4',
+                          inProgress
+                            ? 'btn-primary'
+                            : 'bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-semibold')}
+                      >
+                        <PlayCircle className="w-3.5 h-3.5" />
+                        {inProgress ? 'Resume' : 'Start'}
+                      </button>
+                    )}
+                    {apt.status === 'completed' && (
+                      <span className="text-xs text-emerald-600 font-medium flex-shrink-0">Done</span>
                     )}
                   </div>
+                );
+              })}
 
-                  {/* Action */}
-                  <Link to={`/app/consult/${q.patientId}`}
-                    className="btn-primary btn-sm flex-shrink-0 shadow-sm">
-                    Consult <ChevronRight className="w-3.5 h-3.5" />
-                  </Link>
-                </div>
-              ))}
-
-              {waitingQueue.length === 0 && (
+              {todayAppointments.length === 0 && (
                 <div className="px-5 py-10 text-center">
                   <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
-                    <Clock className="w-6 h-6 text-slate-300" />
+                    <Calendar className="w-6 h-6 text-slate-300" />
                   </div>
-                  <p className="text-sm text-slate-400 mb-2">Queue is empty right now</p>
-                  <Link to="/app/queue" className="text-xs font-semibold text-teal-600 hover:underline">
-                    Add a walk-in patient
+                  <p className="text-sm text-slate-400 mb-2">No appointments today</p>
+                  <Link to="/app/schedule" className="text-xs font-semibold text-teal-600 hover:underline">
+                    Go to schedule
                   </Link>
                 </div>
               )}
             </div>
           </div>
+
+          {/* Walk-in Queue — only shows patients NOT tied to a today's appointment */}
+          {walkinQueue.length > 0 && (
+            <div className="card animate-fade-up delay-200">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+                <div>
+                  <h3 className="font-bold text-slate-900 flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-teal-500" />
+                    Walk-in Queue
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {walkinQueue.length} walk-in{walkinQueue.length > 1 ? 's' : ''} waiting
+                  </p>
+                </div>
+                <Link to="/app/queue" className="btn-secondary btn-sm flex items-center gap-1.5">
+                  Manage <ChevronRight className="w-3.5 h-3.5" />
+                </Link>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {walkinQueue.map((q, i) => (
+                  <div key={q.id}
+                    className={cn('flex items-center gap-4 px-5 py-3.5 hover:bg-teal-50/60 transition-colors group animate-fade-up',
+                      i === 0 ? 'delay-50' : 'delay-100')}>
+                    <div className={cn('w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-black flex-shrink-0 shadow-sm',
+                      q.status === 'in-progress' ? 'bg-teal-500' : 'bg-slate-400')}>
+                      {q.token}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-slate-900 text-sm group-hover:text-teal-800">{q.patientName}</div>
+                      <div className="text-xs text-slate-500 truncate">{q.reason || 'Walk-in'}</div>
+                    </div>
+                    <span className={cn('badge text-[11px] flex-shrink-0',
+                      q.status === 'in-progress' ? 'bg-teal-100 text-teal-700' : 'bg-amber-100 text-amber-700')}>
+                      {q.status === 'in-progress' ? 'In Consult' : 'Waiting'}
+                    </span>
+                    <Link to={`/app/consult/${q.patientId}`} className="btn-primary btn-sm flex-shrink-0">
+                      Consult <ChevronRight className="w-3.5 h-3.5" />
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* My Patients — compact */}
           <div className="card animate-fade-up delay-250">
@@ -397,57 +511,6 @@ export default function DashboardPage() {
 
         {/* ── Right column (1/3) ── */}
         <div className="space-y-5">
-
-          {/* Today's Appointments — actionable */}
-          <div className="card animate-fade-up delay-200">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-              <h3 className="font-bold text-slate-900 flex items-center gap-2 text-sm">
-                <Calendar className="w-4 h-4 text-teal-500" />
-                Today's Appointments
-              </h3>
-              <span className={cn('badge text-xs',
-                todayAppointments.length > 0 ? 'bg-teal-100 text-teal-700' : 'bg-slate-100 text-slate-500')}>
-                {todayAppointments.length} scheduled
-              </span>
-            </div>
-
-            <div className="divide-y divide-slate-100">
-              {todayAppointments.map((apt, i) => (
-                <div key={apt.id}
-                  className={cn('flex items-center gap-3 px-4 py-3.5 hover:bg-slate-50 transition-colors animate-fade-up',
-                    i === 0 ? 'delay-50' : i === 1 ? 'delay-100' : 'delay-150')}>
-                  <div className="w-10 h-10 rounded-xl bg-teal-50 flex flex-col items-center justify-center flex-shrink-0 border border-teal-100">
-                    <span className="text-[10px] font-bold text-teal-700 leading-tight">{apt.time}</span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-slate-900 truncate">{apt.patientName}</div>
-                    <div className="text-xs text-slate-500 truncate">{apt.reason}</div>
-                    {apt.clinicName && <div className="text-[10px] text-slate-400">{apt.clinicName}</div>}
-                  </div>
-                  {(apt.status === 'scheduled' || apt.status === 'confirmed' || apt.status === ('checked-in' as never)) && (() => {
-                    const qPid = apt.patientId ?? `apt-${apt.id}`;
-                    const inQueue = queue.some(q => q.patientId === qPid);
-                    return (
-                      <button
-                        onClick={() => startConsult(apt)}
-                        className={cn('btn-sm flex-shrink-0 !px-3 flex items-center gap-1.5',
-                          inQueue ? 'btn-primary' : 'bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-semibold')}
-                      >
-                        {inQueue ? null : <PlayCircle className="w-3.5 h-3.5" />}
-                        {inQueue ? 'Consult' : 'Start'}
-                      </button>
-                    );
-                  })()}
-                </div>
-              ))}
-              {todayAppointments.length === 0 && (
-                <div className="px-5 py-6 text-center">
-                  <p className="text-sm text-slate-400">No appointments today</p>
-                  <Link to="/app/schedule" className="text-xs text-teal-600 hover:underline mt-1 inline-block">View schedule</Link>
-                </div>
-              )}
-            </div>
-          </div>
 
           {/* Active Alerts */}
           <div className="card animate-fade-up delay-250">

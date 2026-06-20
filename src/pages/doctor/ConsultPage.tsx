@@ -4,7 +4,7 @@ import {
   ChevronDown, ChevronUp, CheckCircle2, Printer, Send, Save,
   Plus, ArrowLeft, FileText, Loader2,
   Activity, Pill, FlaskConical, ClipboardList, MessageCircle, X,
-  BedDouble, Share2, Syringe, Scissors, Upload, Camera, Calculator
+  BedDouble, Share2, Syringe, Scissors, Upload, Camera, Calculator, Pencil
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -128,6 +128,29 @@ export default function ConsultPage() {
       return;
     }
 
+    // Online booking patient (BR- prefix) — created from booking request
+    if (patientId.startsWith('BR-')) {
+      const bookingApt = appointments.find(a => a.id === patientId);
+      if (bookingApt) {
+        upsertPatient({
+          id: patientId,
+          name: bookingApt.patientName,
+          age: bookingApt.patientAge ?? 0,
+          gender: (bookingApt.patientGender as 'M' | 'F' | 'Other') ?? 'M',
+          mrn: `BK-${patientId.slice(3)}`,
+          phone: bookingApt.patientPhone ?? '',
+          status: 'OPD',
+          priority: 'Stable',
+          clinicId: bookingApt.clinicId ?? '',
+          attendingDoctor: bookingApt.doctorName ?? user?.name,
+          attendingDoctorId: typeof user?.id === 'number' ? user.id : undefined,
+          diagnosis: bookingApt.reason ?? '',
+          allergies: [],
+        });
+      }
+      return;
+    }
+
     // Booking-derived patient (apt- prefix)
     const aptId = patientId.startsWith('apt-') ? patientId.slice(4) : null;
     if (!aptId) return;
@@ -155,6 +178,8 @@ export default function ConsultPage() {
   const prevVitals = (vitals[patientId ?? ''] ?? []).slice(-1)[0];
 
   const [draft, setDraft] = useState<ConsultDraft>({ ...BLANK_DRAFT });
+  const [editingPatient, setEditingPatient] = useState(false);
+  const [patientEdit, setPatientEdit] = useState({ name: '', age: '', gender: 'M' as 'M' | 'F' | 'Other' });
   const [saving, setSaving] = useState(false);
   const [autoSaved, setAutoSaved] = useState(false);
   const [showPrint, setShowPrint] = useState(false);
@@ -555,6 +580,16 @@ export default function ConsultPage() {
   const completePct = Math.round((Object.values(filled).filter(Boolean).length / Object.values(filled).length) * 100);
 
   if (!patient) {
+    // For auto-createable IDs, show a loading spinner while the useEffect creates the patient record
+    const isAutoCreate = patientId?.startsWith('BR-') || patientId?.startsWith('WI') || patientId?.startsWith('apt-');
+    if (isAutoCreate) {
+      return (
+        <div className="p-12 text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-teal-600 mx-auto mb-3" />
+          <p className="text-slate-500 text-sm">Loading patient...</p>
+        </div>
+      );
+    }
     return (
       <div className="p-6 text-center">
         <p className="text-slate-500">Patient not found</p>
@@ -576,27 +611,56 @@ export default function ConsultPage() {
           </button>
 
           {/* Patient chip */}
-          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 min-w-0 flex-1">
-            <div className="w-7 h-7 rounded-lg bg-navy-800 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-              {patient.name.charAt(0)}
-            </div>
-            <div className="min-w-0 flex-auto">
-              <div className="font-semibold text-slate-900 text-sm truncate leading-tight">{patient.name}</div>
-              <div className="text-[11px] text-slate-500 leading-tight truncate">{patientAge}y · {patient.gender} · {patient.mrn}</div>
-            </div>
-            {/* Ward / clinic inline on mobile */}
-            {isIPD ? (
-              <div className="ml-auto flex items-center gap-1 bg-blue-50 rounded-lg px-2 py-0.5 flex-shrink-0">
-                <BedDouble className="w-3 h-3 text-blue-600" />
-                <span className="text-[11px] font-semibold text-blue-800">{patient.ward || 'Ward'}</span>
-              </div>
-            ) : clinics.length > 0 && (
-              <select value={selectedClinicId} onChange={e => setSelectedClinicId(e.target.value)}
-                className="ml-auto hidden sm:block text-[11px] font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg px-1.5 py-0.5 outline-none cursor-pointer min-w-0 flex-shrink max-w-28">
-                {clinics.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          {editingPatient ? (
+            <div className="flex items-center gap-1.5 bg-teal-50 border border-teal-300 rounded-xl px-2.5 py-1.5 min-w-0 flex-1 flex-wrap">
+              <input autoFocus value={patientEdit.name}
+                onChange={e => setPatientEdit(p => ({ ...p, name: e.target.value }))}
+                placeholder="Name" className="text-sm font-semibold text-slate-900 bg-transparent outline-none w-28 min-w-0" />
+              <input value={patientEdit.age} type="number" min={0} max={120}
+                onChange={e => setPatientEdit(p => ({ ...p, age: e.target.value }))}
+                placeholder="Age" className="text-xs text-slate-600 bg-transparent outline-none w-10 min-w-0" />
+              <select value={patientEdit.gender}
+                onChange={e => setPatientEdit(p => ({ ...p, gender: e.target.value as 'M' | 'F' | 'Other' }))}
+                className="text-xs text-slate-600 bg-transparent outline-none">
+                <option value="M">M</option>
+                <option value="F">F</option>
+                <option value="Other">Other</option>
               </select>
-            )}
-          </div>
+              <button onClick={() => {
+                if (patientEdit.name.trim()) {
+                  upsertPatient({ ...patient, name: patientEdit.name.trim(), age: Number(patientEdit.age) || patient.age, gender: patientEdit.gender });
+                }
+                setEditingPatient(false);
+              }} className="ml-auto text-teal-700 font-semibold text-xs bg-teal-100 rounded-lg px-2 py-0.5 hover:bg-teal-200">Save</button>
+              <button onClick={() => setEditingPatient(false)} className="text-slate-400 hover:text-slate-600"><X className="w-3.5 h-3.5" /></button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 min-w-0 flex-1">
+              <div className="w-7 h-7 rounded-lg bg-navy-800 flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+                style={{ background: '#0a1628' }}>
+                {patient.name.charAt(0)}
+              </div>
+              <div className="min-w-0 flex-auto">
+                <div className="font-semibold text-slate-900 text-sm truncate leading-tight">{patient.name}</div>
+                <div className="text-[11px] text-slate-500 leading-tight truncate">{patientAge}y · {patient.gender} · {patient.mrn}</div>
+              </div>
+              <button onClick={() => { setPatientEdit({ name: patient.name, age: String(patientAge), gender: (patient.gender as 'M'|'F'|'Other') ?? 'M' }); setEditingPatient(true); }}
+                className="ml-auto p-1 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-slate-600 flex-shrink-0" title="Edit patient details">
+                <Pencil className="w-3 h-3" />
+              </button>
+              {isIPD ? (
+                <div className="flex items-center gap-1 bg-blue-50 rounded-lg px-2 py-0.5 flex-shrink-0">
+                  <BedDouble className="w-3 h-3 text-blue-600" />
+                  <span className="text-[11px] font-semibold text-blue-800">{patient.ward || 'Ward'}</span>
+                </div>
+              ) : clinics.length > 0 && (
+                <select value={selectedClinicId} onChange={e => setSelectedClinicId(e.target.value)}
+                  className="hidden sm:block text-[11px] font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg px-1.5 py-0.5 outline-none cursor-pointer min-w-0 flex-shrink max-w-28">
+                  {clinics.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              )}
+            </div>
+          )}
 
           {/* Auto-save indicator */}
           {autoSaved && (

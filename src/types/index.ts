@@ -309,6 +309,7 @@ export interface AppointmentEntry {
   patientName: string;
   patientAge?: number;
   patientGender?: string;
+  patientPhone?: string;
   clinicId?: string;
   clinicName?: string;
   date: string;          // 'YYYY-MM-DD'

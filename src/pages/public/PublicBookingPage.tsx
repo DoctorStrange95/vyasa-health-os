@@ -49,7 +49,7 @@ export default function PublicBookingPage() {
   const [step, setStep] = useState<'pick-date' | 'pick-time' | 'details' | 'confirm'>('pick-date');
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedSlotId, setSelectedSlotId] = useState('');
-  const [form, setForm] = useState({ name: '', phone: '', age: '', gender: 'M' as 'M' | 'F' | 'Other', reason: '' });
+  const [form, setForm] = useState({ name: '', phone: '', age: '', gender: '' as 'M' | 'F' | 'Other' | '', reason: '' });
 
   const todayStr = localDate();
 
@@ -89,7 +89,7 @@ export default function PublicBookingPage() {
   const selectedSlot = timeSlotsForDate.find(s => s.id === selectedSlotId);
 
   const handleConfirm = () => {
-    if (!selectedSlot || !form.name.trim() || !form.phone.trim()) return;
+    if (!selectedSlot || !form.name.trim() || !form.phone.trim() || !form.age || !form.gender) return;
     const stored = bookingSlots.find(s => s.id === selectedSlot.id);
     if (stored) {
       updateBookingSlot(stored.id, { status: 'booked', patientName: form.name, bookedVia: 'self' });
@@ -105,6 +105,7 @@ export default function PublicBookingPage() {
       patientId: `BOOK-${Date.now()}`,
       patientName: form.name,
       patientAge: form.age ? Number(form.age) : undefined,
+      patientGender: form.gender || undefined,
       clinicId: clinicId!,
       clinicName: clinic?.name ?? '',
       date: selectedDate,
@@ -238,12 +239,13 @@ export default function PublicBookingPage() {
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                     <div>
-                      <label className="label">Age</label>
+                      <label className="label">Age *</label>
                       <input className="input" placeholder="Years" value={form.age} onChange={e => setForm(f => ({ ...f, age: e.target.value }))} type="number" min={1} max={120} />
                     </div>
                     <div>
-                      <label className="label">Gender</label>
+                      <label className="label">Gender *</label>
                       <select className="input" value={form.gender} onChange={e => setForm(f => ({ ...f, gender: e.target.value as 'M' | 'F' | 'Other' }))}>
+                        <option value="">Select</option>
                         <option value="M">Male</option>
                         <option value="F">Female</option>
                         <option value="Other">Other</option>
@@ -258,7 +260,7 @@ export default function PublicBookingPage() {
                     className="btn-primary"
                     style={{ marginTop: 4 }}
                     onClick={handleConfirm}
-                    disabled={!form.name.trim() || !form.phone.trim()}
+                    disabled={!form.name.trim() || !form.phone.trim() || !form.age || !form.gender}
                   >
                     Confirm Appointment
                   </button>
