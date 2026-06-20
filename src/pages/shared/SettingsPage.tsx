@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import {
   Pill, Users, Building2, Save, Plus, Trash2, CheckCircle2,
   RefreshCw, Printer, Mail, Phone, Link2, Copy, Check,
-  UserCheck, UserX, Settings, Edit2, MapPin, X, QrCode, PenLine, Upload
+  UserCheck, UserX, Settings, Edit2, MapPin, X, QrCode, PenLine, Upload, Shield, ChevronDown
 } from 'lucide-react';
 import { usePadStore } from '@/store/usePadStore';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -14,7 +14,7 @@ import { PWAInstallGuide } from '@/components/PWAInstallGuide';
 import { cn } from '@/lib/utils';
 import type { Role, Staff, Clinic, ClinicBed } from '@/types';
 
-type Tab = 'rxpad' | 'staff' | 'clinics';
+type Tab = 'rxpad' | 'staff' | 'clinics' | 'legal';
 
 // ─── Rx Pad tab ───────────────────────────────────────────────────────────────
 
@@ -454,9 +454,9 @@ function StaffTab() {
         )}
       </div>
 
-      {/* Role guide */}
+      {/* Role guide — hide "doctor" for solo practitioners */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-        {CLINIC_ROLES.map(r => (
+        {CLINIC_ROLES.filter(r => !(r === 'doctor' && currentUser?.role === 'clinic_admin')).map(r => (
           <div key={r} className="card p-3 text-center hover:border-teal-200 transition-colors cursor-pointer" onClick={() => setAddOpen(true)}>
             <div className="text-2xl mb-1">{ROLE_EMOJI[r]}</div>
             <div className="text-xs font-bold text-slate-800 capitalize">{r}</div>
@@ -576,6 +576,8 @@ function StaffTab() {
 
 function AddStaffModal({ open, onClose, onAdded }: { open: boolean; onClose: () => void; onAdded: (s: Staff) => void }) {
   const { showToast } = useAppStore();
+  const { user: currentUser } = useAuthStore();
+  const isSoloPractice = currentUser?.role === 'clinic_admin';
   const [form, setFormState] = useState({ name: '', role: 'nurse' as Role, email: '', phone: '', department: '', specialty: '', shift: 'Day' });
   const [saving, setSaving] = useState(false);
   const set = (k: string, v: string) => setFormState(f => ({ ...f, [k]: v }));
@@ -621,7 +623,7 @@ function AddStaffModal({ open, onClose, onAdded }: { open: boolean; onClose: () 
         <div>
           <label className="label">Role *</label>
           <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-            {CLINIC_ROLES.map(r => (
+            {CLINIC_ROLES.filter(r => !(r === 'doctor' && isSoloPractice)).map(r => (
               <button key={r} onClick={() => set('role', r)}
                 className={cn('flex flex-col items-center gap-1 p-2.5 rounded-xl border-2 text-xs font-semibold transition-all',
                   form.role === r ? 'border-teal-400 bg-teal-50 text-teal-700' : 'border-slate-200 text-slate-500 hover:border-slate-300')}>
@@ -1215,12 +1217,139 @@ function ClinicsTab() {
   );
 }
 
+// ─── Legal Tab ────────────────────────────────────────────────────────────────
+
+function LegalSection({ title, children }: { title: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="card overflow-hidden">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-slate-50 transition-colors"
+      >
+        <span className="font-bold text-slate-800">{title}</span>
+        <ChevronDown className={cn('w-4 h-4 text-slate-400 transition-transform', open && 'rotate-180')} />
+      </button>
+      {open && (
+        <div className="px-5 pb-6 border-t border-slate-100 text-sm text-slate-600 leading-relaxed space-y-4 max-h-[60vh] overflow-y-auto">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LegalTab() {
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-lg font-bold text-slate-900">Legal & Policies</h2>
+        <p className="text-sm text-slate-500 mt-0.5">Privacy, cookies and terms of service for Vyasa Integrated Healthcare Pvt. Ltd.</p>
+      </div>
+
+      {/* Privacy Policy */}
+      <LegalSection title="Privacy Policy">
+        <p className="text-xs text-slate-400 pt-3">Last updated: June 2026</p>
+
+        <p>Vyasa Integrated Healthcare Pvt. Ltd. ("Vyasa", "the Company", "we" or "us") owns and operates <strong>vyasaa.com</strong> and <strong>app.vyasaa.com</strong>. We are committed to your privacy.</p>
+
+        <p>This Privacy Policy is published in compliance of Section 43A of the IT Act 2000, Regulation 4 of the SPI Rules 2011, and Regulation 3(1) of the IT (Intermediary Guidelines) Rules 2011.</p>
+
+        <p className="font-semibold text-slate-700">Information We Collect</p>
+        <p>We collect information when you register or use the platform — including name, email, phone number, and (for doctors) NMC registration number, qualifications and practice details. For patients, medical records and visit history may be stored on your doctor's behalf.</p>
+
+        <p className="font-semibold text-slate-700">How We Use Your Information</p>
+        <ul className="list-disc list-inside space-y-1">
+          <li>To create and manage your account</li>
+          <li>To facilitate appointment bookings</li>
+          <li>To send appointment confirmations and notifications</li>
+          <li>To improve platform features</li>
+          <li>To comply with legal obligations</li>
+        </ul>
+
+        <p className="font-semibold text-slate-700">Data Security</p>
+        <p>We use HTTPS encryption, JWT-based authentication and role-based access controls. Patient data is accessible only to the treating doctor and their authorised clinic staff.</p>
+
+        <p className="font-semibold text-slate-700">Data Retention & Deletion</p>
+        <p>Your data is retained for as long as your account is active. To request deletion, email <strong>support@vyasaa.com</strong> with subject "Data Deletion Request" and your registered email. We process requests within 30 days. Some data may be retained where required by law.</p>
+
+        <p className="font-semibold text-slate-700">Doctor Profiles</p>
+        <p>Upon approval, your professional profile (name, specialty, city, qualification, booking availability) is listed publicly on app.vyasaa.com/doctors and accessible to all users.</p>
+
+        <p>For the full policy visit <a href="https://vyasaa.com/privacy" target="_blank" rel="noopener noreferrer" className="text-teal-600 hover:underline">vyasaa.com/privacy</a></p>
+      </LegalSection>
+
+      {/* Cookie Policy */}
+      <LegalSection title="Cookie Policy">
+        <p className="text-xs text-slate-400 pt-3">Last updated: June 2026</p>
+
+        <p>This Cookie Policy explains how Vyasa Integrated Healthcare Pvt. Ltd. uses cookies and similar local storage technologies on app.vyasaa.com.</p>
+
+        <p className="font-semibold text-slate-700">What We Store</p>
+        <ul className="list-disc list-inside space-y-1">
+          <li><strong>Authentication token (localStorage):</strong> A JWT token that keeps you logged in during your session. This is required for the app to function.</li>
+          <li><strong>App preferences (localStorage):</strong> Your Rx Pad settings, theme, and clinic configuration are saved locally so they persist across sessions.</li>
+          <li><strong>Session state (sessionStorage):</strong> Temporary UI state such as active tab or current queue view.</li>
+        </ul>
+
+        <p className="font-semibold text-slate-700">What We Do NOT Use</p>
+        <ul className="list-disc list-inside space-y-1">
+          <li>We do not use third-party advertising cookies</li>
+          <li>We do not use tracking pixels or cross-site tracking</li>
+          <li>We do not share any stored data with advertisers</li>
+        </ul>
+
+        <p className="font-semibold text-slate-700">Controlling Storage</p>
+        <p>You can clear all locally stored data by logging out and clearing your browser's site data for app.vyasaa.com. Note that this will also log you out and reset your local Rx Pad settings.</p>
+
+        <p>If you have questions about our storage practices, contact us at <strong>support@vyasaa.com</strong>.</p>
+      </LegalSection>
+
+      {/* Terms of Service */}
+      <LegalSection title="Terms of Service">
+        <p className="text-xs text-slate-400 pt-3">Last updated: June 2026</p>
+
+        <p>By accessing or using app.vyasaa.com, you agree to be bound by these Terms of Service. If you do not agree, do not use the platform.</p>
+
+        <p className="font-semibold text-slate-700">1. Eligibility</p>
+        <p>Doctors and clinic staff must be licensed to practice medicine in India and hold a valid NMC or State Medical Council registration. You must provide accurate and up-to-date information during registration.</p>
+
+        <p className="font-semibold text-slate-700">2. Platform Use</p>
+        <ul className="list-disc list-inside space-y-1">
+          <li>Vyasa is a clinical workflow tool — it does not provide medical advice</li>
+          <li>Doctors are solely responsible for the accuracy of prescriptions, diagnoses and patient records created on the platform</li>
+          <li>You may not use the platform for unlawful purposes or to impersonate another person</li>
+          <li>You may not attempt to reverse-engineer, scrape or disrupt the platform</li>
+        </ul>
+
+        <p className="font-semibold text-slate-700">3. Patient Data</p>
+        <p>Doctors are responsible for obtaining patient consent before creating digital records. Vyasa stores this data on your behalf as a data processor. You remain the data controller for all patient information.</p>
+
+        <p className="font-semibold text-slate-700">4. Accounts & Approval</p>
+        <p>All doctor accounts are subject to verification and approval by Vyasa. We reserve the right to suspend or terminate accounts found to have provided false credentials or that violate these Terms.</p>
+
+        <p className="font-semibold text-slate-700">5. Disclaimer of Liability</p>
+        <p>Vyasa Integrated Healthcare Pvt. Ltd. is not responsible for outcomes of medical treatments arranged through or recorded on the platform. The platform is a tool — clinical judgment remains with the treating doctor.</p>
+
+        <p className="font-semibold text-slate-700">6. Changes to Terms</p>
+        <p>We may update these Terms at any time. Continued use of the platform after changes constitutes your acceptance of the updated Terms.</p>
+
+        <p className="font-semibold text-slate-700">7. Governing Law</p>
+        <p>These Terms are governed by the laws of India. Any disputes shall be subject to the exclusive jurisdiction of the courts of India.</p>
+
+        <p>For any questions, contact us at <strong>support@vyasaa.com</strong></p>
+      </LegalSection>
+    </div>
+  );
+}
+
 // ─── Main Settings Page ───────────────────────────────────────────────────────
 
 const TABS: { id: Tab; label: string; icon: typeof Settings; desc: string }[] = [
   { id: 'rxpad',   label: 'Rx Pad',     icon: Pill,      desc: 'Letterhead & prescription format' },
   { id: 'staff',   label: 'My Staff',   icon: Users,     desc: 'Add & manage clinic team' },
   { id: 'clinics', label: 'My Clinics', icon: Building2, desc: 'Locations · schedule · patient caps' },
+  { id: 'legal',   label: 'Legal',      icon: Shield,    desc: 'Privacy · Cookies · Terms of Service' },
 ];
 
 export default function SettingsPage() {
@@ -1230,7 +1359,7 @@ export default function SettingsPage() {
 
   const rawTab = searchParams.get('tab') as Tab | null;
   const visibleTabs = TABS;
-  const activeTab: Tab = (rawTab && TABS.some(t => t.id === rawTab)) ? rawTab : 'rxpad';
+  const activeTab: Tab = (rawTab && TABS.some(t => t.id === rawTab)) ? rawTab as Tab : 'rxpad';
 
   // Only clinic admins (main doctors) can access Settings.
   // Invited doctors use /app/pad-settings for their personal Rx Pad.
@@ -1278,6 +1407,7 @@ export default function SettingsPage() {
         {activeTab === 'rxpad'   && <RxPadTab />}
         {activeTab === 'staff'   && isClinicAdmin && <StaffTab />}
         {activeTab === 'clinics' && <ClinicsTab />}
+        {activeTab === 'legal'   && <LegalTab />}
       </div>
 
       {/* Install App banner — always visible at the bottom of Settings */}
