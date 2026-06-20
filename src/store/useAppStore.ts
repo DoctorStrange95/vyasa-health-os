@@ -242,9 +242,13 @@ export const useAppStore = create<AppState>()(
     set(s => ({
       prescriptions: { ...s.prescriptions, [rx.patientId ?? '']: [rx, ...(s.prescriptions[rx.patientId ?? ''] || [])] }
     }));
-    // Prescriptions are persisted inside the visit's data JSONB when the
-    // consultation is saved — no separate backend endpoint needed.
-    void get;
+    import('@/lib/api').then(({ isApiEnabled, api }) => {
+      if (isApiEnabled()) {
+        api.post('/prescriptions', rx).catch((e) => {
+          console.warn('Prescription sync error:', e instanceof Error ? e.message : e);
+        });
+      }
+    });
   },
   setLabOrders: (pid, labs) => set(s => ({ labOrders: { ...s.labOrders, [pid]: labs } })),
   addLabOrder: (lab) => set(s => ({
