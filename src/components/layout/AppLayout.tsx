@@ -7,6 +7,7 @@ import { MobileBottomNav } from './MobileBottomNav';
 import { ToastContainer } from '@/components/ui/Toast';
 import { QuickRegisterModal } from '@/components/QuickRegisterModal';
 import { QuickRxModal } from '@/components/QuickRxModal';
+import { ConsentModal } from '@/components/ConsentModal';
 import { useAppStore } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePadStore } from '@/store/usePadStore';
@@ -32,6 +33,7 @@ export function AppLayout() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50">
+      <ConsentModal />
       {/* Mobile sidebar backdrop */}
       {mobileSidebarOpen && (
         <div

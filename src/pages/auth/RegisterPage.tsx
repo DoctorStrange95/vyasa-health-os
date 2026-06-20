@@ -306,9 +306,20 @@ function DoctorForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =
           </div>
         </div>
 
-        <p className="text-xs text-slate-400">
-          By registering you agree to Vyasa's <span className="text-teal-600 cursor-pointer">Terms of Service</span> and <span className="text-teal-600 cursor-pointer">Privacy Policy</span>.
-        </p>
+        <label className="flex items-start gap-3 cursor-pointer group">
+          <input
+            type="checkbox"
+            required
+            className="mt-0.5 w-4 h-4 accent-teal-600 flex-shrink-0 cursor-pointer"
+          />
+          <span className="text-xs text-slate-500 leading-relaxed">
+            I have read and agree to Vyasa Integrated Healthcare Pvt. Ltd.'s{' '}
+            <a href="https://vyasaa.com/privacy" target="_blank" rel="noopener noreferrer" className="text-teal-600 hover:underline">Privacy Policy</a>
+            {' '}and{' '}
+            <a href="/app/settings?tab=legal" target="_blank" rel="noopener noreferrer" className="text-teal-600 hover:underline">Terms of Service</a>.
+            {' '}I understand my patient data will be stored securely and processed in accordance with Indian healthcare law.
+          </span>
+        </label>
 
         <button type="submit" disabled={loading} className="btn-primary w-full py-3">
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
@@ -451,9 +462,20 @@ function HospitalForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: ()
           </div>
         </div>
 
-        <p className="text-xs text-slate-400">
-          By registering you agree to Vyasa's <span className="text-teal-600 cursor-pointer">Terms of Service</span> and <span className="text-teal-600 cursor-pointer">Privacy Policy</span>.
-        </p>
+        <label className="flex items-start gap-3 cursor-pointer group">
+          <input
+            type="checkbox"
+            required
+            className="mt-0.5 w-4 h-4 accent-teal-600 flex-shrink-0 cursor-pointer"
+          />
+          <span className="text-xs text-slate-500 leading-relaxed">
+            I have read and agree to Vyasa Integrated Healthcare Pvt. Ltd.'s{' '}
+            <a href="https://vyasaa.com/privacy" target="_blank" rel="noopener noreferrer" className="text-teal-600 hover:underline">Privacy Policy</a>
+            {' '}and{' '}
+            <a href="/app/settings?tab=legal" target="_blank" rel="noopener noreferrer" className="text-teal-600 hover:underline">Terms of Service</a>.
+            {' '}I understand my patient data will be stored securely and processed in accordance with Indian healthcare law.
+          </span>
+        </label>
 
         <button type="submit" disabled={loading} className="btn-primary w-full py-3">
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}

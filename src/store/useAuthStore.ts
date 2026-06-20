@@ -16,6 +16,7 @@ interface AuthState {
   token: string | null;
   isDemo: boolean;
   approvalStatus: 'pending' | 'approved' | 'rejected' | 'suspended' | null;
+  consentGivenAt: string | null;
   recentAccount: RecentAccount | null;
   login: (email: string, password: string, geo?: { lat: number; lng: number; locationLabel?: string }) => Promise<void>;
   register: (data: RegisterPayload) => Promise<void>;
@@ -23,6 +24,7 @@ interface AuthState {
   completeGoogleRegister: (data: GoogleRegisterPayload) => Promise<void>;
   loginAsDemo: (role: Role) => void;
   logout: () => void;
+  recordConsent: () => Promise<void>;
 }
 
 export interface RegisterPayload {
@@ -97,6 +99,7 @@ export const useAuthStore = create<AuthState>()(
       token: null,
       isDemo: false,
       approvalStatus: null,
+      consentGivenAt: null,
       recentAccount: null,
 
       // ─── Real backend login ────────────────────────────────────────────────
@@ -109,6 +112,7 @@ export const useAuthStore = create<AuthState>()(
           token: data.accessToken,
           isDemo: false,
           approvalStatus: (data.user.approvalStatus ?? 'approved') as AuthState['approvalStatus'],
+          consentGivenAt: (data.user as { consentGivenAt?: string | null }).consentGivenAt ?? null,
           recentAccount: { name: staffUser.name, email: staffUser.email, role: staffUser.role, specialty: staffUser.specialty, loginMethod: 'email' },
         });
         // Sync backend data into app store
@@ -152,6 +156,7 @@ export const useAuthStore = create<AuthState>()(
           token: r.accessToken,
           isDemo: false,
           approvalStatus: (r.user.approvalStatus ?? 'approved') as AuthState['approvalStatus'],
+          consentGivenAt: (r.user as { consentGivenAt?: string | null }).consentGivenAt ?? null,
           recentAccount: { name: staffUser.name, email: staffUser.email, role: staffUser.role, specialty: staffUser.specialty, loginMethod: 'google' },
         });
         import('./useAppStore').then(({ useAppStore }) =>
@@ -193,12 +198,23 @@ export const useAuthStore = create<AuthState>()(
         clearTokens();
         import('./useAppStore').then(({ useAppStore }) => useAppStore.getState().resetStore());
         // recentAccount intentionally kept — used for quick re-login on the login page
-        set(s => ({ user: null, token: null, isDemo: false, approvalStatus: null, recentAccount: s.recentAccount }));
+        set(s => ({ user: null, token: null, isDemo: false, approvalStatus: null, consentGivenAt: null, recentAccount: s.recentAccount }));
+      },
+
+      // ─── Record consent (Privacy Policy + Terms) ─────────────────────────
+      recordConsent: async () => {
+        try {
+          const data = await api.post<{ ok: boolean; consentGivenAt: string }>('/auth/consent', {});
+          set({ consentGivenAt: data.consentGivenAt });
+        } catch {
+          // If backend call fails, still dismiss modal locally so user isn't blocked
+          set({ consentGivenAt: new Date().toISOString() });
+        }
       },
     }),
     {
       name: 'vyasa-auth',
-      partialize: (s) => ({ user: s.user, token: s.token, isDemo: s.isDemo, approvalStatus: s.approvalStatus, recentAccount: s.recentAccount }),
+      partialize: (s) => ({ user: s.user, token: s.token, isDemo: s.isDemo, approvalStatus: s.approvalStatus, consentGivenAt: s.consentGivenAt, recentAccount: s.recentAccount }),
     }
   )
 );
