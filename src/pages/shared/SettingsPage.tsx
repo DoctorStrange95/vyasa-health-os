@@ -367,14 +367,25 @@ interface PendingStaff {
 }
 
 function StaffTab() {
-  const { staff, setStaff, showToast } = useAppStore();
+  const { showToast } = useAppStore();
+  const { user: currentUser } = useAuthStore();
+  const canManageStaff = currentUser?.role === 'clinic_admin';
   const [addOpen, setAddOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [pending, setPending] = useState<PendingStaff[]>([]);
   const [loadingPending, setLoadingPending] = useState(false);
+  const [activeStaff, setActiveStaff] = useState<Staff[]>([]);
   const [confirmRemoveId, setConfirmRemoveId] = useState<number | null>(null);
 
-  // Fetch real pending staff from backend
+  // Fetch approved staff from backend
+  useEffect(() => {
+    if (!isApiEnabled()) return;
+    api.get<Staff[]>('/staff/active')
+      .then(data => setActiveStaff(data.map(u => ({ ...u, id: Number((u as never as {id: unknown}).id), status: 'active' }))))
+      .catch(() => {});
+  }, []);
+
+  // Fetch pending staff from backend
   useEffect(() => {
     if (!isApiEnabled()) return;
     setLoadingPending(true);
@@ -384,7 +395,7 @@ function StaffTab() {
         requestedAt: u.created_at ?? new Date().toISOString(),
         qualification: u.degrees ?? u.qualification,
       }))))
-      .catch(() => {})
+      .catch(() => { showToast('Could not load pending staff — please refresh', 'error'); })
       .finally(() => setLoadingPending(false));
   }, []);
 
@@ -394,7 +405,7 @@ function StaffTab() {
         await api.post(`/staff/${ps.id}/approve`, {});
       }
       const newStaff: Staff = { id: Number(ps.id), name: ps.name, role: ps.role, email: ps.email, phone: ps.phone, department: ps.department, shift: 'Day', status: 'active' };
-      setStaff([...staff, newStaff]);
+      setActiveStaff(prev => [...prev, newStaff]);
       setPending(p => p.filter(x => x.id !== ps.id));
       showToast(`${ps.name} approved`, 'success');
     } catch {
@@ -415,12 +426,12 @@ function StaffTab() {
   }
 
   async function removeStaff(id: number) {
-    const member = staff.find(s => s.id === id);
+    const member = activeStaff.find(s => s.id === id);
     try {
       if (isApiEnabled()) {
         await api.del(`/staff/${id}`);
       }
-      setStaff(staff.filter(s => s.id !== id));
+      setActiveStaff(prev => prev.filter(s => s.id !== id));
       setConfirmRemoveId(null);
       showToast(`${member?.name ?? 'Staff'} removed from team`, 'info');
     } catch {
@@ -433,12 +444,14 @@ function StaffTab() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-lg font-bold text-slate-900">My Clinic Staff</h2>
-          <p className="text-sm text-slate-500">{staff.length} staff · {pending.length} pending approval</p>
+          <p className="text-sm text-slate-500">{activeStaff.length} staff · {pending.length} pending approval</p>
         </div>
-        <div className="flex gap-2">
-          <button onClick={() => setInviteOpen(true)} className="btn-secondary"><Link2 className="w-4 h-4" /> Invite Link</button>
-          <button onClick={() => setAddOpen(true)} className="btn-primary"><Plus className="w-4 h-4" /> Add Staff</button>
-        </div>
+        {canManageStaff && (
+          <div className="flex gap-2">
+            <button onClick={() => setInviteOpen(true)} className="btn-secondary"><Link2 className="w-4 h-4" /> Invite Link</button>
+            <button onClick={() => setAddOpen(true)} className="btn-primary"><Plus className="w-4 h-4" /> Add Staff</button>
+          </div>
+        )}
       </div>
 
       {/* Role guide */}
@@ -477,14 +490,16 @@ function StaffTab() {
                     </div>
                     <div className="text-xs text-slate-500 mt-0.5">{ps.email} · {ps.phone}{ps.qualification ? ` · ${ps.qualification}` : ''}</div>
                   </div>
-                  <div className="flex gap-2 flex-shrink-0">
-                    <button onClick={() => rejectStaff(ps)} className="btn-secondary btn-sm text-red-600 border-red-200 hover:bg-red-50">
-                      <UserX className="w-3.5 h-3.5" /> Reject
-                    </button>
-                    <button onClick={() => void approveStaff(ps)} className="btn-primary btn-sm">
-                      <UserCheck className="w-3.5 h-3.5" /> Approve
-                    </button>
-                  </div>
+                  {canManageStaff && (
+                    <div className="flex gap-2 flex-shrink-0">
+                      <button onClick={() => rejectStaff(ps)} className="btn-secondary btn-sm text-red-600 border-red-200 hover:bg-red-50">
+                        <UserX className="w-3.5 h-3.5" /> Reject
+                      </button>
+                      <button onClick={() => void approveStaff(ps)} className="btn-primary btn-sm">
+                        <UserCheck className="w-3.5 h-3.5" /> Approve
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -493,9 +508,9 @@ function StaffTab() {
       )}
 
       {/* Staff grid */}
-      {staff.length > 0 ? (
+      {activeStaff.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {staff.map(s => (
+          {activeStaff.map(s => (
             <div key={s.id} className={cn('card p-4 transition-shadow', confirmRemoveId === s.id ? 'border-red-300' : 'hover:shadow-md')}>
               <div className="flex items-start gap-3">
                 <div className="w-10 h-10 rounded-full bg-teal-500/10 flex items-center justify-center font-bold text-teal-700 flex-shrink-0">
@@ -515,7 +530,7 @@ function StaffTab() {
                   {s.email && <a href={`mailto:${s.email}`} className="text-xs text-teal-600 flex items-center gap-1 hover:underline mt-1"><Mail className="w-3 h-3" />{s.email}</a>}
                   {s.phone && <div className="flex items-center gap-1 text-xs text-slate-400 mt-0.5"><Phone className="w-3 h-3" />{s.phone}</div>}
                 </div>
-                {confirmRemoveId !== s.id && (
+                {canManageStaff && confirmRemoveId !== s.id && (
                   <button
                     onClick={() => setConfirmRemoveId(s.id)}
                     className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0"
@@ -525,7 +540,7 @@ function StaffTab() {
                   </button>
                 )}
               </div>
-              {confirmRemoveId === s.id && (
+              {canManageStaff && confirmRemoveId === s.id && (
                 <div className="mt-3 pt-3 border-t border-red-100 flex items-center justify-between gap-3">
                   <p className="text-xs text-red-600 font-medium">Remove {s.name}?</p>
                   <div className="flex gap-2 flex-shrink-0">
@@ -544,36 +559,60 @@ function StaffTab() {
           <Users className="w-12 h-12 text-slate-200 mx-auto mb-3" />
           <p className="font-semibold text-slate-600">No staff added yet</p>
           <p className="text-sm text-slate-400 mt-1">Add your receptionist, nurse, or assistant to get started</p>
-          <div className="flex gap-3 justify-center mt-4">
-            <button onClick={() => setInviteOpen(true)} className="btn-secondary"><Link2 className="w-4 h-4" /> Send Invite Link</button>
-            <button onClick={() => setAddOpen(true)} className="btn-primary"><Plus className="w-4 h-4" /> Add Manually</button>
-          </div>
+          {canManageStaff && (
+            <div className="flex gap-3 justify-center mt-4">
+              <button onClick={() => setInviteOpen(true)} className="btn-secondary"><Link2 className="w-4 h-4" /> Send Invite Link</button>
+              <button onClick={() => setAddOpen(true)} className="btn-primary"><Plus className="w-4 h-4" /> Add Manually</button>
+            </div>
+          )}
         </div>
       )}
 
-      <AddStaffModal open={addOpen} onClose={() => setAddOpen(false)} />
+      <AddStaffModal open={addOpen} onClose={() => setAddOpen(false)} onAdded={s => setActiveStaff(prev => [...prev, s])} />
       <InviteLinkModal open={inviteOpen} onClose={() => setInviteOpen(false)} />
     </div>
   );
 }
 
-function AddStaffModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { staff, setStaff, showToast } = useAppStore();
+function AddStaffModal({ open, onClose, onAdded }: { open: boolean; onClose: () => void; onAdded: (s: Staff) => void }) {
+  const { showToast } = useAppStore();
   const [form, setFormState] = useState({ name: '', role: 'nurse' as Role, email: '', phone: '', department: '', specialty: '', shift: 'Day' });
+  const [saving, setSaving] = useState(false);
   const set = (k: string, v: string) => setFormState(f => ({ ...f, [k]: v }));
 
-  function submit() {
+  async function submit() {
     if (!form.name.trim() || !form.email) { showToast('Name and email are required', 'error'); return; }
-    const newStaff: Staff = { id: Date.now(), name: form.name, role: form.role, email: form.email, phone: form.phone, department: form.department, specialty: form.specialty || undefined, shift: form.shift, status: 'active' };
-    setStaff([...staff, newStaff]);
-    showToast(`${form.name} added as ${form.role}`, 'success');
-    onClose();
-    setFormState({ name: '', role: 'nurse', email: '', phone: '', department: '', specialty: '', shift: 'Day' });
+    setSaving(true);
+    try {
+      if (isApiEnabled()) {
+        const created = await api.post<Staff>('/staff/create', {
+          name: form.name, role: form.role, email: form.email,
+          phone: form.phone, department: form.department,
+          specialty: form.specialty || undefined,
+        });
+        onAdded({ ...created, id: Number((created as never as {id: unknown}).id), status: 'active' });
+      } else {
+        const newStaff: Staff = { id: Date.now(), name: form.name, role: form.role, email: form.email, phone: form.phone, department: form.department, specialty: form.specialty || undefined, shift: form.shift, status: 'active' };
+        onAdded(newStaff);
+      }
+      showToast(`${form.name} added as ${form.role}`, 'success');
+      onClose();
+      setFormState({ name: '', role: 'nurse', email: '', phone: '', department: '', specialty: '', shift: 'Day' });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '';
+      if (msg.includes('409') || msg.toLowerCase().includes('already exists')) {
+        showToast('A user with this email already exists', 'error');
+      } else {
+        showToast('Failed to add staff — try again', 'error');
+      }
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
     <Modal open={open} onClose={onClose} title="Add Staff Member" size="md"
-      footer={<><button onClick={onClose} className="btn-secondary">Cancel</button><button onClick={submit} className="btn-primary">Add Staff</button></>}>
+      footer={<><button onClick={onClose} className="btn-secondary" disabled={saving}>Cancel</button><button onClick={() => void submit()} disabled={saving} className="btn-primary">{saving ? 'Adding…' : 'Add Staff'}</button></>}>
       <div className="space-y-4">
         <div>
           <label className="label">Full Name *</label>
@@ -618,6 +657,7 @@ function AddStaffModal({ open, onClose }: { open: boolean; onClose: () => void }
 
 function InviteLinkModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { clinics } = usePadStore();
+  const { user } = useAuthStore();
   const [selectedRole, setSelectedRole] = useState<Role>('nurse');
   const [selectedClinicIds, setSelectedClinicIds] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
@@ -634,12 +674,20 @@ function InviteLinkModal({ open, onClose }: { open: boolean; onClose: () => void
   const clinicIdsParam = selectedClinics.map(c => c.id).join(',');
   const clinicNamesParam = selectedClinics.map(c => c.name).join(',');
   const TOKEN = btoa(`${selectedRole}-${clinicIdsParam}-${Date.now()}`).slice(0, 16);
+  // did = doctor's user ID — saved on registration so pending filter matches by who invited
   const link = selectedClinics.length > 0
-    ? `${window.location.origin}/join?role=${selectedRole}&clinicIds=${encodeURIComponent(clinicIdsParam)}&clinicNames=${encodeURIComponent(clinicNamesParam)}&token=${TOKEN}`
+    ? `${window.location.origin}/join?role=${selectedRole}&clinicIds=${encodeURIComponent(clinicIdsParam)}&clinicNames=${encodeURIComponent(clinicNamesParam)}&token=${TOKEN}&did=${user?.id ?? ''}`
     : '';
 
-  function copy() {
+  async function copy() {
     if (!link) return;
+    // Ensure selected clinics exist in backend DB so the pending-staff fallback
+    // filter (for staff registered before invited_by_user_id was added) can match.
+    // Safe here because this is user-triggered and syncClinicsFromApi has already
+    // completed by the time the user opens this modal.
+    if (isApiEnabled()) {
+      await Promise.all(selectedClinics.map(c => api.post('/clinics', c).catch(() => {})));
+    }
     navigator.clipboard.writeText(link).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2500); });
   }
 
@@ -1177,8 +1225,26 @@ const TABS: { id: Tab; label: string; icon: typeof Settings; desc: string }[] = 
 
 export default function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { user } = useAuthStore();
+  const isClinicAdmin = user?.role === 'clinic_admin';
+
   const rawTab = searchParams.get('tab') as Tab | null;
+  const visibleTabs = TABS;
   const activeTab: Tab = (rawTab && TABS.some(t => t.id === rawTab)) ? rawTab : 'rxpad';
+
+  // Only clinic admins (main doctors) can access Settings.
+  // Invited doctors use /app/pad-settings for their personal Rx Pad.
+  if (!isClinicAdmin) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 text-center px-6">
+        <Settings className="w-10 h-10 text-slate-300 mb-4" />
+        <h2 className="text-lg font-bold text-slate-700 mb-1">Settings not available</h2>
+        <p className="text-sm text-slate-400 max-w-xs">
+          Clinic settings are managed by the clinic admin. Use <strong>Rx Pad Settings</strong> in the sidebar to configure your personal prescription pad.
+        </p>
+      </div>
+    );
+  }
 
   function setTab(t: Tab) { setSearchParams({ tab: t }); }
 
@@ -1192,7 +1258,7 @@ export default function SettingsPage() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-        {TABS.map(t => (
+        {visibleTabs.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             className={cn('flex items-center gap-3 p-4 rounded-2xl border-2 text-left transition-all',
               activeTab === t.id ? 'border-teal-500 bg-teal-50' : 'border-slate-200 bg-white hover:border-teal-200 hover:bg-slate-50')}>
@@ -1210,7 +1276,7 @@ export default function SettingsPage() {
 
       <div>
         {activeTab === 'rxpad'   && <RxPadTab />}
-        {activeTab === 'staff'   && <StaffTab />}
+        {activeTab === 'staff'   && isClinicAdmin && <StaffTab />}
         {activeTab === 'clinics' && <ClinicsTab />}
       </div>
 
