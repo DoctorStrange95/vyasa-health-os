@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Loader2, ArrowLeft, CheckCircle2, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -6,14 +6,97 @@ import { INDIAN_MEDICAL_COUNCILS } from '@/lib/medicalCouncils';
 
 type Mode = 'choose' | 'doctor' | 'hospital';
 
-const SPECIALTIES = [
-  'General Medicine', 'Internal Medicine', 'Cardiology', 'Pulmonology',
-  'Neurology', 'Neurosurgery', 'Orthopaedics', 'General Surgery',
-  'Gastroenterology', 'Nephrology', 'Endocrinology', 'Oncology',
-  'Obstetrics & Gynaecology', 'Paediatrics', 'Neonatology',
-  'Psychiatry', 'Dermatology', 'Ophthalmology', 'ENT',
-  'Radiology', 'Pathology', 'Anaesthesiology', 'Emergency Medicine',
-  'Critical Care', 'Urology', 'Plastic Surgery', 'Vascular Surgery',
+const SPECIALTY_GROUPS: { label: string; options: string[] }[] = [
+  { label: 'Allopathy — General & Internal Medicine', options: [
+    'General Medicine', 'Internal Medicine', 'Family Medicine / General Practice',
+    'Geriatrics', 'Occupational Medicine', 'Aviation Medicine', 'Sports Medicine',
+  ]},
+  { label: 'Allopathy — Cardiology & Chest', options: [
+    'Cardiology', 'Interventional Cardiology', 'Cardiac Electrophysiology',
+    'Cardiothoracic Surgery', 'Pulmonology / Respiratory Medicine',
+    'Sleep Medicine', 'Thoracic Surgery',
+  ]},
+  { label: 'Allopathy — Neurosciences', options: [
+    'Neurology', 'Neurosurgery', 'Neuropsychiatry', 'Epileptology', 'Stroke Medicine',
+  ]},
+  { label: 'Allopathy — Gastroenterology & Liver', options: [
+    'Gastroenterology', 'Hepatology', 'Colorectal Surgery', 'Surgical Gastroenterology',
+  ]},
+  { label: 'Allopathy — Kidneys & Urology', options: [
+    'Nephrology', 'Urology', 'Andrology', 'Renal Transplant Surgery',
+  ]},
+  { label: 'Allopathy — Oncology', options: [
+    'Medical Oncology', 'Surgical Oncology', 'Radiation Oncology',
+    'Haematology & BMT', 'Gynaecological Oncology', 'Paediatric Oncology',
+  ]},
+  { label: 'Allopathy — Endocrine & Metabolism', options: [
+    'Endocrinology & Diabetes', 'Obesity & Metabolic Medicine', 'Thyroid Surgery',
+  ]},
+  { label: 'Allopathy — Musculoskeletal', options: [
+    'Orthopaedics & Traumatology', 'Arthroscopy & Sports Medicine', 'Spine Surgery',
+    'Rheumatology', 'Physical Medicine & Rehabilitation', 'Hand Surgery',
+  ]},
+  { label: 'Allopathy — Obstetrics, Gynaecology & Reproductive Medicine', options: [
+    'Obstetrics & Gynaecology', 'Maternal-Fetal Medicine', 'Reproductive Medicine & IVF',
+    'Urogynaecology', 'Laparoscopic Gynaecology',
+  ]},
+  { label: 'Allopathy — Paediatrics & Neonatology', options: [
+    'Paediatrics', 'Neonatology', 'Paediatric Surgery', 'Paediatric Neurology',
+    'Paediatric Cardiology', 'Paediatric Haematology-Oncology', 'Developmental Paediatrics',
+  ]},
+  { label: 'Allopathy — Surgery', options: [
+    'General Surgery', 'Laparoscopic & Minimally Invasive Surgery', 'Vascular Surgery',
+    'Plastic & Reconstructive Surgery', 'Burns & Wound Care', 'Transplant Surgery',
+    'Trauma Surgery', 'Bariatric Surgery',
+  ]},
+  { label: 'Allopathy — Critical Care & Emergency', options: [
+    'Critical Care Medicine', 'Emergency Medicine', 'Anaesthesiology',
+    'Pain Management', 'Palliative Care & Hospice',
+  ]},
+  { label: 'Allopathy — Skin, Eye & ENT', options: [
+    'Dermatology', 'Dermatosurgery', 'Venereology & STD',
+    'Ophthalmology', 'Vitreoretinal Surgery',
+    'ENT (Otorhinolaryngology)', 'Head & Neck Surgery',
+  ]},
+  { label: 'Allopathy — Mental Health', options: [
+    'Psychiatry', 'Addiction Medicine', 'Child & Adolescent Psychiatry', 'Liaison Psychiatry',
+  ]},
+  { label: 'Allopathy — Diagnostics & Support', options: [
+    'Radiology & Imaging', 'Interventional Radiology', 'Nuclear Medicine',
+    'Pathology & Lab Medicine', 'Transfusion Medicine', 'Microbiology',
+    'Biochemistry', 'Forensic Medicine', 'Community Medicine / Public Health',
+  ]},
+  { label: 'Allopathy — Other Specialties', options: [
+    'Immunology & Allergy', 'Infectious Diseases & HIV Medicine', 'Haematology',
+    'Transplant Medicine', 'Hyperbaric Medicine',
+  ]},
+  { label: 'AYUSH', options: [
+    'Ayurveda', 'Yoga & Naturopathy', 'Unani', 'Siddha', 'Homeopathy',
+    'Panchakarma (Ayurveda)', 'Ksharasutra (Ayurvedic Surgery)',
+  ]},
+  { label: 'Dental', options: [
+    'General Dentistry', 'Orthodontics & Dentofacial Orthopaedics',
+    'Oral & Maxillofacial Surgery', 'Paediatric Dentistry', 'Periodontology',
+    'Endodontics', 'Prosthodontics & Implantology',
+    'Oral Medicine & Radiology', 'Oral Pathology & Microbiology',
+    'Public Health Dentistry', 'Cosmetic Dentistry',
+  ]},
+  { label: 'Nursing', options: [
+    'General Nursing & Midwifery', 'Critical Care Nursing', 'Paediatric Nursing',
+    'Psychiatric & Mental Health Nursing', 'Community Health Nursing',
+    'Oncology Nursing', 'Neonatal Nursing', 'Cardiac Care Nursing',
+    'Nurse Practitioner / Advanced Practice Nursing',
+  ]},
+  { label: 'Allied Health & Paramedical', options: [
+    'Physiotherapy & Rehabilitation', 'Occupational Therapy',
+    'Speech & Language Therapy', 'Dietetics & Clinical Nutrition',
+    'Clinical Psychology', 'Medical Social Work', 'Audiology & Hearing Sciences',
+    'Optometry & Vision Science', 'Pharmacy / Clinical Pharmacology',
+    'Medical Laboratory Technology', 'Radiography & Imaging Technology',
+    'Operation Theatre Technology', 'Perfusion Technology',
+    'Cardiac Technology', 'Respiratory Therapy',
+    'Prosthetics & Orthotics', 'Health Information Management',
+  ]},
 ];
 
 const HOSPITAL_TYPES = [
@@ -31,8 +114,56 @@ const STATES = [
   'West Bengal',
 ];
 
+function SpecialtyCombobox({ value, onChange, error }: { value: string; onChange: (v: string) => void; error?: string }) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) { setOpen(false); setQuery(''); }
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const allOptions = SPECIALTY_GROUPS.flatMap(g => g.options);
+  const filtered = query.trim()
+    ? allOptions.filter(s => s.toLowerCase().includes(query.toLowerCase()))
+    : allOptions;
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <input
+        type="text"
+        autoComplete="off"
+        className={cn('input', error && 'border-red-400')}
+        value={open ? query : value}
+        placeholder={value || 'Type to search specialty…'}
+        onFocus={() => { setOpen(true); setQuery(''); }}
+        onChange={e => { setQuery(e.target.value); onChange(''); }}
+      />
+      {open && (
+        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200, background: 'white', border: '1.5px solid #e2e8f0', borderRadius: 10, boxShadow: '0 8px 28px rgba(0,0,0,0.13)', maxHeight: 240, overflowY: 'auto', marginTop: 4 }}>
+          {filtered.length === 0
+            ? <div style={{ padding: '12px 14px', fontSize: 13, color: '#94a3b8' }}>No matches</div>
+            : filtered.map(s => (
+              <div key={s}
+                onMouseDown={e => { e.preventDefault(); onChange(s); setOpen(false); setQuery(''); }}
+                style={{ padding: '9px 14px', fontSize: 13, cursor: 'pointer', color: '#1e293b', background: s === value ? '#f0fdfa' : 'white' }}
+                onMouseOver={e => (e.currentTarget.style.background = '#f0fdfa')}
+                onMouseOut={e => (e.currentTarget.style.background = s === value ? '#f0fdfa' : 'white')}
+              >{s}</div>
+            ))
+          }
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function RegisterPage() {
-  const [mode, setMode] = useState<Mode>('choose');
+  const [mode, setMode] = useState<Mode>('doctor');
   const navigate = useNavigate();
 
   return (
@@ -159,7 +290,7 @@ function DoctorForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =
   const [done, setDone] = useState(false);
   const [form, setForm] = useState({
     name: '', email: '', phone: '', specialty: '', degrees: '',
-    mciNumber: '', medicalCouncil: '', regState: '', hospital: '', city: '', state: '',
+    mciNumber: '', medicalCouncil: '', otherCouncil: '', regState: '', hospital: '', city: '', state: '',
     password: '', confirm: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -174,6 +305,7 @@ function DoctorForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =
     if (!form.specialty) e.specialty = 'Required';
     if (!form.degrees.trim()) e.degrees = 'Required';
     if (!form.medicalCouncil) e.medicalCouncil = 'Required';
+    if (form.medicalCouncil === 'other' && !form.otherCouncil.trim()) e.otherCouncil = 'Please specify your council';
     if (!form.mciNumber.trim()) e.mciNumber = 'Required';
     if (!form.regState) e.regState = 'Required';
     if (form.password.length < 8) e.password = 'At least 8 characters';
@@ -195,7 +327,7 @@ function DoctorForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =
         specialty: form.specialty,
         degrees: form.degrees,
         password: form.password,
-        medicalCouncil: form.medicalCouncil,
+        medicalCouncil: form.medicalCouncil === 'other' ? form.otherCouncil : form.medicalCouncil,
         licenseNumber: form.mciNumber,
         regState: form.regState,
         state: form.state,
@@ -247,10 +379,7 @@ function DoctorForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =
         <div className="card p-4 space-y-4">
           <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Professional Details</h3>
           <Field label="Specialty *" error={errors.specialty}>
-            <select className={cn('input', errors.specialty && 'border-red-400')} value={form.specialty} onChange={e => set('specialty', e.target.value)}>
-              <option value="">Select specialty…</option>
-              {SPECIALTIES.map(s => <option key={s}>{s}</option>)}
-            </select>
+            <SpecialtyCombobox value={form.specialty} onChange={v => set('specialty', v)} error={errors.specialty} />
           </Field>
           <Field label="Degrees / Qualifications *" error={errors.degrees}>
             <input className={cn('input', errors.degrees && 'border-red-400')} placeholder="e.g. MBBS, MD" value={form.degrees} onChange={e => set('degrees', e.target.value)} />
@@ -261,8 +390,13 @@ function DoctorForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =
               {INDIAN_MEDICAL_COUNCILS.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </Field>
+          {form.medicalCouncil === 'other' && (
+            <Field label="Specify Council Name *" error={errors.otherCouncil}>
+              <input className={cn('input', errors.otherCouncil && 'border-red-400')} placeholder="Enter your council or board name" value={form.otherCouncil} onChange={e => set('otherCouncil', e.target.value)} />
+            </Field>
+          )}
           <div className="grid grid-cols-2 gap-3">
-            <Field label="NMC / MCI Registration Number *" error={errors.mciNumber}>
+            <Field label="Council Registration Number *" error={errors.mciNumber}>
               <input className={cn('input', errors.mciNumber && 'border-red-400')} placeholder="e.g. MH-12345 or 123456" value={form.mciNumber} onChange={e => set('mciNumber', e.target.value)} />
             </Field>
             <Field label="State of Registration (Medical Council) *" error={errors.regState}>

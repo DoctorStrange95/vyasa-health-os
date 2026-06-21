@@ -120,6 +120,12 @@ export default function PatientListPage() {
     const matchFilter = filter === 'all' || p.status === filter;
     const matchClinic = clinicFilter === 'all' || p.clinicId === clinicFilter;
     return matchSearch && matchFilter && matchClinic;
+  }).sort((a, b) => {
+    const aDate = (visits[a.id] ?? [])[0]?.date ?? '';
+    const bDate = (visits[b.id] ?? [])[0]?.date ?? '';
+    if (bDate && !aDate) return 1;
+    if (aDate && !bDate) return -1;
+    return bDate.localeCompare(aDate);
   });
 
   const counts: Record<string, number> = {

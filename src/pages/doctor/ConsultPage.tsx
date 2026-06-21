@@ -17,7 +17,7 @@ import { FavDrugsPanel } from '@/components/prescription/FavDrugsPanel';
 import { SpecialtyExamSection, detectSpecialty, specialtyLabel, ALL_SPECIALTY_MODULES, MODULE_META, SPECIALTY_COLORS } from '@/components/prescription/SpecialtyExamSection';
 import type { SpecialtyKey } from '@/components/prescription/SpecialtyExamSection';
 import { cn } from '@/lib/utils';
-import type { VaccineEntry, ProcedureEntry, AttachmentEntry } from '@/types';
+import type { VaccineEntry, ProcedureEntry, AttachmentEntry, VisitRecord, LabOrder } from '@/types';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -64,6 +64,92 @@ const BLANK_DRAFT: ConsultDraft = {
 
 const FORM_ROUTES: Record<RxForm, string> = { Tab: 'Oral', Cap: 'Oral', Syr: 'Oral', MDI: 'Inhaled', Drops: 'Topical', Cream: 'Topical', Inj: 'IM', Sachet: 'Oral' };
 const FOLLOW_UPS = ['2 days', '3 days', '1 week', '2 weeks', '1 month', '3 months', 'As needed', 'No follow-up'];
+
+// ─── Previous Visits panel ────────────────────────────────────────────────────
+
+function PreviousVisitsPanel({ visits, labs }: { patientId: string; visits: VisitRecord[]; labs: LabOrder[] }) {
+  const [open, setOpen] = useState(false);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const today = new Date().toISOString().slice(0, 10);
+  const past = visits.filter(v => !v.date.startsWith(today));
+  if (past.length === 0) return null;
+
+  return (
+    <div className="card overflow-hidden border-l-4 border-l-indigo-400">
+      <button type="button" onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center gap-3 px-5 py-3.5 hover:bg-slate-50 transition-colors">
+        <div className="w-7 h-7 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center flex-shrink-0">
+          <ClipboardList className="w-3.5 h-3.5" />
+        </div>
+        <span className="font-semibold text-slate-800 text-sm flex-1 text-left">
+          Previous Visits
+          <span className="ml-2 text-xs font-medium text-indigo-600 bg-indigo-50 rounded-full px-2 py-0.5">{past.length}</span>
+        </span>
+        {open ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+      </button>
+      {open && (
+        <div className="px-4 pb-4 space-y-2 border-t border-slate-100">
+          {past.slice(0, 6).map(v => {
+            const isExp = expanded === v.id;
+            const dateLabel = new Date(v.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+            return (
+              <div key={v.id} className="rounded-xl border border-slate-200 overflow-hidden mt-2">
+                <button type="button" onClick={() => setExpanded(isExp ? null : v.id)}
+                  className="w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-slate-50 transition-colors">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-semibold text-indigo-700 bg-indigo-50 rounded px-1.5 py-0.5">{dateLabel}</span>
+                      {v.diagnosis && <span className="text-xs font-medium text-slate-700 truncate">{v.diagnosis}</span>}
+                    </div>
+                    {v.chiefComplaint && <p className="text-xs text-slate-500 mt-0.5 truncate">{v.chiefComplaint}</p>}
+                  </div>
+                  {isExp ? <ChevronUp className="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" />}
+                </button>
+                {isExp && (() => {
+                  const visitDate = v.date.slice(0, 10);
+                  const visitLabs = labs.filter(l => (l.orderedAt || '').slice(0, 10) === visitDate);
+                  return (
+                    <div className="px-4 pb-3 border-t border-slate-100 text-xs space-y-1.5 text-slate-600">
+                      {v.vitalsSnapshot && Object.values(v.vitalsSnapshot).some(Boolean) && (
+                        <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-slate-500 bg-slate-50 rounded px-2 py-1.5">
+                          {v.vitalsSnapshot.bp && <span>BP: <b>{v.vitalsSnapshot.bp}</b></span>}
+                          {v.vitalsSnapshot.hr && <span>Pulse: <b>{v.vitalsSnapshot.hr}</b></span>}
+                          {v.vitalsSnapshot.temp && <span>Temp: <b>{v.vitalsSnapshot.temp}°C</b></span>}
+                          {v.vitalsSnapshot.spo2 && <span>SpO₂: <b>{v.vitalsSnapshot.spo2}%</b></span>}
+                          {v.vitalsSnapshot.weight && <span>Wt: <b>{v.vitalsSnapshot.weight}kg</b></span>}
+                        </div>
+                      )}
+                      {v.hopi && <p><span className="font-medium text-slate-500">History: </span>{v.hopi}</p>}
+                      {v.investigation && <p><span className="font-medium text-slate-500">Investigations: </span>{v.investigation}</p>}
+                      {visitLabs.length > 0 && (
+                        <div>
+                          <span className="font-medium text-slate-500 block mb-1">Lab Results: </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {visitLabs.map(l => (
+                              <span key={l.id} className={cn('text-[10px] font-semibold px-2 py-0.5 rounded-full border',
+                                l.critical ? 'bg-red-50 border-red-200 text-red-700' : l.result ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-slate-50 border-slate-200 text-slate-500')}>
+                                {l.testName}{l.result ? `: ${l.result}${l.unit ? ' ' + l.unit : ''}` : ' (pending)'}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {v.advice && <p><span className="font-medium text-slate-500">Advice: </span>{v.advice}</p>}
+                      {v.followUp && <p><span className="font-medium text-slate-500">Follow-up: </span>{v.followUp}</p>}
+                    </div>
+                  );
+                })()}
+              </div>
+            );
+          })}
+          {past.length > 6 && (
+            <p className="text-xs text-slate-400 text-center pt-1">Showing last 6 of {past.length} visits</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─── Section wrapper ──────────────────────────────────────────────────────────
 
@@ -403,6 +489,7 @@ export default function ConsultPage() {
       patientId: patient.id,
       date: new Date().toISOString(),
       doctorName: user?.name ?? 'Doctor',
+      doctorId: user?.id,
       chiefComplaint: draft.chiefComplaint,
       hopi: draft.hopi,
       pastMedical: draft.pastMedical,
@@ -675,7 +762,7 @@ export default function ConsultPage() {
               <Calculator className="w-3.5 h-3.5" />
             </button>
             {!isIPD && (
-              <button onClick={() => setShowPrint(true)} className="btn-secondary btn-sm p-2">
+              <button onClick={() => setShowPrint(true)} className="hidden sm:flex btn-secondary btn-sm p-2" title="Print Prescription">
                 <Printer className="w-3.5 h-3.5" />
               </button>
             )}
@@ -707,7 +794,7 @@ export default function ConsultPage() {
       </div>
 
       {/* ─── Body ──────────────────────────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3 pb-20">
+      <div className="flex-1 overflow-y-auto p-4 space-y-3 pb-32 sm:pb-20">
 
         {/* Edit-mode banner */}
         {editVisitId && (
@@ -716,6 +803,9 @@ export default function ConsultPage() {
             <span><strong>Editing today's consultation</strong> — changes will update the existing record, not create a new one.</span>
           </div>
         )}
+
+        {/* 0. Previous Visits */}
+        <PreviousVisitsPanel patientId={patientId ?? ''} visits={visits[patientId ?? ''] ?? []} labs={labOrders[patientId ?? ''] ?? []} />
 
         {/* 1. Vitals */}
         <Section id="s-vitals" title="Vitals" icon={Activity} filled={filled.vitals}>
@@ -1700,6 +1790,28 @@ export default function ConsultPage() {
           patientWeight={parseFloat(draft.vitals.weight) || undefined}
           patientSex={patient.gender === 'M' ? 'M' : patient.gender === 'F' ? 'F' : undefined}
         />
+      )}
+
+      {/* ─── Mobile bottom action bar ──────────────────────────────────────── */}
+      {!isIPD && (
+        <div className="sm:hidden fixed bottom-0 left-0 right-0 z-20 bg-white border-t border-slate-200 px-4 py-2.5 flex gap-3 safe-bottom">
+          <button
+            onClick={() => setShowPrint(true)}
+            className="flex-1 btn-secondary py-2.5 flex items-center justify-center gap-2"
+          >
+            <Printer className="w-4 h-4" />
+            <span className="text-sm font-semibold">Print Rx</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleFinalize}
+            disabled={saving}
+            className="flex-1 btn-primary py-2.5 flex items-center justify-center gap-2"
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            <span className="text-sm font-semibold">{saving ? 'Saving…' : editVisitId ? 'Update' : 'Save'}</span>
+          </button>
+        </div>
       )}
     </div>
   );

@@ -136,7 +136,7 @@ export default function ProfilePage() {
         advance_payment: pubProfile.advance_payment ?? false,
         advance_amount: pubProfile.advance_amount ?? null,
         payment_qr_url: pubProfile.payment_qr_url ?? '',
-        show_reg_number: pubProfile.show_reg_number ?? false,
+        show_reg_number: pubProfile.show_reg_number ?? true,
       });
       setPubProfile(updated);
       setPubSaved(true);
@@ -809,12 +809,12 @@ export default function ProfilePage() {
                       <div className="flex gap-3">
                         {[{v:true,l:'Show'},{v:false,l:'Hide'}].map(o=>(
                           <label key={String(o.v)} className={`flex items-center gap-1.5 cursor-pointer text-sm font-medium px-3 py-1.5 rounded-lg border-2 transition-all ${
-                            (pubProfile?.show_reg_number ?? false) === o.v
+                            (pubProfile?.show_reg_number ?? true) === o.v
                               ? 'border-teal-500 bg-teal-50 text-teal-700'
                               : 'border-slate-200 text-slate-500'
                           }`}>
                             <input type="radio" name="pub-reg" className="sr-only"
-                              checked={(pubProfile?.show_reg_number ?? false) === o.v}
+                              checked={(pubProfile?.show_reg_number ?? true) === o.v}
                               onChange={() => {
                                 setPubProfile(p => ({...p, show_reg_number: o.v}));
                                 saveVisibilityField('show_reg_number', o.v);

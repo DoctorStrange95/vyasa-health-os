@@ -539,7 +539,7 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
             </div>
 
             {/* Patient row */}
-            <div className="grid grid-cols-3 gap-2 bg-slate-50 rounded px-3 py-2 text-xs mb-3">
+            <div className="flex flex-wrap gap-x-5 gap-y-1 bg-slate-50 rounded px-3 py-2 text-xs mb-3">
               <div><span className="text-slate-400">Patient: </span><span className="font-semibold">{patient.name}</span></div>
               <div><span className="text-slate-400">Age/Sex: </span><span className="font-semibold">{patientAge}Y/{patient.gender}</span></div>
               <div><span className="text-slate-400">Date: </span><span className="font-semibold">{today}</span></div>

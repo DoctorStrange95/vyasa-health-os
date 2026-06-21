@@ -3,6 +3,7 @@ import { lazy, Suspense, useEffect } from 'react';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useAppStore } from '@/store/useAppStore';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { PWAUpdateBanner } from '@/components/PWAUpdateBanner';
 import { Loader2 } from 'lucide-react';
 
 const LoginPage = lazy(() => import('@/pages/auth/LoginPage'));
@@ -37,6 +38,8 @@ const PublicBookingPage = lazy(() => import('@/pages/public/PublicBookingPage'))
 const DoctorPublicPage = lazy(() => import('@/pages/public/DoctorPublicPage'));
 const DoctorsDirectoryPage = lazy(() => import('@/pages/public/DoctorsDirectoryPage'));
 const BookingRequestsPage = lazy(() => import('@/pages/doctor/BookingRequestsPage'));
+const OrgRegisterPage = lazy(() => import('@/pages/public/OrgRegisterPage'));
+const StaffManagementPage = lazy(() => import('@/pages/org/StaffManagementPage'));
 const ReceptionistDashboard = lazy(() => import('@/pages/receptionist/ReceptionistDashboard'));
 const RegisterPatientPage = lazy(() => import('@/pages/receptionist/RegisterPatientPage'));
 const PrescriptionViewerPage = lazy(() => import('@/pages/receptionist/PrescriptionViewerPage'));
@@ -92,6 +95,7 @@ function DoctorOnly({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <BrowserRouter>
+      <PWAUpdateBanner />
       <Suspense fallback={<div className="flex items-center justify-center h-screen"><Loader2 className="w-10 h-10 animate-spin text-teal-500" /></div>}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
@@ -100,6 +104,7 @@ export default function App() {
           <Route path="/join" element={<JoinPage />} />
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="/book/:clinicId" element={<Suspense fallback={<div className="flex items-center justify-center h-screen"><Loader2 className="w-10 h-10 animate-spin text-teal-500" /></div>}><PublicBookingPage /></Suspense>} />
+          <Route path="/org-register" element={<Suspense fallback={<div className="flex items-center justify-center h-screen"><Loader2 className="w-10 h-10 animate-spin text-teal-500" /></div>}><OrgRegisterPage /></Suspense>} />
           <Route path="/dr/:slug" element={<Suspense fallback={<div className="flex items-center justify-center h-screen"><Loader2 className="w-10 h-10 animate-spin text-teal-500" /></div>}><DoctorPublicPage /></Suspense>} />
           <Route path="/doctors" element={<Suspense fallback={<div className="flex items-center justify-center h-screen"><Loader2 className="w-10 h-10 animate-spin text-teal-500" /></div>}><DoctorsDirectoryPage /></Suspense>} />
 
@@ -147,6 +152,9 @@ export default function App() {
             {/* Lab */}
             <Route path="labtech" element={<Suspense fallback={<Spinner />}><PlaceholderPage title="Lab Orders" /></Suspense>} />
             <Route path="results" element={<Suspense fallback={<Spinner />}><PlaceholderPage title="Lab Results" /></Suspense>} />
+
+            {/* Org staff management */}
+            <Route path="org/staff" element={<Suspense fallback={<Spinner />}><StaffManagementPage /></Suspense>} />
 
             {/* Admin */}
             <Route path="staff" element={<Suspense fallback={<Spinner />}><StaffPage /></Suspense>} />

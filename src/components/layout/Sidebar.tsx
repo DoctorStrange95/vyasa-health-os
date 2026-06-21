@@ -40,6 +40,7 @@ const NAV_ITEMS: Record<Role, NavItem[]> = {
     { icon: Users,           label: 'My Patients',      to: '/app/patients' },
     { icon: ClipboardCheck,  label: 'Booking Requests', to: '/app/bookings' },
     { icon: BarChart3,       label: 'Analytics',        to: '/app/analytics' },
+    { icon: Users,           label: 'My Staff',         to: '/app/settings?tab=staff' },
     { icon: Settings2,       label: 'Settings',         to: '/app/settings' },
     { icon: User,            label: 'My Profile',       to: '/app/profile' },
   ],
@@ -169,7 +170,9 @@ export function Sidebar() {
           Navigation
         </div>
         {items.map(item => {
-          const isActive = location.pathname === item.to || location.pathname.startsWith(item.to + '/');
+          const isActive = item.to.includes('?')
+            ? (location.pathname + location.search) === item.to
+            : location.pathname === item.to || location.pathname.startsWith(item.to + '/');
           const isAlerts = item.to === '/app/alerts';
           return (
             <Link

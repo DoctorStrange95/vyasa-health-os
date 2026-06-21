@@ -94,7 +94,7 @@ function toStaffUser(u: BackendAuthResponse['user']): StaffUser {
 
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       user: null,
       token: null,
       isDemo: false,
@@ -107,12 +107,13 @@ export const useAuthStore = create<AuthState>()(
         const data = await api.post<BackendAuthResponse>('/auth/login', { email, password, ...geo });
         setTokens(data.accessToken, data.refreshToken);
         const staffUser = toStaffUser(data.user);
+        const backendConsent = (data.user as { consentGivenAt?: string | null }).consentGivenAt ?? null;
         set({
           user: staffUser,
           token: data.accessToken,
           isDemo: false,
           approvalStatus: (data.user.approvalStatus ?? 'approved') as AuthState['approvalStatus'],
-          consentGivenAt: (data.user as { consentGivenAt?: string | null }).consentGivenAt ?? null,
+          consentGivenAt: backendConsent ?? get().consentGivenAt,
           recentAccount: { name: staffUser.name, email: staffUser.email, role: staffUser.role, specialty: staffUser.specialty, loginMethod: 'email' },
         });
         // Sync backend data into app store
@@ -151,12 +152,13 @@ export const useAuthStore = create<AuthState>()(
         const r = result as BackendAuthResponse;
         setTokens(r.accessToken, r.refreshToken);
         const staffUser = toStaffUser(r.user);
+        const backendConsent = (r.user as { consentGivenAt?: string | null }).consentGivenAt ?? null;
         set({
           user: staffUser,
           token: r.accessToken,
           isDemo: false,
           approvalStatus: (r.user.approvalStatus ?? 'approved') as AuthState['approvalStatus'],
-          consentGivenAt: (r.user as { consentGivenAt?: string | null }).consentGivenAt ?? null,
+          consentGivenAt: backendConsent ?? get().consentGivenAt,
           recentAccount: { name: staffUser.name, email: staffUser.email, role: staffUser.role, specialty: staffUser.specialty, loginMethod: 'google' },
         });
         import('./useAppStore').then(({ useAppStore }) =>
@@ -198,7 +200,7 @@ export const useAuthStore = create<AuthState>()(
         clearTokens();
         import('./useAppStore').then(({ useAppStore }) => useAppStore.getState().resetStore());
         // recentAccount intentionally kept — used for quick re-login on the login page
-        set(s => ({ user: null, token: null, isDemo: false, approvalStatus: null, consentGivenAt: null, recentAccount: s.recentAccount }));
+        set(s => ({ user: null, token: null, isDemo: false, approvalStatus: null, recentAccount: s.recentAccount }));
       },
 
       // ─── Record consent (Privacy Policy + Terms) ─────────────────────────

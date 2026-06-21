@@ -33,11 +33,13 @@ export default function JoinPage() {
   const [params] = useSearchParams();
   const role = (params.get('role') || 'nurse') as Role;
   const token = params.get('token');
+  const invitedByUserId = params.get('did') ? Number(params.get('did')) : undefined;
 
   // Support both new format (clinicNames/clinicIds) and old format (hospital)
-  const rawClinicNames = params.get('clinicNames') || params.get('hospital') || 'Vyasa';
+  // Double-decode to handle URLs forwarded via WhatsApp/email that re-encode the %2C
+  const rawClinicNames = decodeURIComponent(params.get('clinicNames') || params.get('hospital') || 'Vyasa');
   const clinicNames = rawClinicNames.split(',').map(n => n.trim()).filter(Boolean);
-  const clinicIds = (params.get('clinicIds') || '').split(',').filter(Boolean);
+  const clinicIds = decodeURIComponent(params.get('clinicIds') || '').split(',').filter(Boolean);
   const hospitalDisplay = clinicNames.join(' & ');
 
   const [showPw, setShowPw] = useState(false);
@@ -91,12 +93,20 @@ export default function JoinPage() {
         role,
         clinicIds: clinicIds.join(','),
         clinicName: hospitalDisplay,
+        invitedByUserId,
       });
-    } catch {
-      // Best-effort — still show success so staff can contact admin
+      setLoading(false);
+      setDone(true);
+    } catch (err: unknown) {
+      setLoading(false);
+      const msg = (err instanceof Error ? err.message : '') || '';
+      if (msg.toLowerCase().includes('already registered') || msg.includes('409')) {
+        setErrors({ email: 'This email is already registered. Use a different email or contact your admin.' });
+      } else {
+        // For other errors still show the success screen — they can contact admin
+        setDone(true);
+      }
     }
-    setLoading(false);
-    setDone(true);
   }
 
   if (done) {

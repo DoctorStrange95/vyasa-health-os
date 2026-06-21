@@ -165,7 +165,7 @@ function TodayClinicWidget() {
 
 export default function DashboardPage() {
   const { user } = useAuthStore();
-  const { patients, alerts, queue, setQueue, vitals, appointments, bills, openQuickRxModal, updateAppointment, showToast, refreshAppointments, upsertPatient } = useAppStore();
+  const { patients, alerts, queue, setQueue, vitals, visits, appointments, bills, openQuickRxModal, updateAppointment, showToast, refreshAppointments, upsertPatient } = useAppStore();
   const navigate = useNavigate();
 
   // One-click: confirm (if pending booking) + check in + open consult
@@ -220,7 +220,15 @@ export default function DashboardPage() {
     navigate(consultPath);
   }, [queue, setQueue, updateAppointment, showToast, navigate, user, refreshAppointments, upsertPatient]);
 
-  const myPatients = patients.filter(p => p.attendingDoctorId === user?.id);
+  const myPatients = patients
+    .filter(p => p.attendingDoctorId === user?.id)
+    .sort((a, b) => {
+      const aDate = (visits[a.id] ?? [])[0]?.date ?? '';
+      const bDate = (visits[b.id] ?? [])[0]?.date ?? '';
+      if (bDate && !aDate) return 1;
+      if (aDate && !bDate) return -1;
+      return bDate.localeCompare(aDate);
+    });
   const ipd = myPatients.filter(p => p.status === 'IPD');
   const critical = myPatients.filter(p => p.priority === 'Critical');
   const unackAlerts = alerts.filter(a => !a.acknowledged);

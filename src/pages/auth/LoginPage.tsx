@@ -1,20 +1,104 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { Eye, EyeOff, Loader2, UserPlus, CheckCircle2, WifiOff, ShieldCheck, X, Clock, ChevronRight } from 'lucide-react';
+import { Eye, EyeOff, Loader2, UserPlus, CheckCircle2, WifiOff, ShieldCheck, X, Clock, ChevronRight, Building2 } from 'lucide-react';
 import { useGoogleLogin } from '@react-oauth/google';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useAppStore } from '@/store/useAppStore';
+import { trackEvent } from '@/lib/api';
 import { INDIAN_MEDICAL_COUNCILS } from '@/lib/medicalCouncils';
 import type { Role } from '@/types';
 
-const SPECIALTIES = [
-  'General Medicine', 'Internal Medicine', 'Cardiology', 'Pulmonology',
-  'Neurology', 'Neurosurgery', 'Orthopaedics', 'General Surgery',
-  'Gastroenterology', 'Nephrology', 'Endocrinology', 'Oncology',
-  'Obstetrics & Gynaecology', 'Paediatrics', 'Neonatology',
-  'Psychiatry', 'Dermatology', 'Ophthalmology', 'ENT',
-  'Radiology', 'Pathology', 'Anaesthesiology', 'Emergency Medicine',
-  'Critical Care', 'Urology', 'Plastic Surgery', 'Vascular Surgery',
+const SPECIALTY_GROUPS: { label: string; options: string[] }[] = [
+  { label: 'Allopathy — General & Internal Medicine', options: [
+    'General Medicine', 'Internal Medicine', 'Family Medicine / General Practice',
+    'Geriatrics', 'Occupational Medicine', 'Aviation Medicine', 'Sports Medicine',
+  ]},
+  { label: 'Allopathy — Cardiology & Chest', options: [
+    'Cardiology', 'Interventional Cardiology', 'Cardiac Electrophysiology',
+    'Cardiothoracic Surgery', 'Pulmonology / Respiratory Medicine',
+    'Sleep Medicine', 'Thoracic Surgery',
+  ]},
+  { label: 'Allopathy — Neurosciences', options: [
+    'Neurology', 'Neurosurgery', 'Neuropsychiatry', 'Epileptology', 'Stroke Medicine',
+  ]},
+  { label: 'Allopathy — Gastroenterology & Liver', options: [
+    'Gastroenterology', 'Hepatology', 'Colorectal Surgery', 'Surgical Gastroenterology',
+  ]},
+  { label: 'Allopathy — Kidneys & Urology', options: [
+    'Nephrology', 'Urology', 'Andrology', 'Renal Transplant Surgery',
+  ]},
+  { label: 'Allopathy — Oncology', options: [
+    'Medical Oncology', 'Surgical Oncology', 'Radiation Oncology',
+    'Haematology & BMT', 'Gynaecological Oncology', 'Paediatric Oncology',
+  ]},
+  { label: 'Allopathy — Endocrine & Metabolism', options: [
+    'Endocrinology & Diabetes', 'Obesity & Metabolic Medicine', 'Thyroid Surgery',
+  ]},
+  { label: 'Allopathy — Musculoskeletal', options: [
+    'Orthopaedics & Traumatology', 'Arthroscopy & Sports Medicine', 'Spine Surgery',
+    'Rheumatology', 'Physical Medicine & Rehabilitation', 'Hand Surgery',
+  ]},
+  { label: 'Allopathy — Obstetrics, Gynaecology & Reproductive Medicine', options: [
+    'Obstetrics & Gynaecology', 'Maternal-Fetal Medicine', 'Reproductive Medicine & IVF',
+    'Urogynaecology', 'Laparoscopic Gynaecology',
+  ]},
+  { label: 'Allopathy — Paediatrics & Neonatology', options: [
+    'Paediatrics', 'Neonatology', 'Paediatric Surgery', 'Paediatric Neurology',
+    'Paediatric Cardiology', 'Paediatric Haematology-Oncology', 'Developmental Paediatrics',
+  ]},
+  { label: 'Allopathy — Surgery', options: [
+    'General Surgery', 'Laparoscopic & Minimally Invasive Surgery', 'Vascular Surgery',
+    'Plastic & Reconstructive Surgery', 'Burns & Wound Care', 'Transplant Surgery',
+    'Trauma Surgery', 'Bariatric Surgery',
+  ]},
+  { label: 'Allopathy — Critical Care & Emergency', options: [
+    'Critical Care Medicine', 'Emergency Medicine', 'Anaesthesiology',
+    'Pain Management', 'Palliative Care & Hospice',
+  ]},
+  { label: 'Allopathy — Skin, Eye & ENT', options: [
+    'Dermatology', 'Dermatosurgery', 'Venereology & STD',
+    'Ophthalmology', 'Vitreoretinal Surgery',
+    'ENT (Otorhinolaryngology)', 'Head & Neck Surgery',
+  ]},
+  { label: 'Allopathy — Mental Health', options: [
+    'Psychiatry', 'Addiction Medicine', 'Child & Adolescent Psychiatry', 'Liaison Psychiatry',
+  ]},
+  { label: 'Allopathy — Diagnostics & Support', options: [
+    'Radiology & Imaging', 'Interventional Radiology', 'Nuclear Medicine',
+    'Pathology & Lab Medicine', 'Transfusion Medicine', 'Microbiology',
+    'Biochemistry', 'Forensic Medicine', 'Community Medicine / Public Health',
+  ]},
+  { label: 'Allopathy — Other Specialties', options: [
+    'Immunology & Allergy', 'Infectious Diseases & HIV Medicine', 'Haematology',
+    'Transplant Medicine', 'Hyperbaric Medicine',
+  ]},
+  { label: 'AYUSH', options: [
+    'Ayurveda', 'Yoga & Naturopathy', 'Unani', 'Siddha', 'Homeopathy',
+    'Panchakarma (Ayurveda)', 'Ksharasutra (Ayurvedic Surgery)',
+  ]},
+  { label: 'Dental', options: [
+    'General Dentistry', 'Orthodontics & Dentofacial Orthopaedics',
+    'Oral & Maxillofacial Surgery', 'Paediatric Dentistry', 'Periodontology',
+    'Endodontics', 'Prosthodontics & Implantology',
+    'Oral Medicine & Radiology', 'Oral Pathology & Microbiology',
+    'Public Health Dentistry', 'Cosmetic Dentistry',
+  ]},
+  { label: 'Nursing', options: [
+    'General Nursing & Midwifery', 'Critical Care Nursing', 'Paediatric Nursing',
+    'Psychiatric & Mental Health Nursing', 'Community Health Nursing',
+    'Oncology Nursing', 'Neonatal Nursing', 'Cardiac Care Nursing',
+    'Nurse Practitioner / Advanced Practice Nursing',
+  ]},
+  { label: 'Allied Health & Paramedical', options: [
+    'Physiotherapy & Rehabilitation', 'Occupational Therapy',
+    'Speech & Language Therapy', 'Dietetics & Clinical Nutrition',
+    'Clinical Psychology', 'Medical Social Work', 'Audiology & Hearing Sciences',
+    'Optometry & Vision Science', 'Pharmacy / Clinical Pharmacology',
+    'Medical Laboratory Technology', 'Radiography & Imaging Technology',
+    'Operation Theatre Technology', 'Perfusion Technology',
+    'Cardiac Technology', 'Respiratory Therapy',
+    'Prosthetics & Orthotics', 'Health Information Management',
+  ]},
 ];
 
 const STATES = [
@@ -61,6 +145,54 @@ function roleLabel(role: Role, specialty?: string) {
   return role;
 }
 
+function GSpecialtyCombobox({ value, onChange, error }: { value: string; onChange: (v: string) => void; error?: string }) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) { setOpen(false); setQuery(''); }
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const allOptions = SPECIALTY_GROUPS.flatMap(g => g.options);
+  const filtered = query.trim()
+    ? allOptions.filter(s => s.toLowerCase().includes(query.toLowerCase()))
+    : allOptions;
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <input
+        type="text"
+        autoComplete="off"
+        value={open ? query : value}
+        placeholder={value || 'Type to search specialty…'}
+        onFocus={() => { setOpen(true); setQuery(''); }}
+        onChange={e => { setQuery(e.target.value); onChange(''); }}
+        style={{ width: '100%', border: `1.5px solid ${error ? '#f87171' : '#e2e8f0'}`, borderRadius: 11, padding: '11px 14px', fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
+      />
+      {open && (
+        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200, background: 'white', border: '1.5px solid #e2e8f0', borderRadius: 10, boxShadow: '0 8px 28px rgba(0,0,0,0.13)', maxHeight: 240, overflowY: 'auto', marginTop: 4 }}>
+          {filtered.length === 0
+            ? <div style={{ padding: '12px 14px', fontSize: 13, color: '#94a3b8' }}>No matches</div>
+            : filtered.map(s => (
+              <div key={s}
+                onMouseDown={e => { e.preventDefault(); onChange(s); setOpen(false); setQuery(''); }}
+                style={{ padding: '9px 14px', fontSize: 13, cursor: 'pointer', color: '#1e293b', background: s === value ? '#f0fdfa' : 'white' }}
+                onMouseOver={e => (e.currentTarget.style.background = '#f0fdfa')}
+                onMouseOut={e => (e.currentTarget.style.background = s === value ? '#f0fdfa' : 'white')}
+              >{s}</div>
+            ))
+          }
+        </div>
+      )}
+    </div>
+  );
+}
+
 function GField({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
   return (
     <div>
@@ -86,7 +218,7 @@ export default function LoginPage() {
   const [showEmailForm, setShowEmailForm] = useState(false);
 
   const [googleNewUser, setGoogleNewUser] = useState<{ email: string; name: string } | null>(null);
-  const [gRegForm, setGRegForm] = useState({ name: '', specialty: '', degrees: '', phone: '', medicalCouncil: '', licenseNumber: '', registrationState: '', city: '', practiceState: '', hospital: '' });
+  const [gRegForm, setGRegForm] = useState({ name: '', specialty: '', degrees: '', phone: '', medicalCouncil: '', otherCouncil: '', licenseNumber: '', registrationState: '', city: '', practiceState: '', hospital: '' });
   const [gRegErrors, setGRegErrors] = useState<Record<string, string>>({});
 
   const { login, loginWithGoogle, completeGoogleRegister, loginAsDemo, recentAccount } = useAuthStore();
@@ -98,6 +230,10 @@ export default function LoginPage() {
   const [quickLoginMode, setQuickLoginMode] = useState(false);
 
   const showQuickLogin = !!recentAccount && !ignoreRecent && portal === 'staff';
+
+  useEffect(() => {
+    trackEvent('login_page_view');
+  }, []);
 
   useEffect(() => {
     if (!navigator.geolocation) return;
@@ -123,11 +259,13 @@ export default function LoginPage() {
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setError(''); setSlowStart(false); setLoading(true);
+    trackEvent('login_attempt', { method: 'email', email: username });
     const wakeTimer = setTimeout(() => setSlowStart(true), 6000);
     try {
       await login(username, password, geoPos ?? undefined);
       afterLogin();
     } catch (err) {
+      trackEvent('login_failed', { method: 'email', email: username, reason: err instanceof Error ? err.message : 'unknown' });
       setError(err instanceof Error ? err.message : 'backend');
     } finally {
       clearTimeout(wakeTimer); setSlowStart(false); setLoading(false);
@@ -136,6 +274,7 @@ export default function LoginPage() {
 
   async function handleGoogleAccessToken(accessToken: string) {
     setGoogleLoading(true); setError('');
+    trackEvent('login_attempt', { method: 'google' });
     const tryLogin = async () => loginWithGoogle(accessToken, geoPos ?? undefined);
     try {
       let result;
@@ -150,8 +289,10 @@ export default function LoginPage() {
       if (result.isNewUser) {
         setGoogleNewUser({ email: result.googleEmail, name: result.googleName });
         setGRegForm(f => ({ ...f, name: result.googleName }));
+        trackEvent('login_attempt', { method: 'google', email: result.googleEmail, status: 'new_user' });
       } else { afterLogin(); }
     } catch (err) {
+      trackEvent('login_failed', { method: 'google', reason: err instanceof Error ? err.message : 'unknown' });
       setError(err instanceof Error ? err.message : 'backend');
     } finally { setGoogleLoading(false); }
   }
@@ -163,6 +304,7 @@ export default function LoginPage() {
     if (!gRegForm.degrees.trim()) e.degrees = 'Required';
     if (!gRegForm.phone || gRegForm.phone.replace(/\D/g, '').length < 10) e.phone = 'Enter a valid 10-digit number';
     if (!gRegForm.medicalCouncil) e.medicalCouncil = 'Required';
+    if (gRegForm.medicalCouncil === 'other' && !gRegForm.otherCouncil.trim()) e.otherCouncil = 'Please specify your council';
     if (!gRegForm.registrationState) e.registrationState = 'Required';
     if (!gRegForm.licenseNumber.trim()) e.licenseNumber = 'Required';
     return e;
@@ -183,7 +325,7 @@ export default function LoginPage() {
         specialty: gRegForm.specialty,
         degrees: gRegForm.degrees,
         phone: gRegForm.phone,
-        medicalCouncil: gRegForm.medicalCouncil,
+        medicalCouncil: gRegForm.medicalCouncil === 'other' ? gRegForm.otherCouncil : gRegForm.medicalCouncil,
         licenseNumber: gRegForm.licenseNumber,
         regState: gRegForm.registrationState,
         city: gRegForm.city,
@@ -514,18 +656,24 @@ export default function LoginPage() {
           </div>
 
           {/* Create account card */}
-          <div style={{ marginTop: 14, background: 'white', borderRadius: 16, padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, boxShadow: '0 2px 12px rgba(15,32,64,0.07)' }}>
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: '#0f2040' }}>New to Vyasa?</div>
-              <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>Register as a doctor or hospital</div>
+          <div style={{ marginTop: 14, background: 'white', borderRadius: 16, padding: '16px 20px', boxShadow: '0 2px 12px rgba(15,32,64,0.07)' }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: '#0f2040', marginBottom: 10 }}>New to Vyasa?</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Link to="/register"
+                style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#f1f5f9', border: '1.5px solid #e2e8f0', borderRadius: 11, padding: '9px 12px', fontSize: 12, fontWeight: 700, color: '#0f2040', textDecoration: 'none', transition: 'all 0.2s' }}
+                onMouseOver={e => { (e.currentTarget as HTMLAnchorElement).style.borderColor = '#0d9488'; (e.currentTarget as HTMLAnchorElement).style.color = '#0d9488'; }}
+                onMouseOut={e => { (e.currentTarget as HTMLAnchorElement).style.borderColor = '#e2e8f0'; (e.currentTarget as HTMLAnchorElement).style.color = '#0f2040'; }}>
+                <UserPlus style={{ width: 14, height: 14 }} />
+                Solo Doctor
+              </Link>
+              <Link to="/org-register"
+                style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#f0fdfa', border: '1.5px solid #99f6e4', borderRadius: 11, padding: '9px 12px', fontSize: 12, fontWeight: 700, color: '#0f766e', textDecoration: 'none', transition: 'all 0.2s' }}
+                onMouseOver={e => { (e.currentTarget as HTMLAnchorElement).style.borderColor = '#0d9488'; (e.currentTarget as HTMLAnchorElement).style.background = '#ccfbf1'; }}
+                onMouseOut={e => { (e.currentTarget as HTMLAnchorElement).style.borderColor = '#99f6e4'; (e.currentTarget as HTMLAnchorElement).style.background = '#f0fdfa'; }}>
+                <Building2 style={{ width: 14, height: 14 }} />
+                Clinic / Hospital
+              </Link>
             </div>
-            <Link to="/register"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: '#f1f5f9', border: '1.5px solid #e2e8f0', borderRadius: 11, padding: '9px 16px', fontSize: 13, fontWeight: 700, color: '#0f2040', textDecoration: 'none', whiteSpace: 'nowrap', transition: 'all 0.2s' }}
-              onMouseOver={e => { (e.currentTarget as HTMLAnchorElement).style.borderColor = '#0d9488'; (e.currentTarget as HTMLAnchorElement).style.color = '#0d9488'; }}
-              onMouseOut={e => { (e.currentTarget as HTMLAnchorElement).style.borderColor = '#e2e8f0'; (e.currentTarget as HTMLAnchorElement).style.color = '#0f2040'; }}>
-              <UserPlus style={{ width: 15, height: 15 }} />
-              Create Account
-            </Link>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 18, padding: '14px 16px', background: '#f0fdf4', border: '1.5px solid #dcfce7', borderRadius: 11 }}>
@@ -592,11 +740,7 @@ export default function LoginPage() {
                 <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '1px' }}>Professional Details</div>
 
                 <GField label="Specialty *" error={gRegErrors.specialty}>
-                  <select value={gRegForm.specialty} onChange={e => gSet('specialty', e.target.value)}
-                    style={{ width: '100%', border: `1.5px solid ${gRegErrors.specialty ? '#f87171' : '#e2e8f0'}`, borderRadius: 11, padding: '11px 14px', fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box', background: 'white' }}>
-                    <option value="">Select specialty…</option>
-                    {SPECIALTIES.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
+                  <GSpecialtyCombobox value={gRegForm.specialty} onChange={v => gSet('specialty', v)} error={gRegErrors.specialty} />
                 </GField>
 
                 <GField label="Degrees / Qualifications *" error={gRegErrors.degrees}>
@@ -613,8 +757,16 @@ export default function LoginPage() {
                   </select>
                 </GField>
 
+                {gRegForm.medicalCouncil === 'other' && (
+                  <GField label="Specify Council Name *" error={gRegErrors.otherCouncil}>
+                    <input type="text" value={gRegForm.otherCouncil} onChange={e => gSet('otherCouncil', e.target.value)}
+                      style={{ width: '100%', border: `1.5px solid ${gRegErrors.otherCouncil ? '#f87171' : '#e2e8f0'}`, borderRadius: 11, padding: '11px 14px', fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
+                      placeholder="Enter your council or board name" />
+                  </GField>
+                )}
+
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  <GField label="NMC / MCI Registration Number *" error={gRegErrors.licenseNumber}>
+                  <GField label="Council Registration Number *" error={gRegErrors.licenseNumber}>
                     <input type="text" inputMode="text" value={gRegForm.licenseNumber} onChange={e => gSet('licenseNumber', e.target.value)}
                       style={{ width: '100%', border: `1.5px solid ${gRegErrors.licenseNumber ? '#f87171' : '#e2e8f0'}`, borderRadius: 11, padding: '11px 14px', fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
                       placeholder="e.g. MH-12345 or 123456" />

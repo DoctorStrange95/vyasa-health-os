@@ -160,6 +160,7 @@ export interface LabOrder {
   refRange?: string;
   critical?: boolean;
   resultTime?: string;
+  reportDataUrl?: string;
 }
 
 // ─── Notes ───────────────────────────────────────────────────────────────────

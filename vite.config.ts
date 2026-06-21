@@ -9,7 +9,7 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
-      registerType: 'prompt',        // we handle the update prompt ourselves
+      registerType: 'autoUpdate',    // immediately activate new SW so stale chunk hashes never crash iOS
       injectRegister: 'auto',
       includeAssets: ['logo.svg', 'favicon.svg', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'],
       manifest: {
@@ -44,6 +44,8 @@ export default defineConfig({
         ],
       },
       workbox: {
+        skipWaiting: true,            // activate new SW immediately on install
+        clientsClaim: true,           // take control of existing tabs immediately
         // SPA fallback: any navigation request not matching a precached file
         // gets served index.html so React Router handles it client-side
         navigateFallback: '/index.html',

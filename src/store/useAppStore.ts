@@ -42,6 +42,7 @@ interface AppState {
   addPrescription: (rx: Medication) => void;
   setLabOrders: (patientId: string, labs: LabOrder[]) => void;
   addLabOrder: (lab: LabOrder) => void;
+  updateLabResult: (id: string, patientId: string, patch: Partial<Pick<LabOrder, 'result' | 'unit' | 'refRange' | 'critical' | 'resultTime' | 'reportDataUrl' | 'status'>>) => void;
   setNursingNotes: (patientId: string, notes: NursingNote[]) => void;
   addNursingNote: (note: NursingNote) => void;
   setChatMessages: (patientId: string, msgs: ChatMessage[]) => void;
@@ -62,6 +63,7 @@ interface AppState {
   showToast: (msg: string, type?: Toast['type']) => void;
   removeToast: (id: string) => void;
   addVisit: (v: VisitRecord) => void;
+  setPatientVisits: (patientId: string, visitList: VisitRecord[]) => void;
   updateVisit: (id: string, patch: Partial<VisitRecord>) => void;
   addAppointment: (a: AppointmentEntry) => void;
   updateAppointment: (id: string, patch: Partial<AppointmentEntry>) => void;
@@ -251,9 +253,31 @@ export const useAppStore = create<AppState>()(
     });
   },
   setLabOrders: (pid, labs) => set(s => ({ labOrders: { ...s.labOrders, [pid]: labs } })),
-  addLabOrder: (lab) => set(s => ({
-    labOrders: { ...s.labOrders, [lab.patientId]: [lab, ...(s.labOrders[lab.patientId] || [])] }
-  })),
+  addLabOrder: (lab) => {
+    set(s => ({ labOrders: { ...s.labOrders, [lab.patientId]: [lab, ...(s.labOrders[lab.patientId] || [])] } }));
+    import('@/lib/api').then(({ isApiEnabled, api }) => {
+      if (isApiEnabled()) api.post('/labs', lab).catch((e: unknown) => console.warn('[labs sync]', e));
+    });
+  },
+  updateLabResult: (id, patientId, patch) => {
+    set(s => ({
+      labOrders: {
+        ...s.labOrders,
+        [patientId]: (s.labOrders[patientId] || []).map(l => l.id === id ? { ...l, ...patch } : l),
+      },
+    }));
+    import('@/lib/api').then(({ isApiEnabled, api }) => {
+      if (isApiEnabled()) api.patch(`/labs/${id}/result`, {
+        result: patch.result,
+        unit: patch.unit,
+        refRange: patch.refRange,
+        critical: patch.critical,
+        resultTime: patch.resultTime,
+        reportDataUrl: patch.reportDataUrl,
+        status: patch.status ?? 'resulted',
+      }).catch((e: unknown) => console.warn('[labs result sync]', e));
+    });
+  },
   setNursingNotes: (pid, notes) => set(s => ({ nursingNotes: { ...s.nursingNotes, [pid]: notes } })),
   addNursingNote: (note) => set(s => ({
     nursingNotes: { ...s.nursingNotes, [note.patientId]: [note, ...(s.nursingNotes[note.patientId] || [])] }
@@ -351,6 +375,9 @@ export const useAppStore = create<AppState>()(
       set({ appointments: [...apts, ...bookingApts] });
     } catch { /* silently ignore — stale data is acceptable */ }
   },
+  setPatientVisits: (patientId, visitList) =>
+    set(s => ({ visits: { ...s.visits, [patientId]: visitList } })),
+
   addVisit: (v) => {
     set(s => ({
       visits: { ...s.visits, [v.patientId]: [v, ...(s.visits[v.patientId] ?? [])] },
