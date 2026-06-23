@@ -3,7 +3,7 @@ import {
   Users, UserCheck, Clock, ShieldCheck, Search, RefreshCw,
   Loader2, CheckCircle2, XCircle, CalendarClock, Activity, ClipboardList, X, Trash2,
   Stethoscope, TrendingUp, CalendarCheck, BarChart2, ChevronDown, ChevronRight,
-  Mail, Send, Eye, Plus, Edit2, FileText,
+  Mail, Send, Eye, Plus, Edit2, FileText, Ban, Building2,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -93,9 +93,26 @@ const ROLE_LABELS: Record<string, string> = {
   patient: 'Patient',
 };
 
+interface ClinicMember {
+  id: number; name: string; email: string; specialty: string | null;
+  member_role: string; user_role: string; approval_status: string;
+  login_count: number; last_login: string | null;
+}
+interface ClinicOverview {
+  id: string; org_name: string; type: string | null; city: string | null; created_at: string;
+  owner_id: number | null; owner_name: string | null; owner_email: string | null;
+  owner_specialty: string | null; owner_status: string | null;
+  members: ClinicMember[]; counts: Record<string, number>; staff_total: number;
+}
+
 type Filter = 'pending' | 'all' | 'approved' | 'rejected';
-type MainTab = 'users' | 'doctors' | 'templates' | 'activity';
+type MainTab = 'users' | 'doctors' | 'staff' | 'templates' | 'activity';
 type DoctorFilter = 'all' | 'active' | 'inactive' | 'dormant';
+
+// Clinic / polyclinic staff & invitees — everyone who is NOT a solo doctor,
+// superadmin, or patient. These users join via invite links and may log in
+// while still pending, so they are shown in their own tab to avoid confusion.
+const STAFF_ROLES = ['doctor', 'nurse', 'pharmacist', 'labtech', 'lab_technician', 'admin', 'billing', 'receptionist'];
 
 interface RecentLogin {
   id: number; name: string; email: string; specialty: string | null;
@@ -883,6 +900,10 @@ export default function SuperAdminPage() {
   const [loading, setLoading] = useState(true);
   const [doctorsLoading, setDoctorsLoading] = useState(false);
   const [doctorsError, setDoctorsError] = useState(false);
+  const [clinics, setClinics] = useState<ClinicOverview[]>([]);
+  const [clinicsLoading, setClinicsLoading] = useState(false);
+  const [clinicsLoaded, setClinicsLoaded] = useState(false);
+  const [expandedClinic, setExpandedClinic] = useState<string | null>(null);
   const [mainTab, setMainTab] = useState<MainTab>('users');
   const [filter, setFilter] = useState<Filter>('pending');
   const [search, setSearch] = useState('');
@@ -966,13 +987,29 @@ export default function SuperAdminPage() {
     finally { setDoctorsLoading(false); }
   }, []);
 
+  const loadClinics = useCallback(async () => {
+    setClinicsLoading(true);
+    try {
+      const data = await api.get<ClinicOverview[]>('/admin/clinics-overview');
+      setClinics(Array.isArray(data) ? data : []);
+      setClinicsLoaded(true);
+    } catch {
+      setClinics([]);
+      setClinicsLoaded(true);
+    }
+    finally { setClinicsLoading(false); }
+  }, []);
+
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
     if (mainTab === 'doctors' && doctors.length === 0 && !doctorsLoading) {
       loadDoctors();
     }
-  }, [mainTab, doctors.length, doctorsLoading, loadDoctors]);
+    if (mainTab === 'staff' && !clinicsLoaded && !clinicsLoading) {
+      loadClinics();
+    }
+  }, [mainTab, doctors.length, doctorsLoading, loadDoctors, clinicsLoaded, clinicsLoading, loadClinics]);
 
   async function approve(id: number) {
     setActing(id);
@@ -998,6 +1035,25 @@ export default function SuperAdminPage() {
       setUsers(prev => prev.map(u => u.id === id ? { ...u, approval_status: 'rejected', rejection_reason: reason } : u));
     } catch (e) { alert(e instanceof Error ? e.message : 'Failed'); }
     finally { setActing(null); setRejectModal(null); }
+  }
+
+  async function blockUser(id: number, name: string) {
+    if (!confirm(`Block ${name}? They will be unable to log in until you unblock them.`)) return;
+    setActing(id);
+    try {
+      await api.post(`/admin/users/${id}/block`, {});
+      setUsers(prev => prev.map(u => u.id === id ? { ...u, approval_status: 'suspended' } : u));
+    } catch (e) { alert(e instanceof Error ? e.message : 'Failed to block'); }
+    finally { setActing(null); }
+  }
+
+  async function unblockUser(id: number) {
+    setActing(id);
+    try {
+      await api.post(`/admin/users/${id}/unblock`, {});
+      setUsers(prev => prev.map(u => u.id === id ? { ...u, approval_status: 'approved' } : u));
+    } catch (e) { alert(e instanceof Error ? e.message : 'Failed to unblock'); }
+    finally { setActing(null); }
   }
 
   async function deleteDoctor(id: number) {
@@ -1049,7 +1105,20 @@ export default function SuperAdminPage() {
     openEmail(inactiveDocs[0]);
   }
 
-  const filteredDoctors = doctors.filter(d => {
+  // Demo / test accounts are kept out of the real doctor stats.
+  const isDemo = (u: { email?: string | null; name?: string | null }) =>
+    /@(vyasa\.health|vyasa\.demo|example\.com|test\.com)$/i.test(u.email ?? '') ||
+    /\bdemo\b|\btest\b/i.test(u.name ?? '');
+
+  // Real, approved solo doctors only (demo excluded)
+  const realDoctors = doctors.filter(d => !isDemo(d));
+  const realDoctorsCount = realDoctors.length;
+  const demoDoctorsCount = doctors.length - realDoctorsCount;
+
+  // Clinic / polyclinic staff & invitees (doctor, nurse, pharmacist, etc.)
+  const staffUsers = users.filter(u => STAFF_ROLES.includes(u.role) && !isDemo(u));
+
+  const filteredDoctors = realDoctors.filter(d => {
     const matchActivity = (() => {
       if (doctorFilter === 'all') return true;
       const days = daysSince(d.last_login);
@@ -1065,7 +1134,7 @@ export default function SuperAdminPage() {
       .some(v => v?.toLowerCase().includes(q));
   });
 
-  const inactiveCount = doctors.filter(d => d.login_count === 0 || daysSince(d.last_login) > 30).length;
+  const inactiveCount = realDoctors.filter(d => d.login_count === 0 || daysSince(d.last_login) > 30).length;
 
   const pendingCount = users.filter(u => u.approval_status === 'pending').length;
 
@@ -1105,7 +1174,7 @@ export default function SuperAdminPage() {
           <p className="text-sm text-slate-500 mt-1">Approvals, users, and platform activity</p>
         </div>
         <button
-          onClick={() => { load(); if (mainTab === 'doctors') loadDoctors(); }}
+          onClick={() => { load(); if (mainTab === 'doctors') loadDoctors(); if (mainTab === 'staff') loadClinics(); }}
           className="p-2 rounded-lg hover:bg-slate-100 text-slate-500"
           title="Refresh"
         >
@@ -1149,8 +1218,18 @@ export default function SuperAdminPage() {
               mainTab === 'doctors' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700')}
           >
             <BarChart2 className="w-4 h-4" /> Doctor Stats
-            {doctors.length > 0 && (
-              <span className="bg-teal-500 text-white text-xs font-bold rounded-full px-1.5 py-0.5">{doctors.length}</span>
+            {realDoctorsCount > 0 && (
+              <span className="bg-teal-500 text-white text-xs font-bold rounded-full px-1.5 py-0.5">{realDoctorsCount}</span>
+            )}
+          </button>
+          <button
+            onClick={() => setMainTab('staff')}
+            className={cn('py-2 px-5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2',
+              mainTab === 'staff' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700')}
+          >
+            <Stethoscope className="w-4 h-4" /> Clinic Staff
+            {staffUsers.length > 0 && (
+              <span className="bg-indigo-500 text-white text-xs font-bold rounded-full px-1.5 py-0.5">{staffUsers.length}</span>
             )}
           </button>
           <button
@@ -1268,6 +1347,19 @@ export default function SuperAdminPage() {
                           Delete
                         </button>
                       )}
+                      {u.approval_status === 'suspended' ? (
+                        <button onClick={() => unblockUser(u.id)} disabled={acting === u.id}
+                          className="flex items-center justify-center gap-1.5 bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 text-sm font-bold rounded-lg px-4 py-2 disabled:opacity-50 flex-1 sm:flex-none">
+                          {acting === u.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+                          Unblock
+                        </button>
+                      ) : (
+                        <button onClick={() => blockUser(u.id, u.name)} disabled={acting === u.id}
+                          className="flex items-center justify-center gap-1.5 bg-white border border-amber-300 text-amber-700 hover:bg-amber-50 text-sm font-bold rounded-lg px-4 py-2 disabled:opacity-50 flex-1 sm:flex-none">
+                          {acting === u.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ban className="w-4 h-4" />}
+                          Block
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1334,6 +1426,10 @@ export default function SuperAdminPage() {
             )}
           </div>
 
+          {demoDoctorsCount > 0 && (
+            <p className="text-xs text-slate-400 -mt-1">Showing real doctors only · {demoDoctorsCount} demo/test account{demoDoctorsCount !== 1 ? 's' : ''} hidden</p>
+          )}
+
           {doctorsLoading ? (
             <div className="flex flex-col items-center justify-center py-16 gap-3">
               <Loader2 className="w-7 h-7 animate-spin text-teal-500" />
@@ -1366,6 +1462,130 @@ export default function SuperAdminPage() {
               ))}
             </div>
           )}
+        </>
+      )}
+
+      {/* ── CLINIC STAFF (grouped by clinic) TAB ── */}
+      {mainTab === 'staff' && (
+        <>
+          {(() => {
+            const roleCount = (c: ClinicOverview, ...keys: string[]) =>
+              keys.reduce((s, k) => s + (c.counts?.[k] ?? 0), 0);
+            const totalDoctors = clinics.reduce((s, c) => s + roleCount(c, 'doctor'), 0);
+            const totalNurses = clinics.reduce((s, c) => s + roleCount(c, 'nurse'), 0);
+            const totalLab = clinics.reduce((s, c) => s + roleCount(c, 'labtech', 'lab_technician'), 0);
+            const totalPharm = clinics.reduce((s, c) => s + roleCount(c, 'pharmacist'), 0);
+            return (
+              <>
+                {clinics.length > 0 && (
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                    {[
+                      { label: 'Clinics', value: clinics.length, color: 'text-indigo-600', bg: 'bg-indigo-50' },
+                      { label: 'Doctors', value: totalDoctors, color: 'text-teal-600', bg: 'bg-teal-50' },
+                      { label: 'Nurses', value: totalNurses, color: 'text-rose-600', bg: 'bg-rose-50' },
+                      { label: 'Lab Techs', value: totalLab, color: 'text-violet-600', bg: 'bg-violet-50' },
+                      { label: 'Pharmacists', value: totalPharm, color: 'text-amber-600', bg: 'bg-amber-50' },
+                    ].map(c => (
+                      <div key={c.label} className={cn('card p-4 text-center border-0', c.bg)}>
+                        <div className={cn('text-2xl font-bold', c.color)}>{c.value}</div>
+                        <div className="text-xs font-semibold text-slate-500 mt-0.5">{c.label}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {clinicsLoading ? (
+                  <div className="flex flex-col items-center justify-center py-16 gap-3">
+                    <Loader2 className="w-7 h-7 animate-spin text-indigo-500" />
+                    <p className="text-sm text-slate-400">Loading clinics…</p>
+                  </div>
+                ) : clinics.length === 0 ? (
+                  <div className="card p-12 text-center text-slate-400">
+                    <Building2 className="w-10 h-10 mx-auto mb-3 text-slate-300" />
+                    <p className="font-semibold text-slate-500">No clinics or polyclinics registered yet</p>
+                    <p className="text-sm mt-1">Clinics that register and add staff will appear here, grouped by clinic.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {clinics.map(org => {
+                      const isOpen = expandedClinic === org.id;
+                      const chips = [
+                        { label: 'Doctors', n: roleCount(org, 'doctor'), cls: 'text-teal-700 bg-teal-50 border-teal-100' },
+                        { label: 'Nurses', n: roleCount(org, 'nurse'), cls: 'text-rose-700 bg-rose-50 border-rose-100' },
+                        { label: 'Lab', n: roleCount(org, 'labtech', 'lab_technician'), cls: 'text-violet-700 bg-violet-50 border-violet-100' },
+                        { label: 'Pharmacist', n: roleCount(org, 'pharmacist'), cls: 'text-amber-700 bg-amber-50 border-amber-100' },
+                      ].filter(c => c.n > 0);
+                      return (
+                        <div key={org.id} className="card overflow-hidden">
+                          <div className="flex items-start gap-4 p-4 sm:p-5 cursor-pointer hover:bg-slate-50/60 transition-colors"
+                            onClick={() => setExpandedClinic(isOpen ? null : org.id)}>
+                            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-700 flex items-center justify-center text-white flex-shrink-0">
+                              <Building2 className="w-5 h-5" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-bold text-slate-900">{org.org_name}</span>
+                                {org.type && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 uppercase tracking-wide">{org.type}</span>}
+                                {org.city && <span className="text-xs text-slate-400">{org.city}</span>}
+                              </div>
+                              {org.owner_name && (
+                                <div className="flex items-center gap-1.5 mt-1 text-sm text-slate-600">
+                                  <ShieldCheck className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" />
+                                  Owner: <span className="font-semibold text-slate-800">{org.owner_name}</span>
+                                  {org.owner_specialty && <span className="text-slate-400 text-xs">· {org.owner_specialty}</span>}
+                                </div>
+                              )}
+                              <div className="flex items-center gap-2 mt-2.5 flex-wrap">
+                                {chips.length > 0 ? chips.map(c => (
+                                  <span key={c.label} className={cn('text-xs font-semibold rounded-full px-2.5 py-1 border', c.cls)}>
+                                    {c.n} {c.label}{c.n !== 1 && c.label !== 'Pharmacist' ? '' : ''}
+                                  </span>
+                                )) : <span className="text-xs text-slate-400">No staff added yet</span>}
+                                <span className="text-xs text-slate-400 ml-auto flex items-center gap-1"><CalendarClock className="w-3 h-3" /> {fmtDate(org.created_at)}</span>
+                              </div>
+                            </div>
+                            <div className="flex-shrink-0 text-slate-400">{isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</div>
+                          </div>
+
+                          {isOpen && (
+                            <div className="border-t border-slate-100 bg-slate-50/40 px-5 py-3">
+                              <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">{org.members.length} Staff Member{org.members.length !== 1 ? 's' : ''}</div>
+                              {org.members.length === 0 ? (
+                                <div className="text-xs text-slate-400 py-2">No staff members linked to this clinic yet.</div>
+                              ) : (
+                                <div className="space-y-2">
+                                  {org.members.map(m => (
+                                    <div key={`${org.id}-${m.id}`} className="flex items-center gap-3 bg-white rounded-xl border border-slate-100 px-4 py-2.5">
+                                      <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-600 font-bold text-xs flex-shrink-0">
+                                        {(m.name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <div className="font-semibold text-sm text-slate-800">{m.name}</div>
+                                        <div className="text-xs text-slate-400 truncate">{m.email}{m.specialty ? ` · ${m.specialty}` : ''}</div>
+                                      </div>
+                                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 uppercase flex-shrink-0">{ROLE_LABELS[m.member_role] ?? m.member_role}</span>
+                                      <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full border capitalize flex-shrink-0', STATUS_STYLE[m.approval_status] ?? STATUS_STYLE.pending)}>{m.approval_status}</span>
+                                      {m.approval_status === 'suspended' ? (
+                                        <button onClick={() => unblockUser(m.id)} disabled={acting === m.id}
+                                          className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 flex-shrink-0">Unblock</button>
+                                      ) : (
+                                        <button onClick={() => blockUser(m.id, m.name)} disabled={acting === m.id}
+                                          className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-white border border-amber-300 text-amber-700 hover:bg-amber-50 disabled:opacity-50 flex-shrink-0">Block</button>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </>
       )}
 
