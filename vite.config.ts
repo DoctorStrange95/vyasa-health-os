@@ -51,17 +51,26 @@ export default defineConfig({
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//, /^\/auth\//],
         globPatterns: ['**/*.{js,css,html,svg,woff2}'],
+        cleanupOutdatedCaches: true,
         runtimeCaching: [
           {
-            // Backend API — network-first with 10s timeout, fallback to cache
-            urlPattern: ({ url }) => url.pathname.startsWith('/api/') || url.hostname.includes('render.com'),
+            // Backend API — network-only for auth, network-first for everything else
+            // Never cache auth endpoints or failure responses (status 0)
+            urlPattern: ({ url }) =>
+              (url.pathname.startsWith('/api/') || url.hostname.includes('render.com')) &&
+              !url.pathname.includes('/auth/'),
             handler: 'NetworkFirst',
             options: {
               cacheName: 'api-cache',
               networkTimeoutSeconds: 10,
-              expiration: { maxEntries: 50, maxAgeSeconds: 60 * 60 * 24 }, // 1 day
-              cacheableResponse: { statuses: [0, 200] },
+              expiration: { maxEntries: 50, maxAgeSeconds: 60 * 60 * 24 },
+              cacheableResponse: { statuses: [200] },
             },
+          },
+          {
+            // Auth endpoints — always go to network, never cache
+            urlPattern: ({ url }) => url.pathname.includes('/auth/') && url.hostname.includes('render.com'),
+            handler: 'NetworkOnly',
           },
           {
             // Google Fonts + CDN assets
