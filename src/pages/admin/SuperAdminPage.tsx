@@ -1217,7 +1217,7 @@ export default function SuperAdminPage() {
             className={cn('py-2 px-5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2',
               mainTab === 'doctors' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700')}
           >
-            <BarChart2 className="w-4 h-4" /> Doctor Stats
+            <BarChart2 className="w-4 h-4" /> Solo Profiles
             {realDoctorsCount > 0 && (
               <span className="bg-teal-500 text-white text-xs font-bold rounded-full px-1.5 py-0.5">{realDoctorsCount}</span>
             )}
@@ -1373,12 +1373,12 @@ export default function SuperAdminPage() {
       {mainTab === 'doctors' && (
         <>
           {/* Summary bar */}
-          {doctors.length > 0 && (
+          {realDoctors.length > 0 && (
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
               {[
-                { label: 'Approved Doctors', value: doctors.length, color: 'text-teal-600', bg: 'bg-teal-50' },
-                { label: 'Total Bookings', value: doctors.reduce((s, d) => s + Number(d.total_bookings), 0), color: 'text-violet-600', bg: 'bg-violet-50' },
-                { label: 'Total Consults', value: doctors.reduce((s, d) => s + Number(d.total_visits), 0), color: 'text-emerald-600', bg: 'bg-emerald-50' },
+                { label: 'Solo Doctors', value: realDoctorsCount, color: 'text-teal-600', bg: 'bg-teal-50' },
+                { label: 'Total Bookings', value: realDoctors.reduce((s, d) => s + Number(d.total_bookings), 0), color: 'text-violet-600', bg: 'bg-violet-50' },
+                { label: 'Total Consults', value: realDoctors.reduce((s, d) => s + Number(d.total_visits), 0), color: 'text-emerald-600', bg: 'bg-emerald-50' },
                 { label: 'Inactive / Dormant', value: inactiveCount, color: 'text-amber-600', bg: 'bg-amber-50' },
                 { label: 'Emails Sent', value: emailLogs.length, color: 'text-rose-600', bg: 'bg-rose-50' },
               ].map(c => (
@@ -1433,7 +1433,7 @@ export default function SuperAdminPage() {
           {doctorsLoading ? (
             <div className="flex flex-col items-center justify-center py-16 gap-3">
               <Loader2 className="w-7 h-7 animate-spin text-teal-500" />
-              <p className="text-sm text-slate-400">Loading doctor stats… (backend may be waking up)</p>
+              <p className="text-sm text-slate-400">Loading solo profiles… (backend may be waking up)</p>
             </div>
           ) : doctorsError ? (
             <div className="card p-12 text-center">
@@ -1447,11 +1447,11 @@ export default function SuperAdminPage() {
             <div className="card p-12 text-center text-slate-400">
               <Stethoscope className="w-10 h-10 mx-auto mb-3 text-slate-300" />
               <p className="font-semibold text-slate-500">
-                {doctorFilter === 'all' ? 'No approved doctors found' : `No ${doctorFilter} doctors`}
+                {doctorFilter === 'all' ? 'No solo profiles found' : `No ${doctorFilter} solo doctors`}
               </p>
               <p className="text-sm mt-1">
                 {doctorFilter === 'all'
-                  ? 'Approve doctors from the Users tab to see their stats here'
+                  ? 'Approve solo doctors from the Users tab to see them here'
                   : 'Try a different activity filter'}
               </p>
             </div>
