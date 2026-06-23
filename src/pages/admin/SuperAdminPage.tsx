@@ -1106,9 +1106,14 @@ export default function SuperAdminPage() {
   }
 
   // Demo / test accounts are kept out of the real doctor stats.
-  const isDemo = (u: { email?: string | null; name?: string | null }) =>
-    /@(vyasa\.health|vyasa\.demo|example\.com|test\.com)$/i.test(u.email ?? '') ||
-    /\bdemo\b|\btest\b/i.test(u.name ?? '');
+  // Catches seeded demos like "ananya-sharma.demo@vyasaa.com" (.demo@ in local
+  // part), demo@…, and the demo/test domains, plus any name containing demo/test.
+  const isDemo = (u: { email?: string | null; name?: string | null }) => {
+    const email = (u.email ?? '').toLowerCase();
+    return /\.demo@|(^|[._+-])demo@|@(vyasa\.health|vyasa\.demo|example\.com|test\.com)$/.test(email)
+      || email.includes('.demo@') || email.includes('demo@vyasaa')
+      || /\bdemo\b|\btest\b/i.test(u.name ?? '');
+  };
 
   // Real, approved solo doctors only (demo excluded)
   const realDoctors = doctors.filter(d => !isDemo(d));
