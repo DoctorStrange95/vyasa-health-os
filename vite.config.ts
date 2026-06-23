@@ -51,16 +51,19 @@ export default defineConfig({
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//, /^\/auth\//],
         globPatterns: ['**/*.{js,css,html,svg,woff2}'],
+        cleanupOutdatedCaches: true,   // drop caches from previous SW versions
         runtimeCaching: [
           {
-            // Backend API — network-first with 10s timeout, fallback to cache
+            // Backend API — fresh cache name (v3) abandons the previously
+            // poisoned 'api-cache'. Only cache successful (200) responses so a
+            // failed/empty response can never be served back as stale data.
             urlPattern: ({ url }) => url.pathname.startsWith('/api/') || url.hostname.includes('render.com'),
             handler: 'NetworkFirst',
             options: {
-              cacheName: 'api-cache',
+              cacheName: 'api-cache-v3',
               networkTimeoutSeconds: 10,
               expiration: { maxEntries: 50, maxAgeSeconds: 60 * 60 * 24 }, // 1 day
-              cacheableResponse: { statuses: [0, 200] },
+              cacheableResponse: { statuses: [200] },
             },
           },
           {
