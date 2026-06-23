@@ -13,6 +13,7 @@ interface AdminUser {
   id: number; name: string; email: string; role: string;
   specialty: string | null; degrees: string | null; phone: string | null;
   reg_number: string | null; license_number: string | null;
+  medical_council: string | null; reg_state: string | null;
   state: string | null; city: string | null; profile_slug: string | null;
   approval_status: 'pending' | 'approved' | 'rejected' | 'suspended';
   rejection_reason: string | null;
@@ -60,12 +61,25 @@ interface EmailLog {
   sent_at: string;
 }
 
+interface LoginAttempt {
+  email: string | null; method: string; status: string | null; created_at: string;
+}
+
 const CUSTOM_TPL_KEY = 'vyasa_custom_email_templates';
 function loadCustomTemplates(): CustomTemplate[] {
   try { return JSON.parse(localStorage.getItem(CUSTOM_TPL_KEY) ?? '[]'); } catch { return []; }
 }
 function persistCustomTemplates(tpls: CustomTemplate[]) {
   localStorage.setItem(CUSTOM_TPL_KEY, JSON.stringify(tpls));
+}
+
+const BUILTIN_OVERRIDE_KEY = 'vyasa_builtin_tpl_overrides';
+type BuiltinOverrides = Record<string, { subject: string; body: string }>;
+function loadBuiltinOverrides(): BuiltinOverrides {
+  try { return JSON.parse(localStorage.getItem(BUILTIN_OVERRIDE_KEY) ?? '{}'); } catch { return {}; }
+}
+function persistBuiltinOverrides(o: BuiltinOverrides) {
+  localStorage.setItem(BUILTIN_OVERRIDE_KEY, JSON.stringify(o));
 }
 
 function fmtDateTime(iso: string | null) {
@@ -94,8 +108,21 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 type Filter = 'pending' | 'all' | 'approved' | 'rejected';
-type MainTab = 'users' | 'doctors' | 'templates' | 'activity';
+type MainTab = 'users' | 'doctors' | 'clinics' | 'templates' | 'activity';
 type DoctorFilter = 'all' | 'active' | 'inactive' | 'dormant';
+
+interface ClinicMember {
+  id: number; name: string; email: string; specialty: string | null;
+  member_role: string; user_role: string;
+  login_count: number; last_login: string | null;
+}
+interface ClinicOrgOverview {
+  id: string; org_name: string; city: string | null; type: string | null; created_at: string;
+  owner_id: number; owner_name: string; owner_email: string;
+  owner_specialty: string | null; owner_phone: string | null; owner_status: string;
+  staff_count: number; doctor_count: number; patient_count: number; total_billed: number;
+  members: ClinicMember[];
+}
 
 interface RecentLogin {
   id: number; name: string; email: string; specialty: string | null;
@@ -140,6 +167,7 @@ interface EmailModal {
   templateKey: string;
   subject: string;
   body: string;
+  bcc: string;
   preview: boolean;
   sending: boolean;
   sent: boolean;
@@ -148,6 +176,8 @@ interface EmailModal {
 function buildEmail(templateKey: string, doc: DoctorOverview): { subject: string; body: string } {
   const tpl = EMAIL_TEMPLATES[templateKey as keyof typeof EMAIL_TEMPLATES];
   if (!tpl) return { subject: '', body: '' };
+  const overrides = loadBuiltinOverrides();
+  const override = overrides[templateKey];
   const vars: Record<string, string> = {
     doctorName: doc.name,
     subject: tpl.subject,
@@ -155,8 +185,8 @@ function buildEmail(templateKey: string, doc: DoctorOverview): { subject: string
     profileSlug: doc.profile_slug ?? '',
     rejectionReason: '',
   };
-  let subject = tpl.subject;
-  let body = tpl.body;
+  let subject = override?.subject ?? tpl.subject;
+  let body = override?.body ?? tpl.body;
   Object.entries(vars).forEach(([k, v]) => {
     subject = subject.replace(new RegExp(`\\{${k}\\}`, 'g'), v);
     body = body.replace(new RegExp(`\\{${k}\\}`, 'g'), v);
@@ -192,7 +222,7 @@ function EmailComposeModal({
   async function doSend() {
     setState(s => ({ ...s, sending: true }));
     try {
-      await sendDirectEmail(state.doc.email, state.subject, state.body);
+      await sendDirectEmail(state.doc.email, state.subject, state.body, state.bcc.trim() || undefined);
       setState(s => ({ ...s, sending: false, sent: true }));
       onSent?.({
         recipient_id: state.doc.id,
@@ -276,6 +306,20 @@ function EmailComposeModal({
               onChange={e => setState(s => ({ ...s, subject: e.target.value }))}
               className="input w-full text-sm"
               placeholder="Email subject…"
+            />
+          </div>
+
+          {/* BCC — optional, for team copy */}
+          <div>
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5 block">
+              BCC <span className="font-normal text-slate-400 normal-case">(optional — add team email to copy internally)</span>
+            </label>
+            <input
+              value={state.bcc}
+              onChange={e => setState(s => ({ ...s, bcc: e.target.value }))}
+              className="input w-full text-sm"
+              placeholder="e.g. team@vyasaa.com, nilanjan@vyasaa.com"
+              type="email"
             />
           </div>
 
@@ -535,6 +579,7 @@ function ActivityTab() {
   const [geo, setGeo] = useState<GeoSummary[]>([]);
   const [funnel, setFunnel] = useState<FunnelData | null>(null);
   const [failedLogins, setFailedLogins] = useState<FailedLogin[]>([]);
+  const [loginAttempts, setLoginAttempts] = useState<LoginAttempt[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<'logins' | 'geo' | 'funnel'>('funnel');
 
@@ -544,7 +589,8 @@ function ActivityTab() {
       api.get<GeoSummary[]>('/admin/geo-summary'),
       api.get<FunnelData>('/admin/funnel'),
       api.get<FailedLogin[]>('/admin/failed-logins'),
-    ]).then(([l, g, f, fl]) => { setLogins(l); setGeo(g); setFunnel(f); setFailedLogins(fl); }).catch(() => {}).finally(() => setLoading(false));
+      api.get<LoginAttempt[]>('/admin/login-attempts'),
+    ]).then(([l, g, f, fl, la]) => { setLogins(l); setGeo(g); setFunnel(f); setFailedLogins(fl); setLoginAttempts(la); }).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
   function deviceLabel(ua: string | null) {
@@ -630,6 +676,41 @@ function ActivityTab() {
                 <div className="text-[10px] text-slate-400 mt-0.5">Page view → success</div>
               </div>
             </div>
+
+            {/* All login attempts with captured emails */}
+            {loginAttempts.length > 0 && (
+              <div>
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                  <Activity className="w-3.5 h-3.5 text-teal-500" /> All Login Attempts — Who Tried ({loginAttempts.length})
+                </h3>
+                <div className="card overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-100">
+                        <th className="text-left px-4 py-2.5 text-xs font-bold text-slate-500 uppercase tracking-wider">Email</th>
+                        <th className="text-left px-4 py-2.5 text-xs font-bold text-slate-500 uppercase tracking-wider">Method</th>
+                        <th className="text-left px-4 py-2.5 text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
+                        <th className="text-right px-4 py-2.5 text-xs font-bold text-slate-500 uppercase tracking-wider">When</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {loginAttempts.map((a, i) => (
+                        <tr key={i} className="hover:bg-teal-50/20">
+                          <td className="px-4 py-2.5 font-semibold text-slate-800">{a.email || <span className="text-slate-400 font-normal italic">Google (pre-auth)</span>}</td>
+                          <td className="px-4 py-2.5 text-slate-500 capitalize">{a.method}</td>
+                          <td className="px-4 py-2.5 text-xs">
+                            {a.status === 'new_user'
+                              ? <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">New User</span>
+                              : <span className="bg-teal-50 text-teal-700 px-2 py-0.5 rounded-full font-semibold">Returning</span>}
+                          </td>
+                          <td className="px-4 py-2.5 text-right text-xs text-slate-400">{fmtDateTime(a.created_at)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
 
             {/* Failed logins with emails */}
             {failedLogins.length > 0 && (
@@ -752,14 +833,18 @@ const BUILTIN_TEMPLATE_META = [
 ];
 
 function TemplatesTab({
-  customTemplates, onSave, onDelete,
+  customTemplates, onSave, onDelete, builtinOverrides, onSaveBuiltin, onResetBuiltin,
 }: {
   customTemplates: CustomTemplate[];
   onSave: (t: CustomTemplate) => void;
   onDelete: (id: string) => void;
+  builtinOverrides: BuiltinOverrides;
+  onSaveBuiltin: (key: string, subject: string, body: string) => void;
+  onResetBuiltin: (key: string) => void;
 }) {
   const [editing, setEditing] = useState<CustomTemplate | null>(null);
   const [isNew, setIsNew] = useState(false);
+  const [editingBuiltin, setEditingBuiltin] = useState<{ key: string; label: string; subject: string; body: string } | null>(null);
 
   function startNew() {
     setEditing({ id: crypto.randomUUID(), name: '', subject: '', body: '' });
@@ -773,24 +858,83 @@ function TemplatesTab({
     setEditing(null);
   }
 
+  function startEditBuiltin(key: string, label: string) {
+    const tpl = EMAIL_TEMPLATES[key as keyof typeof EMAIL_TEMPLATES];
+    if (!tpl) return;
+    const override = builtinOverrides[key];
+    setEditingBuiltin({ key, label, subject: override?.subject ?? tpl.subject, body: override?.body ?? tpl.body });
+  }
+  function saveBuiltin() {
+    if (!editingBuiltin) return;
+    onSaveBuiltin(editingBuiltin.key, editingBuiltin.subject, editingBuiltin.body);
+    setEditingBuiltin(null);
+  }
+
   return (
     <div className="space-y-6">
       {/* Built-in */}
       <div>
         <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Built-in Templates</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-          {BUILTIN_TEMPLATE_META.map(t => (
-            <div key={t.key} className="card p-3.5 flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
-                <Mail className="w-4 h-4 text-slate-400" />
-              </div>
-              <div className="min-w-0">
-                <div className="font-semibold text-slate-700 text-sm truncate">{t.label}</div>
-                <div className="text-xs text-slate-400 truncate">{t.desc}</div>
-              </div>
-              <span className="ml-auto flex-shrink-0 text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">BUILT-IN</span>
+
+        {editingBuiltin && (
+          <div className="card p-5 mb-4 border-2 border-blue-200 bg-blue-50/20">
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="font-bold text-slate-800 text-sm">Editing: {editingBuiltin.label}</h4>
+              <button onClick={() => { onResetBuiltin(editingBuiltin.key); setEditingBuiltin(null); }}
+                className="text-xs text-slate-400 hover:text-red-500 cursor-pointer">Reset to default</button>
             </div>
-          ))}
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider block mb-1">Subject</label>
+                <input value={editingBuiltin.subject}
+                  onChange={e => setEditingBuiltin(b => b ? { ...b, subject: e.target.value } : null)}
+                  className="input w-full" placeholder="Subject line — use {'{doctorName}'} to personalise" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider block mb-1">Body</label>
+                <textarea rows={10} value={editingBuiltin.body}
+                  onChange={e => setEditingBuiltin(b => b ? { ...b, body: e.target.value } : null)}
+                  className="input resize-none w-full font-mono text-sm" />
+              </div>
+              <div className="bg-white rounded-xl p-3 text-xs text-slate-500 border border-slate-200">
+                <span className="font-bold text-slate-600">Variables: </span>
+                <code className="bg-slate-100 px-1.5 py-0.5 rounded mx-1">{'{doctorName}'}</code>
+                <code className="bg-slate-100 px-1.5 py-0.5 rounded mx-1">{'{profileSlug}'}</code>
+                <code className="bg-slate-100 px-1.5 py-0.5 rounded mx-1">{'{rejectionReason}'}</code>
+              </div>
+              <div className="flex gap-2 justify-end pt-1">
+                <button onClick={() => setEditingBuiltin(null)} className="btn-secondary btn-sm">Cancel</button>
+                <button onClick={saveBuiltin}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl cursor-pointer">
+                  <CheckCircle2 className="w-4 h-4" /> Save Changes
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+          {BUILTIN_TEMPLATE_META.map(t => {
+            const isCustomised = !!builtinOverrides[t.key];
+            return (
+              <div key={t.key} className="card p-3.5 flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
+                  <Mail className="w-4 h-4 text-slate-400" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="font-semibold text-slate-700 text-sm truncate">{t.label}</div>
+                  <div className="text-xs text-slate-400 truncate">{t.desc}</div>
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  {isCustomised && <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">EDITED</span>}
+                  <button onClick={() => startEditBuiltin(t.key, t.label)}
+                    className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-blue-600 cursor-pointer" title="Edit">
+                    <Edit2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -895,7 +1039,12 @@ export default function SuperAdminPage() {
   const [doctorFilter, setDoctorFilter] = useState<DoctorFilter>('all');
   const [emailsSent, setEmailsSent] = useState(0);
   const [customTemplates, setCustomTemplates] = useState<CustomTemplate[]>(() => loadCustomTemplates());
+  const [builtinOverrides, setBuiltinOverrides] = useState<BuiltinOverrides>(() => loadBuiltinOverrides());
   const [emailLogs, setEmailLogs] = useState<EmailLog[]>([]);
+  const [clinics, setClinics] = useState<ClinicOrgOverview[]>([]);
+  const [clinicsLoading, setClinicsLoading] = useState(false);
+  const [clinicsLoaded, setClinicsLoaded] = useState(false);
+  const [expandedClinic, setExpandedClinic] = useState<string | null>(null);
 
   const loadEmailLogs = useCallback(async () => {
     try {
@@ -934,6 +1083,24 @@ export default function SuperAdminPage() {
     setCustomTemplates(prev => { const updated = prev.filter(x => x.id !== id); persistCustomTemplates(updated); return updated; });
   }
 
+  function saveBuiltinOverride(key: string, subject: string, body: string) {
+    setBuiltinOverrides(prev => {
+      const updated = { ...prev, [key]: { subject, body } };
+      persistBuiltinOverrides(updated);
+      return updated;
+    });
+  }
+
+  function resetBuiltinOverride(key: string) {
+    if (!confirm('Reset this template to the original built-in version?')) return;
+    setBuiltinOverrides(prev => {
+      const updated = { ...prev };
+      delete updated[key];
+      persistBuiltinOverrides(updated);
+      return updated;
+    });
+  }
+
   const load = useCallback(async () => {
     setLoading(true);
     setAccessDenied(false);
@@ -966,13 +1133,26 @@ export default function SuperAdminPage() {
     finally { setDoctorsLoading(false); }
   }, []);
 
+  const loadClinics = useCallback(async () => {
+    setClinicsLoading(true);
+    try {
+      const data = await api.get<ClinicOrgOverview[]>('/admin/clinics-overview');
+      setClinics(data);
+      setClinicsLoaded(true);
+    } catch { /* non-critical */ }
+    finally { setClinicsLoading(false); }
+  }, []);
+
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
     if (mainTab === 'doctors' && doctors.length === 0 && !doctorsLoading) {
       loadDoctors();
     }
-  }, [mainTab, doctors.length, doctorsLoading, loadDoctors]);
+    if (mainTab === 'clinics' && !clinicsLoaded && !clinicsLoading) {
+      loadClinics();
+    }
+  }, [mainTab, doctors.length, doctorsLoading, loadDoctors, clinicsLoaded, clinicsLoading, loadClinics]);
 
   async function approve(id: number) {
     setActing(id);
@@ -1036,7 +1216,7 @@ export default function SuperAdminPage() {
   function openEmail(doc: DoctorOverview) {
     const defaultKey = 'INACTIVE_30_DAYS';
     const { subject, body } = buildEmail(defaultKey, doc);
-    setEmailModal({ doc, templateKey: defaultKey, subject, body, preview: false, sending: false, sent: false });
+    setEmailModal({ doc, templateKey: defaultKey, subject, body, bcc: '', preview: false, sending: false, sent: false });
   }
 
   function emailAllInactive() {
@@ -1105,11 +1285,11 @@ export default function SuperAdminPage() {
           <p className="text-sm text-slate-500 mt-1">Approvals, users, and platform activity</p>
         </div>
         <button
-          onClick={() => { load(); if (mainTab === 'doctors') loadDoctors(); }}
+          onClick={() => { load(); if (mainTab === 'doctors') loadDoctors(); if (mainTab === 'clinics') loadClinics(); }}
           className="p-2 rounded-lg hover:bg-slate-100 text-slate-500"
           title="Refresh"
         >
-          <RefreshCw className={cn('w-4 h-4', (loading || doctorsLoading) && 'animate-spin')} />
+          <RefreshCw className={cn('w-4 h-4', (loading || doctorsLoading || clinicsLoading) && 'animate-spin')} />
         </button>
       </div>
 
@@ -1151,6 +1331,16 @@ export default function SuperAdminPage() {
             <BarChart2 className="w-4 h-4" /> Doctor Stats
             {doctors.length > 0 && (
               <span className="bg-teal-500 text-white text-xs font-bold rounded-full px-1.5 py-0.5">{doctors.length}</span>
+            )}
+          </button>
+          <button
+            onClick={() => setMainTab('clinics')}
+            className={cn('py-2 px-5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2',
+              mainTab === 'clinics' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700')}
+          >
+            <Stethoscope className="w-4 h-4" /> Clinics
+            {clinics.length > 0 && (
+              <span className="bg-teal-600 text-white text-xs font-bold rounded-full px-1.5 py-0.5">{clinics.length}</span>
             )}
           </button>
           <button
@@ -1226,13 +1416,15 @@ export default function SuperAdminPage() {
                       </div>
                       <div className="text-sm text-slate-600 mt-1">{u.email}</div>
                       {u.phone && <div className="text-sm text-teal-600 font-semibold mt-0.5">📱 {u.phone}</div>}
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1 mt-2 text-xs text-slate-600">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1.5 mt-2 text-xs text-slate-600">
                         {u.specialty && <div><span className="text-slate-400">Specialty:</span> <span className="font-semibold">{u.specialty}</span></div>}
-                        {(u.license_number || u.reg_number) && (
-                          <div><span className="text-slate-400">MCI / License:</span> <span className="font-bold text-slate-800">{u.license_number || u.reg_number}</span></div>
-                        )}
-                        {(u.city || u.state) && <div><span className="text-slate-400">Location:</span> <span className="font-semibold">{[u.city, u.state].filter(Boolean).join(', ')}</span></div>}
                         {u.degrees && <div><span className="text-slate-400">Degrees:</span> <span className="font-semibold">{u.degrees}</span></div>}
+                        {(u.city || u.state) && <div><span className="text-slate-400">Practice Location:</span> <span className="font-semibold">{[u.city, u.state].filter(Boolean).join(', ')}</span></div>}
+                        {u.medical_council && <div><span className="text-slate-400">Council:</span> <span className="font-semibold text-indigo-700">{u.medical_council}</span></div>}
+                        {(u.license_number || u.reg_number) && (
+                          <div><span className="text-slate-400">Council Reg. No:</span> <span className="font-bold text-slate-800">{u.license_number || u.reg_number}</span></div>
+                        )}
+                        {u.reg_state && <div><span className="text-slate-400">Council State:</span> <span className="font-semibold">{u.reg_state}</span></div>}
                       </div>
                       {u.approval_status === 'rejected' && u.rejection_reason && (
                         <div className="text-xs text-red-500 mt-1.5">Reason: {u.rejection_reason}</div>
@@ -1369,6 +1561,155 @@ export default function SuperAdminPage() {
         </>
       )}
 
+      {/* ── CLINICS & POLYCLINICS TAB ── */}
+      {mainTab === 'clinics' && (
+        <>
+          {/* Summary stats */}
+          {clinics.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { label: 'Total Clinics / Polyclinics', value: clinics.length, color: 'text-teal-600', bg: 'bg-teal-50' },
+                { label: 'Clinic Doctors', value: clinics.reduce((s, c) => s + c.doctor_count, 0), color: 'text-blue-600', bg: 'bg-blue-50' },
+                { label: 'Total Clinic Patients', value: clinics.reduce((s, c) => s + Number(c.patient_count), 0), color: 'text-violet-600', bg: 'bg-violet-50' },
+                { label: 'Total Billed', value: `₹${clinics.reduce((s, c) => s + Number(c.total_billed), 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+              ].map(c => (
+                <div key={c.label} className={cn('card p-4 text-center border-0', c.bg)}>
+                  <div className={cn('text-2xl font-bold', c.color)}>{c.value}</div>
+                  <div className="text-xs font-semibold text-slate-500 mt-0.5">{c.label}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {clinicsLoading ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-3">
+              <Loader2 className="w-7 h-7 animate-spin text-teal-500" />
+              <p className="text-sm text-slate-400">Loading clinic data…</p>
+            </div>
+          ) : clinics.length === 0 ? (
+            <div className="card p-12 text-center text-slate-400">
+              <Stethoscope className="w-10 h-10 mx-auto mb-3 text-slate-300" />
+              <p className="font-semibold text-slate-500">No clinics or polyclinics registered yet</p>
+              <p className="text-sm mt-1">Clinics that register via the /org-register flow will appear here</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {clinics.map(org => {
+                const isExpanded = expandedClinic === org.id;
+                const doctors = org.members.filter(m => m.member_role === 'doctor');
+                const otherStaff = org.members.filter(m => m.member_role !== 'doctor' && m.member_role !== 'clinic_owner');
+                return (
+                  <div key={org.id} className="card overflow-hidden">
+                    {/* Header row */}
+                    <div
+                      className="flex items-start gap-4 p-4 sm:p-5 cursor-pointer hover:bg-slate-50/60 transition-colors"
+                      onClick={() => setExpandedClinic(isExpanded ? null : org.id)}
+                    >
+                      {/* Org avatar */}
+                      <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-teal-500 to-teal-700 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                        {org.org_name.slice(0, 2).toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-bold text-slate-900">{org.org_name}</span>
+                          {org.type && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200 uppercase tracking-wide">
+                              {org.type}
+                            </span>
+                          )}
+                          {org.city && <span className="text-xs text-slate-400">{org.city}</span>}
+                        </div>
+                        {/* Owner line */}
+                        <div className="flex items-center gap-1.5 mt-1 text-sm text-slate-600">
+                          <ShieldCheck className="w-3.5 h-3.5 text-teal-500 flex-shrink-0" />
+                          <span>Owner: <span className="font-semibold text-slate-800">{org.owner_name}</span></span>
+                          {org.owner_specialty && <span className="text-slate-400 text-xs">· {org.owner_specialty}</span>}
+                        </div>
+                        <div className="text-xs text-slate-400 mt-0.5">{org.owner_email}</div>
+                        {/* Quick stats chips */}
+                        <div className="flex items-center gap-3 mt-2.5 flex-wrap">
+                          <span className="flex items-center gap-1 text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-full px-2.5 py-1 font-semibold">
+                            <Users className="w-3 h-3" /> {org.doctor_count} doctor{org.doctor_count !== 1 ? 's' : ''}
+                          </span>
+                          <span className="flex items-center gap-1 text-xs text-violet-700 bg-violet-50 border border-violet-100 rounded-full px-2.5 py-1 font-semibold">
+                            <Stethoscope className="w-3 h-3" /> {Number(org.patient_count)} patient{Number(org.patient_count) !== 1 ? 's' : ''}
+                          </span>
+                          <span className="flex items-center gap-1 text-xs text-slate-500 bg-slate-100 rounded-full px-2.5 py-1 font-semibold">
+                            {org.staff_count} staff total
+                          </span>
+                          {Number(org.total_billed) > 0 && (
+                            <span className="flex items-center gap-1 text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-full px-2.5 py-1 font-semibold">
+                              ₹{Number(org.total_billed).toLocaleString('en-IN', { maximumFractionDigits: 0 })} billed
+                            </span>
+                          )}
+                          <span className="text-[11px] text-slate-400 ml-auto flex items-center gap-1">
+                            <CalendarClock className="w-3 h-3" /> Registered {fmtDate(org.created_at)}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex-shrink-0 text-slate-400">
+                        {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                      </div>
+                    </div>
+
+                    {/* Expanded: doctor list + other staff */}
+                    {isExpanded && (
+                      <div className="border-t border-slate-100 bg-slate-50/40">
+                        {doctors.length > 0 && (
+                          <div className="px-5 py-3">
+                            <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Doctors under this clinic</div>
+                            <div className="space-y-2">
+                              {doctors.map(m => (
+                                <div key={m.id} className="flex items-center gap-3 bg-white rounded-xl border border-slate-100 px-4 py-2.5">
+                                  <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-700 font-bold text-xs flex-shrink-0">
+                                    {m.name.slice(0, 2).toUpperCase()}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="font-semibold text-sm text-slate-800">{m.name}</div>
+                                    <div className="text-xs text-slate-400">
+                                      {m.email}
+                                      {m.specialty ? ` · ${m.specialty}` : ''}
+                                    </div>
+                                  </div>
+                                  <div className="text-right flex-shrink-0">
+                                    <div className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 uppercase">
+                                      {m.member_role}
+                                    </div>
+                                    <div className={cn('text-[10px] mt-0.5', m.login_count > 0 ? 'text-emerald-500' : 'text-slate-300')}>
+                                      {m.login_count > 0 ? `${m.login_count} logins` : 'Never logged in'}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {otherStaff.length > 0 && (
+                          <div className="px-5 pb-3">
+                            <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Other Staff</div>
+                            <div className="flex flex-wrap gap-2">
+                              {otherStaff.map(m => (
+                                <div key={m.id} className="flex items-center gap-2 bg-white rounded-lg border border-slate-100 px-3 py-1.5">
+                                  <span className="text-sm font-medium text-slate-700">{m.name}</span>
+                                  <span className="text-[10px] font-bold text-slate-400 bg-slate-100 rounded-full px-1.5 py-0.5 uppercase">{m.member_role}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {org.members.length === 0 && (
+                          <div className="px-5 py-4 text-xs text-slate-400">No staff members added yet</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+
       {/* Reject modal */}
       {rejectModal && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
@@ -1399,6 +1740,9 @@ export default function SuperAdminPage() {
           customTemplates={customTemplates}
           onSave={saveTemplate}
           onDelete={deleteTemplate}
+          builtinOverrides={builtinOverrides}
+          onSaveBuiltin={saveBuiltinOverride}
+          onResetBuiltin={resetBuiltinOverride}
         />
       )}
 
