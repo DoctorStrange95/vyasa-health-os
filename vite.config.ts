@@ -54,17 +54,11 @@ export default defineConfig({
         cleanupOutdatedCaches: true,   // drop caches from previous SW versions
         runtimeCaching: [
           {
-            // Backend API — fresh cache name (v3) abandons the previously
-            // poisoned 'api-cache'. Only cache successful (200) responses so a
-            // failed/empty response can never be served back as stale data.
+            // Backend API — NEVER cached. Every call goes straight to the
+            // network so the SW can never serve stale or empty medical data.
+            // (Previous NetworkFirst caching poisoned an empty doctors list.)
             urlPattern: ({ url }) => url.pathname.startsWith('/api/') || url.hostname.includes('render.com'),
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'api-cache-v3',
-              networkTimeoutSeconds: 10,
-              expiration: { maxEntries: 50, maxAgeSeconds: 60 * 60 * 24 }, // 1 day
-              cacheableResponse: { statuses: [200] },
-            },
+            handler: 'NetworkOnly',
           },
           {
             // Google Fonts + CDN assets
