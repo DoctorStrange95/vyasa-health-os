@@ -88,9 +88,13 @@ export function emitChatMessage(patientId: string, message: string) {
   //    reload returns this same id → de-duped, never doubled. Surface failures.
   import('./api').then(({ api, isApiEnabled }) => {
     if (!isApiEnabled()) return;
-    api.post('/chat', { id, patientId, message }).catch((e: unknown) => {
-      useAppStore.getState().showToast(`Chat not saved: ${e instanceof Error ? e.message : 'network error'}`, 'error');
-    });
+    const body = { id, patientId, message };
+    api.post('/chat', body)
+      // one retry after a short delay — survives a brief backend restart / cold start
+      .catch(() => new Promise(r => setTimeout(r, 1500)).then(() => api.post('/chat', body)))
+      .catch((e: unknown) => {
+        useAppStore.getState().showToast(`Chat not saved: ${e instanceof Error ? e.message : 'network error'}`, 'error');
+      });
   });
   try { connectSocket(); } catch { /* socket is best-effort, never blocks send */ }
 }

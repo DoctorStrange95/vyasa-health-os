@@ -120,6 +120,8 @@ export interface Vitals {
   height?: number;
   gcs?: number;
   sugar?: number;
+  urineOutput?: number;
+  drainOutput?: number;
   notes?: string;
   alert?: boolean;
 }

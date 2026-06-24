@@ -247,7 +247,10 @@ export default function PatientListPage() {
               </div>
               <div className="flex gap-2 mt-3">
                 <Link to={`/app/patients/${p.id}`} className="btn-secondary btn-sm flex-1 justify-center">View</Link>
-                {!isReceptionist && (p.status === 'OPD' || p.status === 'IPD' || p.status === 'Critical') && (
+                {!isReceptionist && (p.status === 'IPD' || p.status === 'Critical') && (
+                  <Link to={`/app/round/${p.id}`} className="btn-primary btn-sm flex-1 justify-center">Take Round</Link>
+                )}
+                {!isReceptionist && p.status === 'OPD' && (
                   consultedToday ? (
                     <Link to={`/app/consult/${p.id}`}
                       className="flex-1 inline-flex items-center justify-center gap-1 text-xs bg-amber-50 text-amber-700 border border-amber-200 px-3 py-1.5 rounded-lg font-semibold">
