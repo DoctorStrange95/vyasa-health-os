@@ -40,6 +40,7 @@ export function Topbar({ title, subtitle }: TopbarProps) {
   const [bellOpen, setBellOpen] = useState(false);
   const [requests, setRequests] = useState<BookingRequest[]>([]);
   const [updating, setUpdating] = useState<number | null>(null);
+  const [chatNotifs, setChatNotifs] = useState<Array<{ id: string; patientId: string; senderId: number; senderName: string; message: string; time: string }>>([]);
   const dropRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -89,6 +90,27 @@ export function Topbar({ title, subtitle }: TopbarProps) {
     return () => clearInterval(t);
   }, [loadRequests]);
 
+  // Care-team chat notifications: messages from OTHERS, newer than last-seen.
+  const loadChatNotifs = useCallback(async () => {
+    if (isDemo || !user) return;
+    try {
+      const rows = await api.get<Array<{ id: string; patientId: string; senderId: number; senderName: string; message: string; time: string }>>('/chat/recent');
+      const seen = Number(localStorage.getItem('vyasa_chat_seen') || 0);
+      setChatNotifs(rows.filter(m => m.senderId !== user.id && new Date(m.time).getTime() > seen));
+    } catch { /* noop */ }
+  }, [isDemo, user]);
+
+  useEffect(() => {
+    loadChatNotifs();
+    const t = setInterval(loadChatNotifs, 20000);
+    return () => clearInterval(t);
+  }, [loadChatNotifs]);
+
+  function markChatSeen() {
+    localStorage.setItem('vyasa_chat_seen', String(Date.now()));
+    setChatNotifs([]);
+  }
+
   // Close dropdown on outside click
   useEffect(() => {
     if (!bellOpen) return;
@@ -111,7 +133,7 @@ export function Topbar({ title, subtitle }: TopbarProps) {
   }
 
   const pendingCount = requests.length;
-  const totalBadge = unack + pendingCount;
+  const totalBadge = unack + pendingCount + chatNotifs.length;
 
   return (
     <header className="h-14 md:h-16 bg-white border-b border-slate-200 flex items-center gap-3 px-3 md:px-5 flex-shrink-0">
@@ -226,7 +248,7 @@ export function Topbar({ title, subtitle }: TopbarProps) {
         {/* Notification bell with dropdown */}
         <div className="relative" ref={dropRef}>
           <button
-            onClick={() => { setBellOpen(o => !o); if (!bellOpen) loadRequests(); }}
+            onClick={() => { const opening = !bellOpen; setBellOpen(opening); if (opening) { loadRequests(); loadChatNotifs(); localStorage.setItem('vyasa_chat_seen', String(Date.now())); } }}
             className="relative p-2 rounded-lg hover:bg-slate-100 transition-colors text-slate-500"
           >
             <Bell className="w-5 h-5" />
@@ -253,12 +275,32 @@ export function Topbar({ title, subtitle }: TopbarProps) {
               </div>
 
               <div className="max-h-96 overflow-y-auto">
-                {pendingCount === 0 ? (
+                {/* Care-team chat notifications (nurse ↔ doctor) */}
+                {chatNotifs.length > 0 && (
+                  <div className="border-b border-slate-100">
+                    <div className="px-4 py-2 text-[11px] font-bold uppercase tracking-wide text-teal-600 bg-teal-50/50">Care Team Chat</div>
+                    {chatNotifs.slice(0, 8).map(n => {
+                      const pname = patients.find(p => p.id === n.patientId)?.name || 'Patient';
+                      return (
+                        <Link key={n.id} to={`/app/patients/${n.patientId}?tab=chat`}
+                          onClick={() => { setBellOpen(false); markChatSeen(); }}
+                          className="block px-4 py-3 border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-semibold text-slate-900">{n.senderName} <span className="text-xs font-normal text-slate-400">· {pname}</span></span>
+                            <span className="text-[10px] text-slate-400 flex-shrink-0">{new Date(n.time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
+                          </div>
+                          <div className="text-xs text-slate-600 truncate mt-0.5">{n.message}</div>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+                {pendingCount === 0 && chatNotifs.length === 0 ? (
                   <div className="text-center py-10 text-slate-400 text-sm">
                     <Bell className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                    No pending requests
+                    No notifications
                   </div>
-                ) : (
+                ) : pendingCount === 0 ? null : (
                   requests.map(r => (
                     <div key={r.id} className="px-4 py-3 border-b border-slate-50 hover:bg-slate-50 transition-colors">
                       <div className="flex items-start justify-between gap-2 mb-1">
