@@ -1,5 +1,5 @@
 import { useParams, Link, useSearchParams } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Activity, Pill, FlaskConical, MessageSquare, ClipboardList, FileText, Info, Send, Plus, AlertTriangle, Printer, History, Syringe, Scissors, Camera, Skull, Calendar, MoreVertical, Upload, CheckCircle2, AlertCircle, Eye } from 'lucide-react';
 import { useAppStore, uid, nowIso } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -1443,6 +1443,32 @@ function LabsTab({ labs, patientId, doctorName, onAdd, onUpdateResult, showToast
 
 // ─── Tab: Notes ───────────────────────────────────────────────────────────────
 
+function NoteComposer({ patientId }: { patientId: string }) {
+  const [text, setText] = useState('');
+  const [sent, setSent] = useState(false);
+  function add() {
+    if (!text.trim()) return;
+    emitChatMessage(patientId, `📝 ${text.trim()}`);
+    setText('');
+    setSent(true);
+    setTimeout(() => setSent(false), 2500);
+  }
+  return (
+    <div className="card p-4">
+      <h4 className="font-semibold text-slate-700 text-sm flex items-center gap-2 mb-2">
+        <ClipboardList className="w-4 h-4 text-teal-500" /> Add Nursing Note
+      </h4>
+      <textarea value={text} onChange={e => setText(e.target.value)} rows={3}
+        className="input resize-none"
+        placeholder="Patient resting comfortably, vitals stable, took oral feeds, no fresh complaints…" />
+      <div className="flex items-center justify-end gap-2 mt-2">
+        {sent && <span className="text-xs text-emerald-600 font-medium">Sent to care team ✓</span>}
+        <button onClick={add} disabled={!text.trim()} className="btn-primary btn-sm">Add Note</button>
+      </div>
+    </div>
+  );
+}
+
 function NotesTab({ notes, patientId, nursePhotos, onAddPhoto, nurseUser }: {
   notes: any[];
   patientId: string;
@@ -1470,6 +1496,9 @@ function NotesTab({ notes, patientId, nursePhotos, onAddPhoto, nurseUser }: {
 
   return (
     <div className="space-y-4">
+      {/* Add a text nursing note — reaches the whole care team (persists via chat) */}
+      <NoteComposer patientId={patientId} />
+
       {/* Photo upload section */}
       <div className="card p-4">
         <div className="flex items-center justify-between mb-3">
@@ -1517,6 +1546,11 @@ function NotesTab({ notes, patientId, nursePhotos, onAddPhoto, nurseUser }: {
 // ─── Tab: Chat ────────────────────────────────────────────────────────────────
 
 function ChatTab({ messages, currentUser, input, onInputChange, onSend }: { messages: any[]; currentUser: any; input: string; onInputChange: (v: string) => void; onSend: () => void }) {
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+  // WhatsApp style: oldest at top, newest at bottom, auto-scroll to newest.
+  useEffect(() => {
+    if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+  }, [messages]);
   return (
     <div className="flex flex-col h-[500px] card overflow-hidden">
       <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-200 bg-slate-50">
@@ -1524,7 +1558,7 @@ function ChatTab({ messages, currentUser, input, onInputChange, onSend }: { mess
         <span className="font-semibold text-slate-900 text-sm">Care Team Chat</span>
         <span className="badge bg-emerald-100 text-emerald-700 ml-auto">Live</span>
       </div>
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+      <div ref={chatScrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         {messages.map(m => {
           const isMe = m.senderId === currentUser?.id;
           return (
