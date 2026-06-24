@@ -16,8 +16,9 @@ import { RxSection, type RxRow, type RxForm } from '@/components/prescription/Rx
 import { FavDrugsPanel } from '@/components/prescription/FavDrugsPanel';
 import { SpecialtyExamSection, detectSpecialty, specialtyLabel, ALL_SPECIALTY_MODULES, MODULE_META, SPECIALTY_COLORS } from '@/components/prescription/SpecialtyExamSection';
 import type { SpecialtyKey } from '@/components/prescription/SpecialtyExamSection';
-import { cn } from '@/lib/utils';
-import type { VaccineEntry, ProcedureEntry, AttachmentEntry, VisitRecord, LabOrder } from '@/types';
+import { cn, formatDateTime } from '@/lib/utils';
+import { api, isApiEnabled } from '@/lib/api';
+import type { VaccineEntry, ProcedureEntry, AttachmentEntry, VisitRecord, LabOrder, Vitals } from '@/types';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -178,7 +179,7 @@ function Section({ id, title, icon: Icon, filled, children }: {
 export default function ConsultPage() {
   const { patientId } = useParams<{ patientId: string }>();
   const navigate = useNavigate();
-  const { patients, appointments, queue, prescriptions, labOrders, vitals, visits, addPrescription, addVitals, upsertPatient, addVisit, updateVisit, updateAppointment, showToast } = useAppStore();
+  const { patients, appointments, queue, prescriptions, labOrders, vitals, visits, addPrescription, addVitals, upsertPatient, addVisit, updateVisit, updateAppointment, showToast, setVitals } = useAppStore();
   const { user } = useAuthStore();
   const { settings: pad, clinics, recordPrescriptionUsage } = usePadStore();
   const [selectedClinicId, setSelectedClinicId] = useState<string>(clinics[0]?.id ?? '');
@@ -188,6 +189,12 @@ export default function ConsultPage() {
   useEffect(() => {
     if (user?.role === 'nurse') navigate('/app/patients', { replace: true });
   }, [user?.role, navigate]);
+
+  // Load the nurse-recorded vitals so the IPD round trend chart has data.
+  useEffect(() => {
+    if (!patientId || !isApiEnabled()) return;
+    api.get<Vitals[]>(`/vitals/patient/${patientId}`).then(rows => { if (rows.length) setVitals(patientId, rows); }).catch(() => {});
+  }, [patientId]);
 
   const patient = patients.find(p => p.id === patientId);
 
@@ -851,6 +858,53 @@ export default function ConsultPage() {
               </div>
             ))}
           </div>
+
+          {/* IPD Round — nursing vitals trend chart (BP/PR/SpO₂/Temp/RR/Sugar/Urine/Drain over time) */}
+          {(patient?.status === 'IPD' || patient?.status === 'Critical') && (vitals[patientId ?? ''] ?? []).length > 0 && (() => {
+            const rows = (vitals[patientId ?? ''] ?? []).slice(0, 14);
+            const cols: { key: keyof typeof rows[number]; label: string; crit?: (v: typeof rows[number]) => boolean }[] = [
+              { key: 'bp', label: 'BP', crit: v => !!v.bp && (parseInt(v.bp) > 160 || parseInt(v.bp) < 90) },
+              { key: 'pulse', label: 'PR', crit: v => v.pulse != null && (v.pulse > 100 || v.pulse < 50) },
+              { key: 'spo2', label: 'SpO₂', crit: v => v.spo2 != null && v.spo2 < 94 },
+              { key: 'temp', label: 'Temp', crit: v => v.temp != null && v.temp > 100 },
+              { key: 'rr', label: 'RR' },
+              { key: 'sugar', label: 'Sugar', crit: v => v.sugar != null && (v.sugar > 250 || v.sugar < 60) },
+              { key: 'urineOutput', label: 'Urine' },
+              { key: 'drainOutput', label: 'Drain' },
+            ];
+            const active = cols.filter(c => rows.some(v => (v as any)[c.key] != null && (v as any)[c.key] !== ''));
+            return (
+              <div className="mt-4 rounded-xl border border-slate-200 overflow-hidden">
+                <div className="px-3 py-2 bg-teal-50/50 text-xs font-bold text-teal-700 flex items-center gap-1.5">
+                  <Activity className="w-3.5 h-3.5" /> Nursing Vitals Trend (latest first)
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-slate-400 border-b border-slate-100 bg-slate-50/50">
+                        <th className="text-left px-3 py-1.5 font-semibold">Time</th>
+                        {active.map(c => <th key={String(c.key)} className="px-2 py-1.5 text-center font-semibold">{c.label}</th>)}
+                        <th className="text-left px-3 py-1.5 font-semibold">By</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map(v => (
+                        <tr key={v.id} className="border-b border-slate-50">
+                          <td className="px-3 py-1.5 text-slate-500 whitespace-nowrap">{formatDateTime(v.time)}</td>
+                          {active.map(c => {
+                            const val = (v as any)[c.key];
+                            return <td key={String(c.key)} className={cn('px-2 py-1.5 text-center font-semibold', c.crit?.(v) ? 'text-red-600' : 'text-slate-700')}>{val ?? '—'}</td>;
+                          })}
+                          <td className="px-3 py-1.5 text-slate-400 whitespace-nowrap">{v.recordedBy || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* BMI auto-calc */}
           {bmi && (
             <div className="mt-3 flex items-center gap-3 p-2.5 bg-slate-50 rounded-xl border border-slate-200">
