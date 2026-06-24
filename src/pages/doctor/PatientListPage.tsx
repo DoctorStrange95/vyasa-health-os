@@ -248,7 +248,7 @@ export default function PatientListPage() {
               <div className="flex gap-2 mt-3">
                 <Link to={`/app/patients/${p.id}`} className="btn-secondary btn-sm flex-1 justify-center">View</Link>
                 {!isReceptionist && (p.status === 'IPD' || p.status === 'Critical') && (
-                  <Link to={`/app/round/${p.id}`} className="btn-primary btn-sm flex-1 justify-center">Take Round</Link>
+                  <Link to={`/app/consult/${p.id}`} className="btn-primary btn-sm flex-1 justify-center">Take Round</Link>
                 )}
                 {!isReceptionist && p.status === 'OPD' && (
                   consultedToday ? (
@@ -349,7 +349,7 @@ export default function PatientListPage() {
                     <div className="flex items-center gap-1.5 justify-end pr-1">
                       <Link to={`/app/patients/${p.id}`} className="btn-secondary btn-sm">View</Link>
                       {!isReceptionist && (p.status === 'IPD' || p.status === 'Critical') && (
-                        <Link to={`/app/round/${p.id}`} className="btn-primary btn-sm whitespace-nowrap">Take Round</Link>
+                        <Link to={`/app/consult/${p.id}`} className="btn-primary btn-sm whitespace-nowrap">Take Round</Link>
                       )}
                       {!isReceptionist && p.status === 'OPD' && (
                         consultedToday ? (
