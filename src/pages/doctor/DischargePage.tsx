@@ -284,9 +284,16 @@ export default function DischargePage() {
                       <div className="space-y-1.5">
                         {[...selVisits].reverse().map(v => (
                           <div key={v.id} className="text-xs p-2 bg-white rounded-lg border border-slate-100 border-l-2 border-l-indigo-400">
-                            <div className="text-slate-400">{v.date ? formatDate(v.date) : ''}</div>
-                            {v.diagnosis && <div className="font-semibold text-slate-800">Dx: {v.diagnosis}</div>}
-                            {v.chiefComplaint && <div className="text-slate-500">{v.chiefComplaint}</div>}
+                            <div className="text-slate-400 flex justify-between">
+                              <span>{v.date ? new Date(v.date).toLocaleString('en-IN') : ''}</span>
+                              {v.doctorName && <span className="text-indigo-400">{v.doctorName}</span>}
+                            </div>
+                            {v.diagnosis && <div className="font-semibold text-slate-800 mt-1">Dx: {v.diagnosis}</div>}
+                            {v.chiefComplaint && <div className="text-slate-600 mt-0.5"><span className="font-medium text-slate-400">CC:</span> {v.chiefComplaint}</div>}
+                            {v.hopi && <div className="text-slate-600 mt-0.5"><span className="font-medium text-slate-400">History/Notes:</span> {v.hopi}</div>}
+                            {v.investigation && <div className="text-slate-600 mt-0.5"><span className="font-medium text-slate-400">Inv:</span> {v.investigation}</div>}
+                            {v.advice && <div className="text-slate-600 mt-0.5"><span className="font-medium text-slate-400">Advice:</span> {v.advice}</div>}
+                            {v.privateNote && <div className="text-slate-600 mt-0.5"><span className="font-medium text-slate-400">Private Note:</span> {v.privateNote}</div>}
                           </div>
                         ))}
                       </div>

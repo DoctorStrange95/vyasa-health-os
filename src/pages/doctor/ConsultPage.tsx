@@ -316,7 +316,13 @@ export default function ConsultPage() {
     const today = new Date().toISOString().slice(0, 10);
     const todayVisit = (visits[patientId ?? ''] ?? []).find(v => v.date.startsWith(today));
     if (!todayVisit) { setEditVisitId(null); return; }
-    setEditVisitId(todayVisit.id);
+    const p = useAppStore.getState().patients.find(p => p.id === patientId);
+    const isIPDPatient = p?.status === 'IPD' || p?.status === 'Critical';
+    if (!isIPDPatient) {
+      setEditVisitId(todayVisit.id);
+    } else {
+      setEditVisitId(null);
+    }
     setDraft(d => ({
       ...d,
       chiefComplaint: todayVisit.chiefComplaint,
@@ -531,9 +537,18 @@ export default function ConsultPage() {
 
     showToast(editVisitId ? 'Consultation updated' : 'Consultation saved', 'success');
     setSaving(false);
-    // Show the customised PAD print preview (NOT the raw page print)
-    setPrintFromSave(true);
-    setShowPrint(true);
+    
+    const p = useAppStore.getState().patients.find(pt => pt.id === patientId);
+    const isIPDPatient = p?.status === 'IPD' || p?.status === 'Critical';
+    
+    if (!isIPDPatient) {
+      // Show the customised PAD print preview (NOT the raw page print)
+      setPrintFromSave(true);
+      setShowPrint(true);
+    } else {
+      // For IPD patients, return to the patients list directly
+      navigate('/app/patients');
+    }
   }
 
   function handleAdmit() {
