@@ -22,6 +22,8 @@ const SuperAdminPage = lazy(() => import('@/pages/admin/SuperAdminPage'));
 const StaffPage = lazy(() => import('@/pages/admin/StaffPage'));
 const BillingPage = lazy(() => import('@/pages/billing/BillingPage'));
 const PlaceholderPage = lazy(() => import('@/pages/shared/PlaceholderPage'));
+const NurseMARPage = lazy(() => import('@/pages/nurse/NurseMARPage'));
+const NurseNotesPage = lazy(() => import('@/pages/nurse/NurseNotesPage'));
 const PrescriptionsPage = lazy(() => import('@/pages/doctor/PrescriptionsPage'));
 const LabOrdersPage = lazy(() => import('@/pages/doctor/LabOrdersPage'));
 const AdmitPage = lazy(() => import('@/pages/doctor/AdmitPage'));
@@ -126,8 +128,8 @@ export default function App() {
             {/* Nurse */}
             <Route path="nurse-patients" element={<Suspense fallback={<Spinner />}><NursePatientsPage /></Suspense>} />
             <Route path="vitals" element={<Suspense fallback={<Spinner />}><VitalsPage /></Suspense>} />
-            <Route path="mar" element={<Suspense fallback={<Spinner />}><PlaceholderPage title="Medication MAR" /></Suspense>} />
-            <Route path="notes" element={<Suspense fallback={<Spinner />}><PlaceholderPage title="Nursing Notes" /></Suspense>} />
+            <Route path="mar" element={<Suspense fallback={<Spinner />}><NurseMARPage /></Suspense>} />
+            <Route path="notes" element={<Suspense fallback={<Spinner />}><NurseNotesPage /></Suspense>} />
 
             {/* Doctor extended */}
             <Route path="prescriptions" element={<Suspense fallback={<Spinner />}><PrescriptionsPage /></Suspense>} />

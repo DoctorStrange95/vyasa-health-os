@@ -184,6 +184,11 @@ export default function ConsultPage() {
   const [selectedClinicId, setSelectedClinicId] = useState<string>(clinics[0]?.id ?? '');
   const activeClinic = clinics.find(c => c.id === selectedClinicId) ?? clinics[0];
 
+  // Nurses cannot open the consultation (vitals-only) — bounce deep-links out.
+  useEffect(() => {
+    if (user?.role === 'nurse') navigate('/app/patients', { replace: true });
+  }, [user?.role, navigate]);
+
   const patient = patients.find(p => p.id === patientId);
 
   // For booking-derived (apt-) or walk-in (WI) patients, the patient record may not exist yet.

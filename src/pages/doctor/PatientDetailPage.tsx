@@ -4,6 +4,7 @@ import { ArrowLeft, Activity, Pill, FlaskConical, MessageSquare, ClipboardList, 
 import { useAppStore, uid, nowIso } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { api, isApiEnabled } from '@/lib/api';
+import { connectSocket, joinPatientRoom, leavePatientRoom, emitChatMessage } from '@/lib/socket';
 import { usePadStore } from '@/store/usePadStore';
 import { PrintPreview } from '@/components/PrintPreview';
 import { PriorityBadge, StatusBadge, LabStatusBadge } from '@/components/ui/Badge';
@@ -16,7 +17,7 @@ type Tab = 'overview' | 'vitals' | 'prescriptions' | 'labs' | 'notes' | 'chat' |
 
 export default function PatientDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { patients, vitals, prescriptions, labOrders, nursingNotes, chatMessages, visits, appointments, nursingPhotos, addVitals, addPrescription, addLabOrder, updateLabResult, addChatMessage, addNursingPhoto, upsertPatient, updateAppointment, showToast, setVitals, setPrescriptions, setLabOrders, setPatientVisits } = useAppStore();
+  const { patients, vitals, prescriptions, labOrders, nursingNotes, chatMessages, visits, appointments, nursingPhotos, addVitals, addPrescription, addLabOrder, updateLabResult, setChatMessages, addNursingPhoto, upsertPatient, updateAppointment, showToast, setVitals, setPrescriptions, setLabOrders, setPatientVisits } = useAppStore();
   const { user } = useAuthStore();
   const [tab, setTab] = useState<Tab>('overview');
   const [chatInput, setChatInput] = useState('');
@@ -58,7 +59,32 @@ export default function PatientDetailPage() {
     api.get<any[]>(`/visits/patient/${id}`).then(rows => {
       if (rows.length > 0) setPatientVisits(id, rows as any);
     }).catch(() => {});
+    // Care-team chat history for this patient
+    api.get<any[]>(`/chat/${id}`).then(rows => {
+      if (rows.length > 0) setChatMessages(id, rows as any);
+    }).catch(() => {});
+    // Live updates: join this patient's real-time room (chat + vitals from other staff)
+    connectSocket();
+    joinPatientRoom(id);
+    return () => { leavePatientRoom(id); };
   }, [id]);
+
+  // While the Care Team Chat tab is open, poll so messages/notes from other
+  // devices appear without a manual refresh. Merge by id so a just-sent
+  // optimistic message is never dropped before it's persisted.
+  useEffect(() => {
+    if (tab !== 'chat' || !id || !isApiEnabled()) return;
+    const iv = setInterval(() => {
+      api.get<any[]>(`/chat/${id}`).then(rows => {
+        const cur = useAppStore.getState().chatMessages[id] ?? [];
+        const serverIds = new Set(rows.map(r => r.id));
+        const localOnly = cur.filter(m => !serverIds.has(m.id));
+        const merged = [...rows, ...localOnly].sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
+        setChatMessages(id, merged as any);
+      }).catch(() => {});
+    }, 5000);
+    return () => clearInterval(iv);
+  }, [id, tab]);
 
   if (!patient) return (
     <div className="flex flex-col items-center justify-center h-64 text-slate-400">
@@ -126,6 +152,8 @@ export default function PatientDetailPage() {
   const ptChat = chatMessages[id!] || [];
 
   const isIPD = patient.status === 'IPD' || patient.status === 'Critical';
+  // Nurses are vitals + "given" only — no consult / prescribe / print / discharge.
+  const isNurse = user?.role === 'nurse';
 
   const ALL_TABS: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }>; ipdOnly?: boolean }[] = [
     { id: 'overview', label: 'Overview', icon: Info },
@@ -147,7 +175,9 @@ export default function PatientDetailPage() {
 
   function sendChat() {
     if (!chatInput.trim() || !user) return;
-    addChatMessage({ id: uid(), patientId: id!, senderId: user.id, senderName: user.name, senderRole: user.role, message: chatInput.trim(), time: nowIso() });
+    // Send over the socket — the backend persists it and echoes to the whole
+    // care team (including us), which adds it to the store with a stable id.
+    emitChatMessage(id!, chatInput.trim());
     setChatInput('');
   }
 
@@ -180,6 +210,7 @@ export default function PatientDetailPage() {
             {patient.insurance && <span>Insurance: {patient.insurance}</span>}
           </div>
         </div>
+        {!isNurse && (
         <div className="flex gap-2 flex-shrink-0 flex-wrap justify-end">
           <button onClick={() => setShowTopPrint(true)} className="btn-secondary btn-sm hidden sm:flex">
             <Printer className="w-3.5 h-3.5" /> Print
@@ -241,6 +272,7 @@ export default function PatientDetailPage() {
             )}
           </div>
         </div>
+        )}
       </div>
 
       {/* Tabs */}
@@ -267,8 +299,8 @@ export default function PatientDetailPage() {
       {tab === 'overview' && <OverviewTab patient={patient} />}
       {tab === 'history' && <VisitsTab visits={visits[id!] ?? []} patient={patient} />}
       {tab === 'vitals' && <VitalsTab vitals={ptVitals} patientId={id!} onAdd={addVitals} showToast={showToast} />}
-      {tab === 'prescriptions' && <PrescriptionsTab rx={ptRx} patientId={id!} doctorName={user?.name || ''} onAdd={addPrescription} showToast={showToast} />}
-      {tab === 'labs' && <LabsTab labs={ptLabs} patientId={id!} doctorName={user?.name || ''} onAdd={addLabOrder} onUpdateResult={updateLabResult} showToast={showToast} />}
+      {tab === 'prescriptions' && <PrescriptionsTab rx={ptRx} patientId={id!} doctorName={user?.name || ''} onAdd={addPrescription} showToast={showToast} readOnly={isNurse} />}
+      {tab === 'labs' && <LabsTab labs={ptLabs} patientId={id!} doctorName={user?.name || ''} onAdd={addLabOrder} onUpdateResult={updateLabResult} showToast={showToast} readOnly={isNurse} />}
       {tab === 'appointments' && (
         <AppointmentsTab
           appointments={appointments.filter(a => a.patientId === id)}
@@ -835,9 +867,11 @@ function AppointmentsTab({ appointments, onCancel, onSchedule }: {
 // ─── Tab: Overview ────────────────────────────────────────────────────────────
 
 function OverviewTab({ patient }: { patient: ReturnType<typeof useAppStore.getState>['patients'][0] }) {
-  const { vitals } = useAppStore();
+  const { vitals, staff, assignNurse, showToast } = useAppStore();
   const latest = vitals[patient.id]?.[0];
   const isIPD = patient.status === 'IPD' || patient.status === 'Critical';
+  const nurses = staff.filter(s => s.role === 'nurse' && s.status === 'active');
+  const [nurseOpen, setNurseOpen] = useState(false);
 
   const items = latest ? [
     { label: 'Blood Pressure', value: latest.bp || '—', alert: latest.bp && parseInt(latest.bp) > 160 },
@@ -910,6 +944,48 @@ function OverviewTab({ patient }: { patient: ReturnType<typeof useAppStore.getSt
               <span className="text-sm font-semibold text-slate-800 text-right">{i.v}</span>
             </div>
           ))}
+
+          {/* Assigned Nurse — assign so the nurse sees this patient in their portal */}
+          <div className="py-2.5">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs text-slate-400 font-medium flex-shrink-0">Assigned Nurse</span>
+              {patient.assignedNurseName
+                ? <span className="text-sm font-semibold text-teal-700 text-right">{patient.assignedNurseName}</span>
+                : <span className="text-sm text-slate-400 text-right">Not assigned</span>}
+            </div>
+            {nurses.length > 0 ? (
+              <div className="relative mt-2">
+                <button
+                  type="button"
+                  onClick={() => setNurseOpen(o => !o)}
+                  className="text-xs font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-lg px-2.5 py-1.5"
+                >
+                  {patient.assignedNurseName ? 'Reassign nurse' : 'Assign nurse'}
+                </button>
+                {nurseOpen && (
+                  <div className="absolute z-20 mt-1 left-0 w-56 max-h-56 overflow-auto rounded-xl border border-slate-200 bg-white shadow-lg py-1">
+                    {nurses.map(n => (
+                      <button
+                        key={n.id}
+                        type="button"
+                        onClick={() => {
+                          assignNurse(patient.id, n.id, n.name);
+                          showToast(`Assigned to ${n.name}`, 'success');
+                          setNurseOpen(false);
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-teal-50 flex items-center justify-between gap-2"
+                      >
+                        <span>{n.name}</span>
+                        {patient.assignedNurseId === n.id && <CheckCircle2 className="w-3.5 h-3.5 text-teal-600 flex-shrink-0" />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-[11px] text-slate-400 mt-1">No nurses on staff yet — add one in Settings → My Staff.</p>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1030,7 +1106,7 @@ function VitalsTab({ vitals, patientId, onAdd, showToast }: { vitals: any[]; pat
 
 // ─── Tab: Prescriptions ───────────────────────────────────────────────────────
 
-function PrescriptionsTab({ rx, patientId, doctorName, onAdd, showToast }: { rx: any[]; patientId: string; doctorName: string; onAdd: (r: any) => void; showToast: (m: string, t?: any) => void }) {
+function PrescriptionsTab({ rx, patientId, doctorName, onAdd, showToast, readOnly }: { rx: any[]; patientId: string; doctorName: string; onAdd: (r: any) => void; showToast: (m: string, t?: any) => void; readOnly?: boolean }) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ drug: '', dose: '', route: 'Oral', frequency: 'OD', duration: '', instructions: '' });
 
@@ -1057,9 +1133,11 @@ function PrescriptionsTab({ rx, patientId, doctorName, onAdd, showToast }: { rx:
     <div>
       <div className="flex items-center justify-between mb-4">
         <p className="text-xs text-slate-400">{rx.length} prescription{rx.length !== 1 ? 's' : ''}</p>
-        <button onClick={() => setOpen(true)} className="btn-primary btn-sm">
-          <Plus className="w-4 h-4" /> Add Rx
-        </button>
+        {!readOnly && (
+          <button onClick={() => setOpen(true)} className="btn-primary btn-sm">
+            <Plus className="w-4 h-4" /> Add Rx
+          </button>
+        )}
       </div>
 
       {rx.length === 0 ? (
@@ -1149,11 +1227,12 @@ function PrescriptionsTab({ rx, patientId, doctorName, onAdd, showToast }: { rx:
 
 // ─── Tab: Labs ────────────────────────────────────────────────────────────────
 
-function LabsTab({ labs, patientId, doctorName, onAdd, onUpdateResult, showToast }: {
+function LabsTab({ labs, patientId, doctorName, onAdd, onUpdateResult, showToast, readOnly }: {
   labs: any[]; patientId: string; doctorName: string;
   onAdd: (l: any) => void;
   onUpdateResult: (id: string, patientId: string, patch: any) => void;
   showToast: (m: string, t?: any) => void;
+  readOnly?: boolean;
 }) {
   const [orderOpen, setOrderOpen] = useState(false);
   const [resultOpen, setResultOpen] = useState(false);
@@ -1217,9 +1296,11 @@ function LabsTab({ labs, patientId, doctorName, onAdd, onUpdateResult, showToast
           <span className="text-xs text-slate-400">{labs.length} test{labs.length !== 1 ? 's' : ''}</span>
           {pending.length > 0 && <span className="text-xs bg-amber-100 text-amber-700 font-semibold px-2 py-0.5 rounded-full">{pending.length} pending</span>}
         </div>
-        <button onClick={() => setOrderOpen(true)} className="btn-primary btn-sm">
-          <Plus className="w-4 h-4" /> Order Lab
-        </button>
+        {!readOnly && (
+          <button onClick={() => setOrderOpen(true)} className="btn-primary btn-sm">
+            <Plus className="w-4 h-4" /> Order Lab
+          </button>
+        )}
       </div>
 
       {labs.length === 0 ? (
@@ -1269,10 +1350,12 @@ function LabsTab({ labs, patientId, doctorName, onAdd, onUpdateResult, showToast
 
                   <div className="flex items-center justify-between mt-2 flex-wrap gap-2">
                     <span className="text-[10px] text-slate-400">{l.orderedBy} · {formatDateTime(l.orderedAt)}</span>
-                    <button onClick={() => openResultModal(l)}
-                      className="text-xs font-semibold text-teal-600 hover:text-teal-700 bg-teal-50 hover:bg-teal-100 px-3 py-1 rounded-lg transition-colors cursor-pointer">
-                      {l.result ? 'Edit Result' : 'Enter Result'}
-                    </button>
+                    {!readOnly && (
+                      <button onClick={() => openResultModal(l)}
+                        className="text-xs font-semibold text-teal-600 hover:text-teal-700 bg-teal-50 hover:bg-teal-100 px-3 py-1 rounded-lg transition-colors cursor-pointer">
+                        {l.result ? 'Edit Result' : 'Enter Result'}
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>

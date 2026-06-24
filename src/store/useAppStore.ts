@@ -236,9 +236,15 @@ export const useAppStore = create<AppState>()(
     alerts: s.alerts.map(a => a.id === id ? { ...a, acknowledged: true } : a)
   })),
   setVitals: (pid, v) => set(s => ({ vitals: { ...s.vitals, [pid]: v } })),
-  addVitals: (v) => set(s => ({
-    vitals: { ...s.vitals, [v.patientId]: [v, ...(s.vitals[v.patientId] || [])] }
-  })),
+  addVitals: (v) => {
+    set(s => ({
+      vitals: { ...s.vitals, [v.patientId]: [v, ...(s.vitals[v.patientId] || [])] }
+    }));
+    import('@/lib/api').then(({ isApiEnabled, api }) => {
+      if (isApiEnabled()) api.post('/vitals', v).catch((e: unknown) => console.warn('[vitals sync]', e instanceof Error ? e.message : e));
+    });
+    import('@/lib/socket').then(({ emitVitalsUpdate }) => emitVitalsUpdate(v)).catch(() => {});
+  },
   setPrescriptions: (pid, rx) => set(s => ({ prescriptions: { ...s.prescriptions, [pid]: rx } })),
   addPrescription: (rx) => {
     set(s => ({
@@ -401,10 +407,18 @@ export const useAppStore = create<AppState>()(
     ),
   })),
   setTodayAvailability: (a) => set({ todayAvailability: a }),
-  assignNurse: (patientId, nurseId, nurseName) => set(s => ({
-    patients: s.patients.map(p => p.id === patientId ? { ...p, assignedNurseId: nurseId, assignedNurseName: nurseName } : p),
-    queue: s.queue.map(q => q.patientId === patientId ? { ...q, assignedNurse: nurseName } : q),
-  })),
+  assignNurse: (patientId, nurseId, nurseName) => {
+    set(s => ({
+      patients: s.patients.map(p => p.id === patientId ? { ...p, assignedNurseId: nurseId, assignedNurseName: nurseName } : p),
+      queue: s.queue.map(q => q.patientId === patientId ? { ...q, assignedNurse: nurseName } : q),
+    }));
+    import('@/lib/api').then(({ isApiEnabled, api }) => {
+      if (isApiEnabled()) {
+        api.patch(`/patients/${patientId}`, { assignedNurseId: nurseId, assignedNurseName: nurseName })
+          .catch((e: unknown) => console.warn('[nurse assign sync]', e instanceof Error ? e.message : e));
+      }
+    });
+  },
 
   addNursingPhoto: (photo) => set(s => ({
     nursingPhotos: { ...s.nursingPhotos, [photo.patientId]: [photo, ...(s.nursingPhotos[photo.patientId] ?? [])] },
@@ -461,10 +475,13 @@ export const useAppStore = create<AppState>()(
     if (!isApiEnabled()) return;
 
     // Fetch each independently so one failure doesn't wipe everything
-    const [patientsResult, visitsResult, appointmentsResult] = await Promise.allSettled([
+    const [patientsResult, visitsResult, appointmentsResult, prescriptionsResult, labsResult, staffResult] = await Promise.allSettled([
       api.get<Patient[]>('/patients'),
       api.get<VisitRecord[]>('/visits/clinic'),
       api.get<AppointmentEntry[]>('/appointments'),
+      api.get<Medication[]>('/prescriptions/clinic'),
+      api.get<LabOrder[]>('/labs/clinic'),
+      api.get<Staff[]>('/staff/active'),
     ]);
 
     const update: Partial<typeof EMPTY_STATE> = {};
@@ -490,6 +507,37 @@ export const useAppStore = create<AppState>()(
       update.appointments = appointmentsResult.value;
     } else {
       console.warn('[vyasa] appointments sync failed:', appointmentsResult.reason);
+    }
+
+    if (prescriptionsResult.status === 'fulfilled') {
+      const rxMap: Record<string, Medication[]> = {};
+      for (const rx of prescriptionsResult.value) {
+        const pid = rx.patientId ?? '';
+        if (!pid) continue;
+        if (!rxMap[pid]) rxMap[pid] = [];
+        rxMap[pid].push(rx);
+      }
+      update.prescriptions = rxMap;
+    } else {
+      console.warn('[vyasa] prescriptions sync failed:', prescriptionsResult.reason);
+    }
+
+    if (labsResult.status === 'fulfilled') {
+      const labMap: Record<string, LabOrder[]> = {};
+      for (const lab of labsResult.value) {
+        if (!lab.patientId) continue;
+        if (!labMap[lab.patientId]) labMap[lab.patientId] = [];
+        labMap[lab.patientId].push(lab);
+      }
+      update.labOrders = labMap;
+    } else {
+      console.warn('[vyasa] labs sync failed:', labsResult.reason);
+    }
+
+    if (staffResult.status === 'fulfilled') {
+      update.staff = staffResult.value.map(u => ({ ...u, id: Number(u.id), status: 'active' as const }));
+    } else {
+      console.warn('[vyasa] staff sync failed:', staffResult.reason);
     }
 
     if (Object.keys(update).length > 0) set(update);

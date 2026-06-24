@@ -22,7 +22,7 @@ const DOCTOR_NAV: NavItem[] = [
 
 const NURSE_NAV: NavItem[] = [
   { icon: LayoutDashboard, label: 'Home',     to: '/app/dashboard' },
-  { icon: Users,           label: 'Patients', to: '/app/patients' },
+  { icon: Users,           label: 'Patients', to: '/app/nurse-patients' },
   { icon: ListOrdered,     label: 'Vitals',   to: '/app/vitals' },
   { icon: User,            label: 'Profile',  to: '/app/profile' },
 ];

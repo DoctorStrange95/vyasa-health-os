@@ -639,8 +639,17 @@ function AddStaffModal({ open, onClose, onAdded }: { open: boolean; onClose: () 
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="label">Department</label>
-            <input className="input" placeholder="e.g. OPD, ICU" value={form.department} onChange={e => set('department', e.target.value)} />
+            <label className="label">{form.role === 'nurse' ? 'Posting' : 'Department'}</label>
+            {form.role === 'nurse' ? (
+              <select className="input" value={form.department} onChange={e => set('department', e.target.value)}>
+                <option value="">Select…</option>
+                <option value="OPD">OPD</option>
+                <option value="IPD">IPD</option>
+                <option value="Both">Both</option>
+              </select>
+            ) : (
+              <input className="input" placeholder="e.g. OPD, ICU" value={form.department} onChange={e => set('department', e.target.value)} />
+            )}
           </div>
           <div>
             <label className="label">Shift</label>

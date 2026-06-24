@@ -20,7 +20,7 @@ const ROLE_EMOJI: Record<string, string> = {
 };
 
 const DEPARTMENTS: Record<string, string[]> = {
-  nurse: ['ICU', 'HDU', 'Casualty/ER', 'OT', 'Medicine Ward', 'Surgery Ward', 'Paediatrics', 'Maternity', 'OPD'],
+  nurse: ['OPD', 'IPD', 'Both'],
   pharmacist: ['Inpatient Pharmacy', 'Outpatient Pharmacy', 'Oncology Pharmacy', 'ICU Pharmacy'],
   labtech: ['Haematology', 'Biochemistry', 'Microbiology', 'Pathology', 'Radiology', 'Blood Bank'],
   billing: ['Billing & Accounts', 'Insurance Desk', 'Front Office'],

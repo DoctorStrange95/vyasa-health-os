@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useAppStore } from '@/store/useAppStore';
+import NurseHome from '@/pages/nurse/NurseHome';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePadStore } from '@/store/usePadStore';
 import { Link, useNavigate } from 'react-router-dom';
@@ -259,6 +260,9 @@ export default function DashboardPage() {
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+
+  // Nurses get a simplified Home (summary cards), not the doctor dashboard.
+  if (user?.role === 'nurse') return <NurseHome />;
 
   return (
     <div>

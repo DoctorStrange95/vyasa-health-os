@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { LogOut, Search, CheckCircle2, Printer, AlertCircle, ChevronDown, ChevronUp, FlaskConical, Pill, Activity, ClipboardList } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
+import { useAuthStore } from '@/store/useAuthStore';
 import { cn, formatDate } from '@/lib/utils';
 import Modal from '@/components/ui/Modal';
 import { DischargeSummaryPrint } from '@/components/DischargeSummaryPrint';
@@ -12,6 +14,12 @@ const FOLLOW_UP = ['1 week', '2 weeks', '1 month', '3 months', '6 months', 'As n
 
 export default function DischargePage() {
   const { patients, prescriptions, labOrders, vitals, visits, upsertPatient, showToast } = useAppStore();
+  const { user } = useAuthStore();
+  const navigate = useNavigate();
+  // Nurses cannot discharge (vitals-only) — bounce deep-links out.
+  useEffect(() => {
+    if (user?.role === 'nurse') navigate('/app/patients', { replace: true });
+  }, [user?.role, navigate]);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Patient | null>(null);
   const [showModal, setShowModal] = useState(false);

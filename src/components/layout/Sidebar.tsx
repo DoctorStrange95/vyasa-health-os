@@ -45,13 +45,13 @@ const NAV_ITEMS: Record<Role, NavItem[]> = {
     { icon: User,            label: 'My Profile',       to: '/app/profile' },
   ],
   nurse: [
+    { icon: ListOrdered, label: 'Home', to: '/app/dashboard' },
     { icon: Users, label: 'My Patients', to: '/app/nurse-patients' },
     { icon: Activity, label: 'Vitals Entry', to: '/app/vitals' },
     { icon: ClipboardList, label: 'Medication MAR', to: '/app/mar' },
     { icon: ScrollText, label: 'Nursing Notes', to: '/app/notes' },
     { icon: FlaskConical, label: 'Lab Orders', to: '/app/labs' },
-    { icon: Bell, label: 'Alerts', to: '/app/alerts' },
-    { icon: Brain, label: 'AI Triage', to: '/app/triage' },
+    { icon: User, label: 'My Profile', to: '/app/profile' },
   ],
   pharmacist: [
     { icon: Pill, label: 'Prescriptions', to: '/app/pharmacy' },
