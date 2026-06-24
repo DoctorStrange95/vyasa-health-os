@@ -1,4 +1,4 @@
-import { useParams, Link, useSearchParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Activity, Pill, FlaskConical, MessageSquare, ClipboardList, FileText, Info, Send, Plus, AlertTriangle, Printer, History, Syringe, Scissors, Camera, Skull, Calendar, MoreVertical, Upload, CheckCircle2, AlertCircle, Eye } from 'lucide-react';
 import { useAppStore, uid, nowIso } from '@/store/useAppStore';
@@ -19,8 +19,7 @@ export default function PatientDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { patients, vitals, prescriptions, labOrders, nursingNotes, chatMessages, visits, appointments, nursingPhotos, addVitals, addPrescription, addLabOrder, updateLabResult, setChatMessages, addNursingPhoto, upsertPatient, updateAppointment, showToast, setVitals, setPrescriptions, setLabOrders, setPatientVisits } = useAppStore();
   const { user } = useAuthStore();
-  const [searchParams] = useSearchParams();
-  const [tab, setTab] = useState<Tab>((searchParams.get('tab') as Tab) || 'overview');
+  const [tab, setTab] = useState<Tab>('overview');
   const [chatInput, setChatInput] = useState('');
   const [deathModal, setDeathModal] = useState(false);
   const [deathDate, setDeathDate] = useState(new Date().toISOString().slice(0, 16));
@@ -934,8 +933,8 @@ function OverviewTab({ patient }: { patient: ReturnType<typeof useAppStore.getSt
       </div>
 
       {/* Visit / Admission */}
-      <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
-        <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/60">
+      <div className="rounded-2xl border border-slate-200 bg-white">
+        <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/60 rounded-t-2xl">
           <h3 className="text-sm font-bold text-slate-800">{isIPD ? 'Admission Details' : 'Visit Details'}</h3>
         </div>
         <div className="px-4 py-3 divide-y divide-slate-50">

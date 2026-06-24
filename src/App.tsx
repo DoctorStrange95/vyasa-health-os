@@ -33,7 +33,6 @@ const NetworkPage = lazy(() => import('@/pages/doctor/NetworkPage'));
 const AnalyticsPage = lazy(() => import('@/pages/doctor/AnalyticsPage'));
 const ProfilePage = lazy(() => import('@/pages/shared/ProfilePage'));
 const ConsultPage = lazy(() => import('@/pages/doctor/ConsultPage'));
-const RoundPage = lazy(() => import('@/pages/doctor/RoundPage'));
 const PadSettingsPage = lazy(() => import('@/pages/shared/PadSettingsPage'));
 const SettingsPage = lazy(() => import('@/pages/shared/SettingsPage'));
 const NursePatientsPage = lazy(() => import('@/pages/nurse/NursePatientsPage'));
@@ -142,7 +141,6 @@ export default function App() {
             <Route path="analytics" element={<Suspense fallback={<Spinner />}><AnalyticsPage /></Suspense>} />
             <Route path="profile" element={<Suspense fallback={<Spinner />}><ProfilePage /></Suspense>} />
             <Route path="consult/:patientId" element={<Suspense fallback={<Spinner />}><DoctorOnly><ConsultPage /></DoctorOnly></Suspense>} />
-            <Route path="round/:id" element={<Suspense fallback={<Spinner />}><DoctorOnly><RoundPage /></DoctorOnly></Suspense>} />
             <Route path="pad-settings" element={<Suspense fallback={<Spinner />}><PadSettingsPage /></Suspense>} />
             <Route path="settings" element={<Suspense fallback={<Spinner />}><SettingsPage /></Suspense>} />
             <Route path="schedule" element={<Navigate to="/app/bookings" replace />} />

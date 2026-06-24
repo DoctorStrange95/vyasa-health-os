@@ -247,14 +247,15 @@ export default function PatientListPage() {
               </div>
               <div className="flex gap-2 mt-3">
                 <Link to={`/app/patients/${p.id}`} className="btn-secondary btn-sm flex-1 justify-center">View</Link>
-                {!isReceptionist && (p.status === 'IPD' || p.status === 'Critical') && (
-                  <Link to={`/app/round/${p.id}`} className="btn-primary btn-sm flex-1 justify-center">Take Round</Link>
-                )}
-                {!isReceptionist && p.status === 'OPD' && (
-                  consultedToday ? (
+                {!isReceptionist && (p.status === 'OPD' || p.status === 'IPD' || p.status === 'Critical') && (
+                  (p.status === 'IPD' || p.status === 'Critical') ? (
+                    <Link to={`/app/consult/${p.id}`} className="btn-primary btn-sm flex-1 justify-center bg-indigo-600 hover:bg-indigo-700 border-none">
+                      Round
+                    </Link>
+                  ) : consultedToday ? (
                     <Link to={`/app/consult/${p.id}`}
-                      className="flex-1 inline-flex items-center justify-center gap-1 text-xs bg-amber-50 text-amber-700 border border-amber-200 px-3 py-1.5 rounded-lg font-semibold">
-                      <CheckCircle2 className="w-3 h-3" /> Edit Consult
+                      className="flex-1 inline-flex items-center justify-center gap-1 text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1.5 rounded-lg font-semibold">
+                      <CheckCircle2 className="w-3 h-3" /> Done
                     </Link>
                   ) : (
                     <Link to={`/app/consult/${p.id}`} className="btn-primary btn-sm flex-1 justify-center">Consult</Link>
@@ -349,7 +350,11 @@ export default function PatientListPage() {
                     <div className="flex items-center gap-1.5 justify-end pr-1">
                       <Link to={`/app/patients/${p.id}`} className="btn-secondary btn-sm">View</Link>
                       {!isReceptionist && (p.status === 'OPD' || p.status === 'IPD' || p.status === 'Critical') && (
-                        consultedToday ? (
+                        (p.status === 'IPD' || p.status === 'Critical') ? (
+                          <Link to={`/app/consult/${p.id}`} className="btn-primary btn-sm whitespace-nowrap bg-indigo-600 hover:bg-indigo-700 border-none">
+                            Round
+                          </Link>
+                        ) : consultedToday ? (
                           <Link to={`/app/consult/${p.id}`}
                             className="inline-flex items-center gap-1 text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-1.5 rounded-lg font-semibold whitespace-nowrap">
                             <CheckCircle2 className="w-3 h-3" /> Done
