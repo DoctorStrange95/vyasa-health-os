@@ -41,6 +41,7 @@ interface ConsultDraft {
   generalExam?: string;
   systemicExam?: string;
   bodyNotes?: Record<string, string>;
+  bodySigns?: string[];
   pastMedical?: string;
   pastSurgical?: string;
   familyHistory?: string;
@@ -79,6 +80,9 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
   const theme = THEME_COLORS[pad.theme] ?? THEME_COLORS.teal;
   const patientAge = typeof patient.age === 'number' ? patient.age : '';
   const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  const _wKg = parseFloat(draft.vitals.weight || '');
+  const _hCm = parseFloat(draft.vitals.height || '');
+  const bmiVal = _wKg > 0 && _hCm > 0 ? (_wKg / ((_hCm / 100) ** 2)).toFixed(1) : '';
 
   const [ps, setPs] = useState<PrintSections>({
     complaint: true,
@@ -153,9 +157,12 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
       cell('Date', today),
       patient.mrn ? cell('MRN', patient.mrn) : '',
       ps.vitalsRow && draft.vitals.bp ? cell('BP', draft.vitals.bp) : '',
-      ps.vitalsRow && draft.vitals.weight ? cell('Wt', `${draft.vitals.weight}kg`) : '',
-      ps.vitalsRow && draft.vitals.hr ? cell('HR', `${draft.vitals.hr} bpm`) : '',
+      ps.vitalsRow && draft.vitals.hr ? cell('Pulse', `${draft.vitals.hr}/min`) : '',
+      ps.vitalsRow && draft.vitals.temp ? cell('Temp', `${draft.vitals.temp}°C`) : '',
       ps.vitalsRow && draft.vitals.spo2 ? cell('SpO2', `${draft.vitals.spo2}%`) : '',
+      ps.vitalsRow && draft.vitals.rr ? cell('RR', `${draft.vitals.rr}/min`) : '',
+      ps.vitalsRow && draft.vitals.weight ? cell('Wt', `${draft.vitals.weight}kg`) : '',
+      ps.vitalsRow && bmiVal ? cell('BMI', bmiVal) : '',
     ].filter(Boolean).join('');
 
     const sectionTitle = (t: string) =>
@@ -164,7 +171,7 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
     let body = '';
     if (ps.complaint && draft.chiefComplaint) body += sectionTitle('C/C') + `<div style="font-size:13px;">${esc(draft.chiefComplaint)}</div>`;
     if (ps.hopi && draft.hopi) body += sectionTitle('History') + `<div style="font-size:13px;">${esc(draft.hopi)}</div>`;
-    if (ps.hopi) {
+    {
       const ph = [
         draft.pastMedical?.trim() && `Past Medical: ${draft.pastMedical}`,
         draft.pastSurgical?.trim() && `Past Surgical: ${draft.pastSurgical}`,
@@ -183,6 +190,7 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
     // Psychiatry fields are NEVER printed (sensitive clinical notes).
     let examBody = '';
     if (ps.specialtyExam) {
+      if (draft.bodySigns?.length) examBody += `<div style="font-size:13px;margin-bottom:4px;"><span style="color:#94a3b8;">General signs: </span>${esc(draft.bodySigns.join(', '))}</div>`;
       if (draft.generalExam?.trim()) examBody += `<div style="font-size:13px;margin-bottom:4px;"><span style="color:#94a3b8;">General: </span>${esc(draft.generalExam)}</div>`;
       if (draft.systemicExam?.trim()) examBody += `<div style="font-size:13px;margin-bottom:4px;"><span style="color:#94a3b8;">Systemic: </span>${esc(draft.systemicExam)}</div>`;
       const bnotes = draft.bodyNotes ? Object.entries(draft.bodyNotes).filter(([, v]) => (v as string)?.trim()).map(([k, v]) => `${k}: ${v}`).join('; ') : '';
@@ -569,9 +577,12 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
               <div><span className="text-slate-400">Date: </span><span className="font-semibold">{today}</span></div>
               {patient.mrn && <div><span className="text-slate-400">MRN: </span><span className="font-semibold">{patient.mrn}</span></div>}
               {ps.vitalsRow && draft.vitals.bp && <div><span className="text-slate-400">BP: </span><span className="font-semibold">{draft.vitals.bp}</span></div>}
-              {ps.vitalsRow && draft.vitals.weight && <div><span className="text-slate-400">Wt: </span><span className="font-semibold">{draft.vitals.weight}kg</span></div>}
-              {ps.vitalsRow && draft.vitals.hr && <div><span className="text-slate-400">HR: </span><span className="font-semibold">{draft.vitals.hr} bpm</span></div>}
+              {ps.vitalsRow && draft.vitals.hr && <div><span className="text-slate-400">Pulse: </span><span className="font-semibold">{draft.vitals.hr}/min</span></div>}
+              {ps.vitalsRow && draft.vitals.temp && <div><span className="text-slate-400">Temp: </span><span className="font-semibold">{draft.vitals.temp}°C</span></div>}
               {ps.vitalsRow && draft.vitals.spo2 && <div><span className="text-slate-400">SpO2: </span><span className="font-semibold">{draft.vitals.spo2}%</span></div>}
+              {ps.vitalsRow && draft.vitals.rr && <div><span className="text-slate-400">RR: </span><span className="font-semibold">{draft.vitals.rr}/min</span></div>}
+              {ps.vitalsRow && draft.vitals.weight && <div><span className="text-slate-400">Wt: </span><span className="font-semibold">{draft.vitals.weight}kg</span></div>}
+              {ps.vitalsRow && bmiVal && <div><span className="text-slate-400">BMI: </span><span className="font-semibold">{bmiVal}</span></div>}
             </div>
 
             {/* Complaint */}
@@ -591,7 +602,7 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
             )}
 
             {/* Past & Family History */}
-            {ps.hopi && (draft.pastMedical?.trim() || draft.pastSurgical?.trim() || draft.familyHistory?.trim() || draft.socialHistory?.trim() || draft.allergiesNote?.trim() || draft.currentMeds?.trim()) && (
+            {(draft.pastMedical?.trim() || draft.pastSurgical?.trim() || draft.familyHistory?.trim() || draft.socialHistory?.trim() || draft.allergiesNote?.trim() || draft.currentMeds?.trim()) && (
               <div className="mb-2">
                 <div className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: theme }}>Past &amp; Family History</div>
                 {draft.pastMedical?.trim() && <div className="text-sm"><span className="text-slate-400">Past Medical: </span>{draft.pastMedical}</div>}
@@ -603,12 +614,16 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
               </div>
             )}
 
-            {/* Examination — general & systemic findings */}
-            {ps.specialtyExam && (draft.generalExam?.trim() || draft.systemicExam?.trim()) && (
+            {/* Examination — general signs, body-map notes, general & systemic findings */}
+            {ps.specialtyExam && (draft.bodySigns?.length || (draft.bodyNotes && Object.values(draft.bodyNotes).some(v => v?.trim())) || draft.generalExam?.trim() || draft.systemicExam?.trim()) && (
               <div className="mb-3">
                 <div className="text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: theme }}>Examination</div>
+                {draft.bodySigns && draft.bodySigns.length > 0 && <div className="text-sm mb-1"><span className="text-slate-400">General signs: </span>{draft.bodySigns.join(', ')}</div>}
                 {draft.generalExam?.trim() && <div className="text-sm mb-1"><span className="text-slate-400">General: </span>{draft.generalExam}</div>}
-                {draft.systemicExam?.trim() && <div className="text-sm"><span className="text-slate-400">Systemic: </span>{draft.systemicExam}</div>}
+                {draft.systemicExam?.trim() && <div className="text-sm mb-1"><span className="text-slate-400">Systemic: </span>{draft.systemicExam}</div>}
+                {draft.bodyNotes && Object.entries(draft.bodyNotes).filter(([, v]) => v?.trim()).map(([k, v]) => (
+                  <div key={k} className="text-xs text-slate-600"><span className="text-slate-400">{k}: </span>{v}</div>
+                ))}
               </div>
             )}
 
