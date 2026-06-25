@@ -71,6 +71,30 @@ function avatarColor(name: string) {
   return COLORS[name.charCodeAt(0) % COLORS.length];
 }
 
+// Photo with graceful fallback to coloured initials if the image fails to load.
+function DoctorAvatar({ name, photoUrl }: { name: string; photoUrl?: string }) {
+  const [failed, setFailed] = useState(false);
+  if (photoUrl && !failed) {
+    return (
+      <img
+        src={photoUrl}
+        alt={`Dr. ${name}`}
+        className="w-14 h-14 rounded-lg object-cover border border-slate-200 group-hover:scale-105 transition-transform duration-300"
+        loading="lazy"
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+  return (
+    <div
+      className="w-14 h-14 rounded-lg flex items-center justify-center text-white font-bold text-lg border-2 group-hover:scale-105 transition-transform duration-300"
+      style={{ backgroundColor: avatarColor(name), borderColor: avatarColor(name) + '33' }}
+    >
+      {initials(name)}
+    </div>
+  );
+}
+
 export default function DoctorsDirectoryPage() {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [loading, setLoading] = useState(true);
@@ -306,21 +330,7 @@ export default function DoctorsDirectoryPage() {
                 {/* Top section - Avatar + Name + Badge */}
                 <div className="flex gap-4 mb-4">
                   <div className="flex-shrink-0">
-                    {doc.profilePhotoUrl ? (
-                      <img
-                        src={doc.profilePhotoUrl}
-                        alt={`Dr. ${doc.name}`}
-                        className="w-14 h-14 rounded-lg object-cover border border-slate-200 group-hover:scale-105 transition-transform duration-300"
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div
-                        className="w-14 h-14 rounded-lg flex items-center justify-center text-white font-bold text-lg border-2 group-hover:scale-105 transition-transform duration-300"
-                        style={{ backgroundColor: avatarColor(doc.name), borderColor: avatarColor(doc.name) + '33' }}
-                      >
-                        {initials(doc.name)}
-                      </div>
-                    )}
+                    <DoctorAvatar name={doc.name} photoUrl={doc.profilePhotoUrl} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <h3 className="font-bold text-slate-900 text-base leading-snug group-hover:text-teal-600 transition mb-1">Dr. {doc.name}</h3>
