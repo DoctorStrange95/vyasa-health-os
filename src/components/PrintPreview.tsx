@@ -37,6 +37,16 @@ interface ConsultDraft {
   advice: string;
   followUp: string;
   referredTo: string;
+  // Optional — present from the live consult; may be absent when printing an old visit.
+  generalExam?: string;
+  systemicExam?: string;
+  bodyNotes?: Record<string, string>;
+  pastMedical?: string;
+  pastSurgical?: string;
+  familyHistory?: string;
+  socialHistory?: string;
+  allergiesNote?: string;
+  currentMeds?: string;
 }
 
 interface PrintPreviewProps {
@@ -154,13 +164,30 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
     let body = '';
     if (ps.complaint && draft.chiefComplaint) body += sectionTitle('C/C') + `<div style="font-size:13px;">${esc(draft.chiefComplaint)}</div>`;
     if (ps.hopi && draft.hopi) body += sectionTitle('History') + `<div style="font-size:13px;">${esc(draft.hopi)}</div>`;
+    if (ps.hopi) {
+      const ph = [
+        draft.pastMedical?.trim() && `Past Medical: ${draft.pastMedical}`,
+        draft.pastSurgical?.trim() && `Past Surgical: ${draft.pastSurgical}`,
+        draft.familyHistory?.trim() && `Family H/o: ${draft.familyHistory}`,
+        draft.socialHistory?.trim() && `Social: ${draft.socialHistory}`,
+        draft.allergiesNote?.trim() && `Allergies: ${draft.allergiesNote}`,
+        draft.currentMeds?.trim() && `Current Meds: ${draft.currentMeds}`,
+      ].filter(Boolean) as string[];
+      if (ph.length) body += sectionTitle('Past & Family History') + ph.map(p => `<div style="font-size:13px;">${esc(p)}</div>`).join('');
+    }
     if (ps.diagnosis && draft.diagnosis) {
       body += sectionTitle('Diagnosis') + `<div style="font-size:13px;font-weight:500;">${esc(draft.diagnosis)}${draft.icdCode ? ` (${esc(draft.icdCode)})` : ''}</div>`;
       if (draft.secondaryDx) body += `<div style="font-size:12px;color:#475569;">${esc(draft.secondaryDx)}</div>`;
     }
-    // ── Specialty examination block ──────────────────────────────────────────
-    // Each module is checked for its own keys — independent of doctor's specialty.
+    // ── Examination: general + systemic findings, body diagram, then specialty modules ──
     // Psychiatry fields are NEVER printed (sensitive clinical notes).
+    let examBody = '';
+    if (ps.specialtyExam) {
+      if (draft.generalExam?.trim()) examBody += `<div style="font-size:13px;margin-bottom:4px;"><span style="color:#94a3b8;">General: </span>${esc(draft.generalExam)}</div>`;
+      if (draft.systemicExam?.trim()) examBody += `<div style="font-size:13px;margin-bottom:4px;"><span style="color:#94a3b8;">Systemic: </span>${esc(draft.systemicExam)}</div>`;
+      const bnotes = draft.bodyNotes ? Object.entries(draft.bodyNotes).filter(([, v]) => (v as string)?.trim()).map(([k, v]) => `${k}: ${v}`).join('; ') : '';
+      if (bnotes) examBody += `<div style="font-size:12px;color:#475569;margin-bottom:4px;">${esc(bnotes)}</div>`;
+    }
     if (ps.specialtyExam && specialtyExam) {
       const sp = specialtyExam;
       const has = (...keys: string[]) => keys.some(k => sp[k]?.trim());
@@ -171,8 +198,6 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
 
       const subTitle = (t: string) =>
         `<div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:0.05em;color:#94a3b8;margin:8px 0 3px;border-bottom:1px solid #f1f5f9;padding-bottom:2px;">${t}</div>`;
-
-      let examBody = '';
 
       // Ophthalmology
       if (has('va_re_ucva','va_re_bcva','va_le_ucva','va_le_bcva','iop_re','iop_le','refx_re_sph','refx_le_sph','ant_re','ant_le','post_re','post_le','add_power')) {
@@ -279,9 +304,8 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
         if (gmFindings) examBody += subTitle('Clinical Findings') + `<div style="font-size:13px;">${esc(gmFindings)}</div>`;
       }
       // Psychiatry: intentionally omitted from PDF
-
-      if (examBody) body += sectionTitle('Examination') + examBody;
     }
+    if (examBody) body += sectionTitle('Examination') + examBody;
 
     if (ps.rx && activeDrugs.length) {
       body += `<div style="color:${theme};font-size:24px;font-weight:bold;margin:14px 0 6px;">℞</div>`;
@@ -563,6 +587,28 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
               <div className="mb-2">
                 <div className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: theme }}>History</div>
                 <div className="text-sm">{draft.hopi}</div>
+              </div>
+            )}
+
+            {/* Past & Family History */}
+            {ps.hopi && (draft.pastMedical?.trim() || draft.pastSurgical?.trim() || draft.familyHistory?.trim() || draft.socialHistory?.trim() || draft.allergiesNote?.trim() || draft.currentMeds?.trim()) && (
+              <div className="mb-2">
+                <div className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: theme }}>Past &amp; Family History</div>
+                {draft.pastMedical?.trim() && <div className="text-sm"><span className="text-slate-400">Past Medical: </span>{draft.pastMedical}</div>}
+                {draft.pastSurgical?.trim() && <div className="text-sm"><span className="text-slate-400">Past Surgical: </span>{draft.pastSurgical}</div>}
+                {draft.familyHistory?.trim() && <div className="text-sm"><span className="text-slate-400">Family H/o: </span>{draft.familyHistory}</div>}
+                {draft.socialHistory?.trim() && <div className="text-sm"><span className="text-slate-400">Social: </span>{draft.socialHistory}</div>}
+                {draft.allergiesNote?.trim() && <div className="text-sm"><span className="text-slate-400">Allergies: </span>{draft.allergiesNote}</div>}
+                {draft.currentMeds?.trim() && <div className="text-sm"><span className="text-slate-400">Current Meds: </span>{draft.currentMeds}</div>}
+              </div>
+            )}
+
+            {/* Examination — general & systemic findings */}
+            {ps.specialtyExam && (draft.generalExam?.trim() || draft.systemicExam?.trim()) && (
+              <div className="mb-3">
+                <div className="text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: theme }}>Examination</div>
+                {draft.generalExam?.trim() && <div className="text-sm mb-1"><span className="text-slate-400">General: </span>{draft.generalExam}</div>}
+                {draft.systemicExam?.trim() && <div className="text-sm"><span className="text-slate-400">Systemic: </span>{draft.systemicExam}</div>}
               </div>
             )}
 
