@@ -5,13 +5,39 @@
 // Reads the /admin/analytics/* endpoints. All data is feature-usage metadata —
 // no patient PHI is ever captured.
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, Component, type ReactNode } from 'react';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import {
   Activity, Users, Zap, AlertTriangle, TrendingUp, Smartphone, Monitor,
   RefreshCw, X, Clock, Flame, ChevronRight,
 } from 'lucide-react';
+
+// Isolates the dashboard — a bug here can NEVER crash the whole admin page.
+// Also surfaces the real error so it can be fixed precisely.
+class DashboardBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null as Error | null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  componentDidCatch(error: Error) { console.error('[analytics dashboard crash]', error); }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-center">
+          <AlertTriangle className="w-8 h-8 text-amber-500 mx-auto mb-2" />
+          <div className="font-bold text-slate-800">Insights couldn't render</div>
+          <div className="text-xs text-slate-500 mt-1">The rest of the admin panel is unaffected.</div>
+          <pre className="text-[11px] text-rose-600 bg-white border border-rose-100 rounded-lg p-2 mt-3 text-left overflow-auto max-h-32">{String(this.state.error?.message || this.state.error)}</pre>
+          <button onClick={() => this.setState({ error: null })} className="mt-3 text-xs font-semibold text-teal-600 bg-white border border-teal-200 rounded-lg px-3 py-1.5">Retry</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+export function AnalyticsDashboard() {
+  return <DashboardBoundary><AnalyticsDashboardInner /></DashboardBoundary>;
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface LiveData {
@@ -103,7 +129,7 @@ const EVENT_LABEL: Record<string, string> = {
 const evLabel = (t: string) => EVENT_LABEL[t] ?? t.replace(/_/g, ' ');
 
 // ─── Main dashboard ──────────────────────────────────────────────────────────
-export function AnalyticsDashboard() {
+function AnalyticsDashboardInner() {
   const [live, setLive] = useState<LiveData | null>(null);
   const [eng, setEng] = useState<Engagement | null>(null);
   const [features, setFeatures] = useState<Feature[]>([]);
