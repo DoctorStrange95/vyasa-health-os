@@ -853,8 +853,9 @@ export default function ConsultPage() {
                   <input value={draft.vitals[v.key]}
                     onChange={e => {
                       let val = e.target.value;
-                      // BP: auto-insert "/" once the 3-digit systolic is typed
-                      if (v.key === 'bp' && /^\d{3}$/.test(val) && val.length > draft.vitals.bp.length) val += '/';
+                      // BP: auto-insert "/" once the systolic is complete — 3 digits if it
+                      // starts 1/2 (100–250), or 2 digits if it starts 3–9 (30–99, e.g. 90/60).
+                      if (v.key === 'bp' && val.length > draft.vitals.bp.length && (/^[12]\d{2}$/.test(val) || /^[3-9]\d$/.test(val))) val += '/';
                       setV(v.key, val);
                     }}
                     placeholder={v.placeholder}
