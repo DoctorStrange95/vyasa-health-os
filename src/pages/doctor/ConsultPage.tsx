@@ -14,6 +14,7 @@ import { ClinicalCalculators } from '@/components/ClinicalCalculators';
 import { PrintPreview } from '@/components/PrintPreview';
 import { RxSection, type RxRow, type RxForm } from '@/components/prescription/RxSection';
 import { FavDrugsPanel } from '@/components/prescription/FavDrugsPanel';
+import { ReadyMixPanel } from '@/components/prescription/ReadyMixPanel';
 import { SpecialtyExamSection, detectSpecialty, specialtyLabel, ALL_SPECIALTY_MODULES, MODULE_META, SPECIALTY_COLORS } from '@/components/prescription/SpecialtyExamSection';
 import type { SpecialtyKey } from '@/components/prescription/SpecialtyExamSection';
 import { cn, formatDateTime } from '@/lib/utils';
@@ -1130,6 +1131,15 @@ export default function ConsultPage() {
         {/* 8. Prescription */}
         <Section id="s-rx" title="Prescription" icon={Pill} filled={filled.rx}>
           <div className="pt-4 space-y-3">
+            <ReadyMixPanel
+              onAddDrug={(drug) => {
+                set('rxRows', [...draft.rxRows.filter(r => r.drug.trim()), { ...BLANK_RX_ROW(), drug: drug.drug ?? '', dose: drug.dose ?? '', route: drug.route ?? 'Oral', frequency: drug.frequency ?? 'OD', duration: drug.duration ?? '5 days', instructions: drug.instructions ?? '' }]);
+              }}
+              onLoadBundle={(drugs) => {
+                const newRows = drugs.map(d => ({ ...BLANK_RX_ROW(), drug: d.drug ?? '', dose: d.dose ?? '', route: d.route ?? 'Oral', frequency: d.frequency ?? 'OD', duration: d.duration ?? '5 days', instructions: d.instructions ?? '' }));
+                set('rxRows', [...draft.rxRows.filter(r => r.drug.trim()), ...newRows]);
+              }}
+            />
             <FavDrugsPanel
               diagnosis={draft.diagnosis}
               onAddDrug={(drug) => {
