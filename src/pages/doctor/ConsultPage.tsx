@@ -18,7 +18,7 @@ import { ReadyMixPanel } from '@/components/prescription/ReadyMixPanel';
 import { SpecialtyExamSection, detectSpecialty, specialtyLabel, ALL_SPECIALTY_MODULES, MODULE_META, SPECIALTY_COLORS } from '@/components/prescription/SpecialtyExamSection';
 import type { SpecialtyKey } from '@/components/prescription/SpecialtyExamSection';
 import { cn, formatDateTime } from '@/lib/utils';
-import { api, isApiEnabled } from '@/lib/api';
+import { api, isApiEnabled, trackEvent } from '@/lib/api';
 import type { VaccineEntry, ProcedureEntry, AttachmentEntry, VisitRecord, LabOrder, Vitals } from '@/types';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -551,9 +551,18 @@ export default function ConsultPage() {
 
     showToast(editVisitId ? 'Consultation updated' : 'Consultation saved', 'success');
     setSaving(false);
-    
+
     const p = useAppStore.getState().patients.find(pt => pt.id === patientId);
     const isIPDPatient = p?.status === 'IPD' || p?.status === 'Critical';
+
+    trackEvent('consult_saved', {
+      mode: editVisitId ? 'edit' : 'new',
+      kind: isIPDPatient ? 'ipd_round' : 'opd',
+      rx_count: draft.rxRows.filter(r => r.drug.trim()).length,
+      has_diagnosis: Boolean(draft.diagnosis.trim()),
+      labs: draft.investigation.trim() ? 1 : 0,
+      comorbidities: draft.comorbidities.length,
+    });
     
     if (!isIPDPatient) {
       // Show the customised PAD print preview (NOT the raw page print)
@@ -1158,6 +1167,7 @@ export default function ConsultPage() {
                 set('rxRows', [...draft.rxRows.filter(r => r.drug.trim()), { ...BLANK_RX_ROW(), drug: drug.drug ?? '', dose: drug.dose ?? '', route: drug.route ?? 'Oral', frequency: drug.frequency ?? 'OD', duration: drug.duration ?? '5 days', instructions: drug.instructions ?? '' }]);
               }}
               onLoadBundle={(drugs, dx) => {
+                trackEvent('ready_mix_used', { regimen: dx?.name ?? 'bundle', meds: drugs.length });
                 const newRows = drugs.map(d => ({ ...BLANK_RX_ROW(), drug: d.drug ?? '', dose: d.dose ?? '', route: d.route ?? 'Oral', frequency: d.frequency ?? 'OD', duration: d.duration ?? '5 days', instructions: d.instructions ?? '' }));
                 // Auto-fill diagnosis from the regimen — but never overwrite what the doctor typed.
                 if (dx && !draft.diagnosis.trim()) {

@@ -85,11 +85,6 @@ export const api = {
 
 export const isApiEnabled = () => Boolean(accessToken);
 
-// Fire-and-forget event tracking — never throws, never blocks
-export function trackEvent(event_type: string, metadata: Record<string, string> = {}) {
-  fetch(`${BASE}/api/events`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ event_type, metadata }),
-  }).catch(() => {});
-}
+// Fire-and-forget event tracking — implemented in lib/analytics (auto-tags
+// user/session/path, batches, captures errors). Re-exported for compatibility.
+export { trackEvent, trackPageView, trackError, installAnalytics } from './analytics';

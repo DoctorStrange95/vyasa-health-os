@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect } from 'react';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePadStore } from '@/store/usePadStore';
-import { api } from '@/lib/api';
+import { api, trackEvent } from '@/lib/api';
 import { Printer, Send, X, ChevronDown, Settings2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { VaccineEntry, ProcedureEntry } from '@/types';
@@ -425,6 +425,7 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
   }
 
   function doPrint() {
+    trackEvent('rx_printed', { rx_count: draft.rxRows.filter(r => r.drug.trim()).length });
     const html = buildPrintHtml();
     // Use a hidden iframe so it works on mobile Safari (no popup blocking) and desktop.
     const iframe = document.createElement('iframe');

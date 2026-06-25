@@ -1,10 +1,19 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { lazy, Suspense, useEffect } from 'react';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useAppStore } from '@/store/useAppStore';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { PWAUpdateBanner } from '@/components/PWAUpdateBanner';
+import { installAnalytics, trackPageView } from '@/lib/analytics';
 import { Loader2 } from 'lucide-react';
+
+// Installs global error capture once, then logs a page_view on every route change.
+function AnalyticsTracker() {
+  const location = useLocation();
+  useEffect(() => { installAnalytics(); }, []);
+  useEffect(() => { trackPageView(location.pathname); }, [location.pathname]);
+  return null;
+}
 
 const LoginPage = lazy(() => import('@/pages/auth/LoginPage'));
 const RegisterPage = lazy(() => import('@/pages/auth/RegisterPage'));
@@ -98,6 +107,7 @@ function DoctorOnly({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <BrowserRouter>
+      <AnalyticsTracker />
       <PWAUpdateBanner />
       <Suspense fallback={<div className="flex items-center justify-center h-screen"><Loader2 className="w-10 h-10 animate-spin text-teal-500" /></div>}>
         <Routes>

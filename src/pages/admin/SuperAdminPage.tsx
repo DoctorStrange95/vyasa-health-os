@@ -8,6 +8,7 @@ import {
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { sendEmail, sendDirectEmail, EMAIL_TEMPLATES } from '@/lib/emailService';
+import { AnalyticsDashboard } from './AnalyticsDashboard';
 
 interface AdminUser {
   id: number; name: string; email: string; role: string;
@@ -106,7 +107,7 @@ interface ClinicOverview {
 }
 
 type Filter = 'pending' | 'all' | 'approved' | 'rejected';
-type MainTab = 'users' | 'doctors' | 'staff' | 'templates' | 'activity';
+type MainTab = 'insights' | 'users' | 'doctors' | 'staff' | 'templates' | 'activity';
 type DoctorFilter = 'all' | 'active' | 'inactive' | 'dormant';
 
 // Clinic / polyclinic staff & invitees — everyone who is NOT a solo doctor,
@@ -1208,6 +1209,13 @@ export default function SuperAdminPage() {
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
           <button
+            onClick={() => setMainTab('insights')}
+            className={cn('py-2 px-5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2',
+              mainTab === 'insights' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700')}
+          >
+            <Activity className="w-4 h-4" /> Insights
+          </button>
+          <button
             onClick={() => setMainTab('users')}
             className={cn('py-2 px-5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2',
               mainTab === 'users' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700')}
@@ -1260,6 +1268,9 @@ export default function SuperAdminPage() {
           {emailsSent > 0 && <span className="text-emerald-500 font-normal">· {emailsSent} this session</span>}
         </div>
       </div>
+
+      {/* ── INSIGHTS TAB ── */}
+      {mainTab === 'insights' && <AnalyticsDashboard />}
 
       {/* ── USERS TAB ── */}
       {mainTab === 'users' && (
