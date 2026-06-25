@@ -49,7 +49,7 @@ interface ConsultDraft {
   specialtyExam: Record<string, string>;
 }
 
-const BLANK_RX_ROW = (): RxRow => ({ id: String(Date.now()), form: 'Tab', drug: '', dose: '', strength: '', puffs: '', doseML: '', route: 'Oral', frequency: 'OD', duration: '5 days', instructions: '' });
+const BLANK_RX_ROW = (): RxRow => ({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`, form: 'Tab', drug: '', dose: '', strength: '', puffs: '', doseML: '', route: 'Oral', frequency: 'OD', duration: '5 days', instructions: '' });
 
 const BLANK_DRAFT: ConsultDraft = {
   chiefComplaint: '', hopi: '', pastMedical: '', pastSurgical: '',
