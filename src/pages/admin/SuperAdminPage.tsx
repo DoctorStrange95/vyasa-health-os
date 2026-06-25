@@ -650,6 +650,50 @@ function ActivityTab() {
               </div>
             </div>
 
+            {/* Failed logins grouped by reason */}
+            {failedLogins.length > 0 && (() => {
+              const bucket = (r: string | null) => {
+                const s = (r || '').toLowerCase();
+                if (s.includes('pending approval')) return { label: 'Pending approval', tone: 'amber' };
+                if (s.includes('invalid email') || s.includes('password')) return { label: 'Wrong email / password', tone: 'rose' };
+                if (s.includes('reject')) return { label: 'Account rejected', tone: 'slate' };
+                if (s.includes('block')) return { label: 'Account blocked', tone: 'rose' };
+                if (s.includes('suspend')) return { label: 'Account suspended', tone: 'slate' };
+                if (s.includes('not found') || s.includes('no user') || s.includes('no account')) return { label: 'No such account', tone: 'slate' };
+                if (!s) return { label: 'Unknown', tone: 'slate' };
+                return { label: r as string, tone: 'slate' };
+              };
+              const counts: Record<string, { count: number; tone: string }> = {};
+              for (const f of failedLogins) {
+                const b = bucket(f.reason);
+                counts[b.label] = { count: (counts[b.label]?.count ?? 0) + 1, tone: b.tone };
+              }
+              const entries = Object.entries(counts).sort((a, b) => b[1].count - a[1].count);
+              const max = Math.max(1, ...entries.map(e => e[1].count));
+              const toneBar: Record<string, string> = { amber: 'bg-amber-400', rose: 'bg-rose-400', slate: 'bg-slate-400' };
+              return (
+                <div className="mb-5">
+                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <XCircle className="w-3.5 h-3.5 text-red-400" /> Failed Logins — by Reason
+                    <span className="text-slate-300 font-normal normal-case">· {failedLogins.length} total</span>
+                  </h3>
+                  <div className="card p-4 space-y-2.5">
+                    {entries.map(([label, { count, tone }]) => (
+                      <div key={label} className="flex items-center gap-3 text-sm">
+                        <div className="w-56 truncate text-slate-700 font-medium" title={label}>{label}</div>
+                        <div className="flex-1 h-5 bg-slate-100 rounded-md overflow-hidden">
+                          <div className={cn('h-full rounded-md', toneBar[tone])} style={{ width: `${Math.max(4, (count / max) * 100)}%` }} />
+                        </div>
+                        <div className="w-24 text-right tabular-nums font-bold text-slate-800">
+                          {count} <span className="text-slate-400 font-normal">({Math.round((count / failedLogins.length) * 100)}%)</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Failed logins with emails */}
             {failedLogins.length > 0 && (
               <div>
