@@ -46,8 +46,11 @@ interface ConsultDraft {
   referredTo: string;
   privateNote: string;
   vitals: { bp: string; hr: string; temp: string; spo2: string; weight: string; height: string; rr: string; };
+  comorbidities: string[];
   specialtyExam: Record<string, string>;
 }
+
+const COMORBIDITY_OPTIONS = ['Diabetes (DM)', 'Hypertension (HTN)', 'Thyroid disorder', 'Asthma / COPD', 'Cardiac disease', 'CKD', 'Cancer', 'Epilepsy', 'Tuberculosis', 'Hepatitis B/C', 'HIV'];
 
 const BLANK_RX_ROW = (): RxRow => ({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`, form: 'Tab', drug: '', dose: '', strength: '', puffs: '', doseML: '', route: 'Oral', frequency: 'OD', duration: '5 days', instructions: '' });
 
@@ -59,6 +62,7 @@ const BLANK_DRAFT: ConsultDraft = {
   rxRows: [{ id: '1', form: 'Tab', drug: '', dose: '', strength: '', puffs: '', doseML: '', route: 'Oral', frequency: 'OD', duration: '5 days', instructions: '' }],
   advice: '', followUp: '1 week', referredTo: '', privateNote: '',
   vitals: { bp: '', hr: '', temp: '', spo2: '', weight: '', height: '', rr: '' },
+  comorbidities: [],
   bodyNotes: {},
   bodySigns: [],
   specialtyExam: {},
@@ -362,6 +366,7 @@ export default function ConsultPage() {
       advice: todayVisit.advice,
       followUp: todayVisit.followUp,
       privateNote: todayVisit.privateNote ?? '',
+      comorbidities: todayVisit.comorbidities ?? [],
       specialtyExam: todayVisit.specialtyExam ?? {},
       vitals: todayVisit.vitalsSnapshot ? {
         bp: todayVisit.vitalsSnapshot.bp ?? '',
@@ -518,6 +523,7 @@ export default function ConsultPage() {
       allergiesNote: draft.allergiesNote,
       currentMeds: draft.currentMeds,
       vitalsSnapshot: draft.vitals,
+      comorbidities: draft.comorbidities.length ? draft.comorbidities : undefined,
       generalExam: draft.generalExam,
       systemicExam: draft.systemicExam,
       bodyNotes: Object.keys(draft.bodyNotes).length ? draft.bodyNotes : undefined,
@@ -649,26 +655,22 @@ export default function ConsultPage() {
   const patientWeightKg = parseFloat(draft.vitals.weight) || null;
 
   // ─── Completeness ──────────────────────────────────────────────────────────
-  // user.specialty from backend profile; pad.specialty from Rx header settings — use either
+  // Specialists auto-open their own module; GPs / family / general medicine start
+  // fully collapsed (nothing open) until the doctor taps a chip.
   const specialtyKey = detectSpecialty(user?.specialty || pad.specialty);
+  const defaultModules = () =>
+    specialtyKey && specialtyKey !== 'general_medicine'
+      ? new Set<SpecialtyKey>([specialtyKey])
+      : new Set<SpecialtyKey>();
 
-  // Default open modules: detected specialty auto-opens; GPs/MBBS get Eye + Surgery by default
-  const [openModules, setOpenModules] = useState<Set<SpecialtyKey>>(() => {
-    if (specialtyKey && specialtyKey !== 'general_medicine') return new Set([specialtyKey]);
-    return new Set<SpecialtyKey>(['ophthalmology', 'surgery']);
-  });
+  const [openModules, setOpenModules] = useState<Set<SpecialtyKey>>(defaultModules);
   // Track whether the doctor has manually toggled any module this session
   const [modulesManuallySet, setModulesManuallySet] = useState(false);
 
-  // If specialty resolves after first render (e.g., user data loads from API),
-  // sync the default open module — but only if the doctor hasn't touched the toggles
+  // If specialty resolves after first render (profile loads from API), sync the
+  // default open module — but only if the doctor hasn't touched the toggles.
   useEffect(() => {
-    if (modulesManuallySet) return;
-    if (specialtyKey && specialtyKey !== 'general_medicine') {
-      setOpenModules(new Set([specialtyKey]));
-    } else {
-      setOpenModules(new Set<SpecialtyKey>(['ophthalmology', 'surgery']));
-    }
+    if (!modulesManuallySet) setOpenModules(defaultModules());
   }, [specialtyKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function toggleModule(key: SpecialtyKey) {
@@ -927,6 +929,25 @@ export default function ConsultPage() {
               )}
             </div>
           )}
+
+          {/* Known comorbidities / chronic diseases — tick all that apply, printed on Rx */}
+          <div className="mt-4">
+            <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Known Comorbidities / Chronic Diseases</label>
+            <div className="flex flex-wrap gap-2">
+              {COMORBIDITY_OPTIONS.map(c => {
+                const on = draft.comorbidities.includes(c);
+                return (
+                  <button key={c} type="button"
+                    onClick={() => set('comorbidities',
+                      on ? draft.comorbidities.filter(x => x !== c) : [...draft.comorbidities, c])}
+                    className={cn('px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors',
+                      on ? 'border-rose-300 bg-rose-50 text-rose-700' : 'border-slate-200 text-slate-600 hover:border-slate-300')}>
+                    {on ? '✓ ' : ''}{c}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </Section>
 
         {/* 2. Chief Complaint / Progress Note */}

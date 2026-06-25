@@ -42,6 +42,7 @@ interface ConsultDraft {
   systemicExam?: string;
   bodyNotes?: Record<string, string>;
   bodySigns?: string[];
+  comorbidities?: string[];
   pastMedical?: string;
   pastSurgical?: string;
   familyHistory?: string;
@@ -173,6 +174,7 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
     if (ps.hopi && draft.hopi) body += sectionTitle('History') + `<div style="font-size:13px;">${esc(draft.hopi)}</div>`;
     {
       const ph = [
+        draft.comorbidities?.length && `Comorbidities: ${draft.comorbidities.join(', ')}`,
         draft.pastMedical?.trim() && `Past Medical: ${draft.pastMedical}`,
         draft.pastSurgical?.trim() && `Past Surgical: ${draft.pastSurgical}`,
         draft.familyHistory?.trim() && `Family H/o: ${draft.familyHistory}`,
@@ -602,9 +604,10 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
             )}
 
             {/* Past & Family History */}
-            {(draft.pastMedical?.trim() || draft.pastSurgical?.trim() || draft.familyHistory?.trim() || draft.socialHistory?.trim() || draft.allergiesNote?.trim() || draft.currentMeds?.trim()) && (
+            {((draft.comorbidities?.length ?? 0) > 0 || draft.pastMedical?.trim() || draft.pastSurgical?.trim() || draft.familyHistory?.trim() || draft.socialHistory?.trim() || draft.allergiesNote?.trim() || draft.currentMeds?.trim()) && (
               <div className="mb-2">
                 <div className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: theme }}>Past &amp; Family History</div>
+                {draft.comorbidities && draft.comorbidities.length > 0 && <div className="text-sm"><span className="text-slate-400">Comorbidities: </span>{draft.comorbidities.join(', ')}</div>}
                 {draft.pastMedical?.trim() && <div className="text-sm"><span className="text-slate-400">Past Medical: </span>{draft.pastMedical}</div>}
                 {draft.pastSurgical?.trim() && <div className="text-sm"><span className="text-slate-400">Past Surgical: </span>{draft.pastSurgical}</div>}
                 {draft.familyHistory?.trim() && <div className="text-sm"><span className="text-slate-400">Family H/o: </span>{draft.familyHistory}</div>}

@@ -237,6 +237,7 @@ export interface VisitRecord {
   systemicExam?: string;
   bodyNotes?: Record<string, string>;
   bodySigns?: string[];
+  comorbidities?: string[];
   investigation?: string;
 
   // Assessment
