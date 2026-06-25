@@ -1,6 +1,6 @@
-import { useParams, Link, useSearchParams } from 'react-router-dom';
+import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Activity, Pill, FlaskConical, MessageSquare, ClipboardList, FileText, Info, Send, Plus, AlertTriangle, Printer, History, Syringe, Scissors, Camera, Skull, Calendar, MoreVertical, Upload, CheckCircle2, AlertCircle, Eye } from 'lucide-react';
+import { ArrowLeft, Activity, Pill, FlaskConical, MessageSquare, ClipboardList, FileText, Info, Send, Plus, AlertTriangle, Printer, History, Syringe, Scissors, Camera, Skull, Calendar, MoreVertical, Upload, CheckCircle2, AlertCircle, Eye, Trash2 } from 'lucide-react';
 import { useAppStore, uid, nowIso } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { api, isApiEnabled } from '@/lib/api';
@@ -17,11 +17,14 @@ type Tab = 'overview' | 'vitals' | 'prescriptions' | 'labs' | 'notes' | 'chat' |
 
 export default function PatientDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { patients, vitals, prescriptions, labOrders, nursingNotes, chatMessages, visits, appointments, nursingPhotos, addVitals, addPrescription, addLabOrder, updateLabResult, setChatMessages, addNursingPhoto, upsertPatient, updateAppointment, showToast, setVitals, setPrescriptions, setLabOrders, setPatientVisits } = useAppStore();
+  const { patients, vitals, prescriptions, labOrders, nursingNotes, chatMessages, visits, appointments, nursingPhotos, addVitals, addPrescription, addLabOrder, updateLabResult, setChatMessages, addNursingPhoto, upsertPatient, updateAppointment, showToast, setVitals, setPrescriptions, setLabOrders, setPatientVisits, setPatients } = useAppStore();
   const { user } = useAuthStore();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [tab, setTab] = useState<Tab>((searchParams.get('tab') as Tab) || 'overview');
   const [chatInput, setChatInput] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [deathModal, setDeathModal] = useState(false);
   const [deathDate, setDeathDate] = useState(new Date().toISOString().slice(0, 16));
   const [deathCause, setDeathCause] = useState('');
@@ -174,6 +177,20 @@ export default function PatientDetailPage() {
     showToast('Patient record updated', 'success');
   }
 
+  async function deletePatient() {
+    if (!id) return;
+    setDeleting(true);
+    try {
+      if (isApiEnabled()) await api.del(`/patients/${id}`);
+      setPatients(patients.filter(p => p.id !== id));
+      showToast('Patient deleted', 'success');
+      navigate('/app/patients');
+    } catch (e) {
+      showToast(`Could not delete: ${e instanceof Error ? e.message : 'error'}`, 'error');
+      setDeleting(false);
+    }
+  }
+
   function sendChat() {
     if (!chatInput.trim() || !user) return;
     // Send over the socket — the backend persists it and echoes to the whole
@@ -238,6 +255,9 @@ export default function PatientDetailPage() {
               <Skull className="w-3.5 h-3.5" />
             </button>
           )}
+          <button onClick={() => setConfirmDelete(true)} title="Delete record" className="btn-sm bg-slate-100 hover:bg-red-50 text-slate-500 hover:text-red-600 border border-slate-200 hover:border-red-200 transition-colors hidden sm:flex">
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
           {/* Mobile: 3-dot kebab */}
           <div className="relative sm:hidden">
             <button onClick={() => setIpdMenuOpen(o => !o)}
@@ -268,6 +288,11 @@ export default function PatientDetailPage() {
                       Record Death
                     </button>
                   )}
+                  <button onClick={() => { setConfirmDelete(true); setIpdMenuOpen(false); }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-600 hover:bg-red-50 border-t border-slate-100">
+                    <Trash2 className="w-4 h-4" />
+                    Delete Record
+                  </button>
                 </div>
               </>
             )}
@@ -329,6 +354,25 @@ export default function PatientDetailPage() {
           onClose={() => setShowSchedule(false)}
         />
       )}
+
+      {/* Delete patient confirm */}
+      <Modal
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        title="Delete Record"
+        footer={
+          <>
+            <button onClick={() => setConfirmDelete(false)} className="btn-secondary" disabled={deleting}>Cancel</button>
+            <button onClick={deletePatient} disabled={deleting} className="btn-sm bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg">
+              {deleting ? 'Deleting…' : 'Delete permanently'}
+            </button>
+          </>
+        }
+      >
+        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+          This permanently deletes <strong>{patient.name}</strong> and removes the entry from your patient list. This cannot be undone.
+        </div>
+      </Modal>
 
       {/* Mark Deceased modal */}
       <Modal

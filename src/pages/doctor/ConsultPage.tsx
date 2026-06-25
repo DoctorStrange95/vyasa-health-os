@@ -850,7 +850,12 @@ export default function ConsultPage() {
                 <label className="text-xs text-slate-500 font-medium mb-1">{v.label}</label>
                 <div className="relative">
                   <input value={draft.vitals[v.key]}
-                    onChange={e => setV(v.key, e.target.value)}
+                    onChange={e => {
+                      let val = e.target.value;
+                      // BP: auto-insert "/" once the 3-digit systolic is typed
+                      if (v.key === 'bp' && /^\d{3}$/.test(val) && val.length > draft.vitals.bp.length) val += '/';
+                      setV(v.key, val);
+                    }}
                     placeholder={v.placeholder}
                     className="input text-sm pr-8 text-center" />
                   <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400">{v.unit}</span>
@@ -965,7 +970,13 @@ export default function ConsultPage() {
               { key: 'currentMeds',   label: 'Current Medications',  placeholder: 'Medications patient is already on…' },
             ] as const).map(f => (
               <div key={f.key}>
-                <label className="text-xs font-medium text-slate-600 mb-1 block">{f.label}</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-medium text-slate-600 block">{f.label}</label>
+                  <button type="button" onClick={() => set(f.key, 'Nil significant')}
+                    className="text-[10px] font-semibold text-teal-600 hover:text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded px-1.5 py-0.5">
+                    Nil significant
+                  </button>
+                </div>
                 <textarea value={draft[f.key]}
                   onChange={e => set(f.key, e.target.value)}
                   rows={2} className="input resize-none text-sm w-full" placeholder={f.placeholder} />
