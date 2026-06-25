@@ -145,6 +145,7 @@ function activityBadge(lastLogin: string | null, loginCount: number) {
 // ─── Email compose modal ──────────────────────────────────────────────────────
 
 const OUTREACH_TEMPLATES = [
+  { key: 'FIRST_NUDGE',       label: 'First hello — how was your day? ☀️',   icon: '☀️' },
   { key: 'INACTIVE_30_DAYS',  label: 'We miss you (30 days inactive)',       icon: '👋' },
   { key: 'INACTIVE_60_DAYS',  label: 'Account review warning (60+ days)',     icon: '⚠️' },
   { key: 'FEATURE_HIGHLIGHT', label: 'New features highlight',                icon: '🆕' },
@@ -762,6 +763,7 @@ function ActivityTab() {
 const BUILTIN_TEMPLATE_META = [
   { key: 'DOCTOR_APPROVED',   label: 'Doctor Approved',        desc: 'Auto-sent on doctor approval' },
   { key: 'DOCTOR_REJECTED',   label: 'Doctor Rejected',        desc: 'Auto-sent on rejection' },
+  { key: 'FIRST_NUDGE',       label: 'First hello',            desc: 'Warm first-touch — how was your clinic day' },
   { key: 'INACTIVE_30_DAYS',  label: 'We miss you (30 days)',  desc: 'Outreach for 30-day inactive' },
   { key: 'INACTIVE_60_DAYS',  label: 'Account review (60d)',   desc: 'Warning for 60-day dormant' },
   { key: 'FEATURE_HIGHLIGHT', label: 'New Features',           desc: 'Feature announcement' },

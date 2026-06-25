@@ -223,6 +223,30 @@ Vyasa Integrated Healthcare Pvt. Ltd.
 vyasaa.com`
   },
 
+  FIRST_NUDGE: {
+    name: 'first_nudge',
+    subject: 'How was your day at the clinic, Dr {doctorName}? ☀️',
+    body: `Dear Dr. {doctorName},
+
+I'll keep this short — this is a personal note, not an automated blast.
+
+How has your day at the clinic been?
+
+We built Vyasa for one reason: to take the boring, repetitive parts of your day — writing prescriptions, hunting for an old patient's file, managing the OPD queue — and make them take seconds instead of minutes. So you get more time for the part that actually matters: your patients.
+
+Your account is already set up and waiting. If you have just 2 minutes today, log in and write your very first prescription — I genuinely think you'll feel the difference the moment you hit print:
+
+👉 https://app.vyasaa.com/login
+
+And honestly? I'd love to hear back from you. Reply to this email and tell me one thing — what slows you down the most in your clinic every day? It comes straight to our team, and we read every single reply.
+
+Here whenever you need us.
+
+Warmly,
+Nilanjan & the Vyasa team
+support@vyasaa.com | vyasaa.com`
+  },
+
   CUSTOM: {
     name: 'custom',
     subject: '{subject}',
