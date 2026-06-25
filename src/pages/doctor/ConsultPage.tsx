@@ -1157,9 +1157,14 @@ export default function ConsultPage() {
               onAddDrug={(drug) => {
                 set('rxRows', [...draft.rxRows.filter(r => r.drug.trim()), { ...BLANK_RX_ROW(), drug: drug.drug ?? '', dose: drug.dose ?? '', route: drug.route ?? 'Oral', frequency: drug.frequency ?? 'OD', duration: drug.duration ?? '5 days', instructions: drug.instructions ?? '' }]);
               }}
-              onLoadBundle={(drugs) => {
+              onLoadBundle={(drugs, dx) => {
                 const newRows = drugs.map(d => ({ ...BLANK_RX_ROW(), drug: d.drug ?? '', dose: d.dose ?? '', route: d.route ?? 'Oral', frequency: d.frequency ?? 'OD', duration: d.duration ?? '5 days', instructions: d.instructions ?? '' }));
-                set('rxRows', [...draft.rxRows.filter(r => r.drug.trim()), ...newRows]);
+                // Auto-fill diagnosis from the regimen — but never overwrite what the doctor typed.
+                if (dx && !draft.diagnosis.trim()) {
+                  setDraft(prev => ({ ...prev, diagnosis: dx.name, icdCode: prev.icdCode.trim() ? prev.icdCode : dx.icd, rxRows: [...prev.rxRows.filter(r => r.drug.trim()), ...newRows] }));
+                } else {
+                  set('rxRows', [...draft.rxRows.filter(r => r.drug.trim()), ...newRows]);
+                }
               }}
             />
             <FavDrugsPanel

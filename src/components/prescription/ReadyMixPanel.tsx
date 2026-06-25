@@ -2,28 +2,28 @@ import { Sparkles, Plus } from 'lucide-react';
 import type { Medication } from '@/types';
 
 // Common GP "ready-mix" regimens — STARTING POINTS the doctor edits after adding.
-const READY_MIX: { name: string; sub: string; drugs: Partial<Medication>[] }[] = [
-  { name: 'URTI', sub: 'Cough & cold', drugs: [
+const READY_MIX: { name: string; sub: string; dx: string; icd: string; drugs: Partial<Medication>[] }[] = [
+  { name: 'URTI', sub: 'Cough & cold', dx: 'Upper Respiratory Tract Infection (URTI)', icd: 'J06.9', drugs: [
     { drug: 'Paracetamol', dose: '500 mg', route: 'Oral', frequency: 'TDS', duration: '5 days', instructions: 'After food' },
     { drug: 'Cetirizine', dose: '10 mg', route: 'Oral', frequency: 'OD HS', duration: '5 days' },
     { drug: 'Ambroxol + Guaiphenesin syrup', dose: '10 ml', route: 'Oral', frequency: 'TDS', duration: '5 days' },
   ]},
-  { name: 'UTI', sub: 'Urinary infection', drugs: [
+  { name: 'UTI', sub: 'Urinary infection', dx: 'Urinary Tract Infection (UTI)', icd: 'N39.0', drugs: [
     { drug: 'Nitrofurantoin', dose: '100 mg', route: 'Oral', frequency: 'BD', duration: '5 days', instructions: 'After food' },
     { drug: 'Paracetamol', dose: '500 mg', route: 'Oral', frequency: 'SOS', duration: '3 days' },
     { drug: 'Potassium citrate (alkalizer)', dose: '10 ml', route: 'Oral', frequency: 'BD', duration: '5 days' },
   ]},
-  { name: 'AGE', sub: 'Acute gastroenteritis', drugs: [
+  { name: 'AGE', sub: 'Acute gastroenteritis', dx: 'Acute Gastroenteritis (AGE)', icd: 'A09', drugs: [
     { drug: 'ORS', dose: '1 sachet/glass', route: 'Oral', frequency: 'After each stool', duration: '3 days' },
     { drug: 'Ofloxacin + Ornidazole', dose: '1 tab', route: 'Oral', frequency: 'BD', duration: '3 days', instructions: 'After food' },
     { drug: 'Racecadotril', dose: '100 mg', route: 'Oral', frequency: 'TDS', duration: '3 days' },
     { drug: 'Probiotics', dose: '1 sachet', route: 'Oral', frequency: 'BD', duration: '5 days' },
   ]},
-  { name: 'Viral fever', sub: 'Fever', drugs: [
+  { name: 'Viral fever', sub: 'Fever', dx: 'Viral Fever', icd: 'B34.9', drugs: [
     { drug: 'Paracetamol', dose: '500 mg', route: 'Oral', frequency: 'TDS', duration: '5 days', instructions: 'After food, SOS if temp >100°F' },
     { drug: 'ORS', dose: '1 glass', route: 'Oral', frequency: 'TDS', duration: '3 days' },
   ]},
-  { name: 'Acid peptic', sub: 'Gastritis', drugs: [
+  { name: 'Acid peptic', sub: 'Gastritis', dx: 'Acid Peptic Disease', icd: 'K30', drugs: [
     { drug: 'Pantoprazole', dose: '40 mg', route: 'Oral', frequency: 'OD', duration: '14 days', instructions: 'Before breakfast' },
     { drug: 'Domperidone', dose: '10 mg', route: 'Oral', frequency: 'TDS', duration: '5 days', instructions: 'Before food' },
   ]},
@@ -42,7 +42,7 @@ const COMMON_DRUGS: Partial<Medication>[] = [
 ];
 
 export function ReadyMixPanel({ onLoadBundle, onAddDrug }: {
-  onLoadBundle: (drugs: Partial<Medication>[]) => void;
+  onLoadBundle: (drugs: Partial<Medication>[], dx?: { name: string; icd: string }) => void;
   onAddDrug: (drug: Partial<Medication>) => void;
 }) {
   return (
@@ -53,7 +53,7 @@ export function ReadyMixPanel({ onLoadBundle, onAddDrug }: {
         </div>
         <div className="flex flex-wrap gap-2">
           {READY_MIX.map(m => (
-            <button key={m.name} type="button" onClick={() => onLoadBundle(m.drugs)}
+            <button key={m.name} type="button" onClick={() => onLoadBundle(m.drugs, { name: m.dx, icd: m.icd })}
               className="text-left px-3 py-1.5 rounded-lg bg-white border border-amber-200 hover:border-amber-400 hover:bg-amber-50 transition-colors">
               <div className="text-sm font-semibold text-slate-800">{m.name}</div>
               <div className="text-[10px] text-slate-400">{m.sub} · {m.drugs.length} meds</div>
