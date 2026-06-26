@@ -3,12 +3,13 @@ import {
   Users, UserCheck, Clock, ShieldCheck, Search, RefreshCw,
   Loader2, CheckCircle2, XCircle, CalendarClock, Activity, ClipboardList, X, Trash2,
   Stethoscope, TrendingUp, CalendarCheck, BarChart2, ChevronDown, ChevronRight,
-  Mail, Send, Eye, Plus, Edit2, FileText, Ban, Building2,
+  Mail, Send, Eye, Plus, Edit2, FileText, Ban, Building2, MessageSquare,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { sendEmail, sendDirectEmail, EMAIL_TEMPLATES } from '@/lib/emailService';
 import { AnalyticsDashboard } from './AnalyticsDashboard';
+import { FeedbackTab } from './FeedbackTab';
 
 interface AdminUser {
   id: number; name: string; email: string; role: string;
@@ -107,7 +108,7 @@ interface ClinicOverview {
 }
 
 type Filter = 'pending' | 'all' | 'approved' | 'rejected';
-type MainTab = 'insights' | 'users' | 'doctors' | 'staff' | 'templates' | 'activity';
+type MainTab = 'insights' | 'feedback' | 'users' | 'doctors' | 'staff' | 'templates' | 'activity';
 type DoctorFilter = 'all' | 'active' | 'inactive' | 'dormant';
 
 // Clinic / polyclinic staff & invitees — everyone who is NOT a solo doctor,
@@ -1262,6 +1263,13 @@ export default function SuperAdminPage() {
             <Activity className="w-4 h-4" /> Insights
           </button>
           <button
+            onClick={() => setMainTab('feedback')}
+            className={cn('py-2 px-5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2',
+              mainTab === 'feedback' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700')}
+          >
+            <MessageSquare className="w-4 h-4" /> Feedback
+          </button>
+          <button
             onClick={() => setMainTab('users')}
             className={cn('py-2 px-5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2',
               mainTab === 'users' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700')}
@@ -1317,6 +1325,9 @@ export default function SuperAdminPage() {
 
       {/* ── INSIGHTS TAB ── */}
       {mainTab === 'insights' && <AnalyticsDashboard />}
+
+      {/* ── FEEDBACK TAB ── */}
+      {mainTab === 'feedback' && <FeedbackTab />}
 
       {/* ── USERS TAB ── */}
       {mainTab === 'users' && (

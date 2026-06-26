@@ -41,6 +41,7 @@ const TriagePage = lazy(() => import('@/pages/doctor/TriagePage'));
 const NetworkPage = lazy(() => import('@/pages/doctor/NetworkPage'));
 const AnalyticsPage = lazy(() => import('@/pages/doctor/AnalyticsPage'));
 const ProfilePage = lazy(() => import('@/pages/shared/ProfilePage'));
+const FeedbackPage = lazy(() => import('@/pages/shared/FeedbackPage'));
 const ConsultPage = lazy(() => import('@/pages/doctor/ConsultPage'));
 const RoundPage = lazy(() => import('@/pages/doctor/RoundPage'));
 const PadSettingsPage = lazy(() => import('@/pages/shared/PadSettingsPage'));
@@ -176,6 +177,7 @@ export default function App() {
             <Route path="network" element={<Suspense fallback={<Spinner />}><NetworkPage /></Suspense>} />
             <Route path="analytics" element={<Suspense fallback={<Spinner />}><AnalyticsPage /></Suspense>} />
             <Route path="profile" element={<Suspense fallback={<Spinner />}><ProfilePage /></Suspense>} />
+            <Route path="feedback" element={<Suspense fallback={<Spinner />}><FeedbackPage /></Suspense>} />
             <Route path="consult/:patientId" element={<Suspense fallback={<Spinner />}><DoctorOnly><ConsultPage /></DoctorOnly></Suspense>} />
             <Route path="round/:id" element={<Suspense fallback={<Spinner />}><DoctorOnly><RoundPage /></DoctorOnly></Suspense>} />
             <Route path="pad-settings" element={<Suspense fallback={<Spinner />}><PadSettingsPage /></Suspense>} />

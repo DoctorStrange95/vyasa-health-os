@@ -7,7 +7,8 @@ import {
   Bell, LogOut, FileText, ListOrdered, Network, User,
   Activity, ClipboardList, Package, TestTube,
   DollarSign, Receipt, UserCheck, BedDouble,
-  BarChart3, Link2, ScrollText, Gauge, ChevronLeft, Settings2, CalendarDays, ClipboardCheck, ShieldCheck
+  BarChart3, Link2, ScrollText, Gauge, ChevronLeft, Settings2, CalendarDays, ClipboardCheck, ShieldCheck,
+  MessageSquare
 } from 'lucide-react';
 import type { Role } from '@/types';
 
@@ -102,7 +103,8 @@ export function Sidebar() {
 
   if (!user) return null;
 
-  const items = NAV_ITEMS[user.role] || [];
+  // Feedback is available to every role — appended so it shows at the bottom of every sidebar.
+  const items = [...(NAV_ITEMS[user.role] || []), { icon: MessageSquare, label: 'Feedback', to: '/app/feedback' }];
   const unackAlerts = alerts.filter(a => !a.acknowledged).length;
 
   // On mobile, sidebar is an overlay. On desktop, it's fixed in the layout.
