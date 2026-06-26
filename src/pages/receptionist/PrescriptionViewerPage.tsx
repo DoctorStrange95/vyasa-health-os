@@ -3,6 +3,7 @@ import { Search, Printer, MessageCircle, CheckCircle2, IndianRupee, CreditCard, 
 import { useAppStore } from '@/store/useAppStore';
 import { usePadStore } from '@/store/usePadStore';
 import type { Patient, VisitRecord, AppointmentEntry } from '@/types';
+import { PrintPreview } from '@/components/PrintPreview';
 
 // ─── WhatsApp text formatter ──────────────────────────────────────────────────
 
@@ -47,14 +48,6 @@ function buildRxText(
 }
 
 // ─── Print styles injected into document ─────────────────────────────────────
-
-const PRINT_STYLE = `
-@media print {
-  body > *:not(#rx-print-root) { display: none !important; }
-  #rx-print-root { display: block !important; }
-  @page { margin: 12mm; size: A5 portrait; }
-}
-`;
 
 // ─── Prescription card (print-safe) ──────────────────────────────────────────
 
@@ -269,6 +262,7 @@ export default function PrescriptionViewerPage() {
   const [search, setSearch] = useState('');
   const [selectedVisit, setSelectedVisit] = useState<{ patient: Patient; visit: VisitRecord } | null>(null);
   const [paymentApt, setPaymentApt] = useState<AppointmentEntry | null>(null);
+  const [showPrint, setShowPrint] = useState(false);
 
   // Receptionist sees only visits from the last 24 hours
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -287,19 +281,37 @@ export default function PrescriptionViewerPage() {
   const todayStr = new Date().toISOString().slice(0, 10);
   const todayApts = appointments.filter(a => a.date === todayStr);
 
-  function handlePrint() {
-    // Inject print styles once
-    const styleId = 'rx-print-style';
-    if (!document.getElementById(styleId)) {
-      const style = document.createElement('style');
-      style.id = styleId;
-      style.textContent = PRINT_STYLE;
-      document.head.appendChild(style);
-    }
-    if (printRef.current) {
-      printRef.current.id = 'rx-print-root';
-    }
-    window.print();
+  // Map a stored visit into the PrintPreview "draft" shape so the receptionist prints
+  // the SAME customised PAD (logo + QR + branding) the doctor generates.
+  function visitToDraft(v: VisitRecord) {
+    const vs: any = (v as any)?.vitalsSnapshot ?? {};
+    return {
+      chiefComplaint: (v as any)?.chiefComplaint ?? '',
+      hopi: (v as any)?.hopi ?? '',
+      diagnosis: (v as any)?.diagnosis ?? '',
+      icdCode: (v as any)?.icdCode ?? '',
+      secondaryDx: (v as any)?.secondaryDx ?? '',
+      rxRows: ((v as any)?.drugs ?? []).map((d: any, i: number) => ({
+        id: String(i),
+        form: d.form ?? 'Tab',
+        drug: d.drug ?? '',
+        dose: d.dose ?? '',
+        strength: d.strength ?? '',
+        puffs: d.puffs ?? '',
+        route: d.route ?? 'Oral',
+        frequency: d.frequency ?? '',
+        duration: d.duration ?? '',
+        instructions: d.instructions ?? '',
+      })),
+      vitals: {
+        bp: vs.bp ?? '', hr: vs.hr ?? '', temp: vs.temp ?? '', spo2: vs.spo2 ?? '',
+        weight: vs.weight ?? '', height: vs.height ?? '', rr: vs.rr ?? '',
+      },
+      investigation: (v as any)?.investigation ?? '',
+      advice: (v as any)?.advice ?? '',
+      followUp: (v as any)?.followUp ?? '',
+      referredTo: (v as any)?.referral?.specialty ?? '',
+    };
   }
 
   function handleWhatsApp(patient: Patient, visit: VisitRecord) {
@@ -440,7 +452,7 @@ export default function PrescriptionViewerPage() {
                     WhatsApp
                   </button>
                   <button
-                    onClick={handlePrint}
+                    onClick={() => setShowPrint(true)}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-slate-700 text-white rounded-lg hover:bg-slate-800 transition-colors"
                   >
                     <Printer className="w-4 h-4" />
@@ -493,6 +505,17 @@ export default function PrescriptionViewerPage() {
           appointment={paymentApt}
           onClose={() => setPaymentApt(null)}
           onSave={handleCollectPayment}
+        />
+      )}
+
+      {/* Same customised PAD (logo + QR + branding) the doctor prints/shares */}
+      {showPrint && selectedVisit && (
+        <PrintPreview
+          patient={selectedVisit.patient}
+          draft={visitToDraft(selectedVisit.visit) as any}
+          pad={settings}
+          onClose={() => setShowPrint(false)}
+          onWhatsApp={() => handleWhatsApp(selectedVisit.patient, selectedVisit.visit)}
         />
       )}
     </div>
