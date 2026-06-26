@@ -86,6 +86,31 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
     state.syncFromBackend();
   }, [isDemo, patients.length, loadDemo, user?.id, user?.name, user]);
 
+  // Re-pull backend data when the user returns to the tab, so work done by staff
+  // (receptionist-registered patients, new appointments) shows up without re-login.
+  // Throttled to once per 20s; real logins only.
+  useEffect(() => {
+    if (!user || isDemo) return;
+    let last = Date.now();
+    const resync = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (Date.now() - last < 20000) return;
+      // Protect unsaved work: never refresh while the user is typing in a field,
+      // or while on a data-entry screen (consult / round / patient registration).
+      const ae = document.activeElement as HTMLElement | null;
+      if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return;
+      if (/\/(consult|round|register)/.test(window.location.pathname)) return;
+      last = Date.now();
+      useAppStore.getState().syncFromBackend();
+    };
+    document.addEventListener('visibilitychange', resync);
+    window.addEventListener('focus', resync);
+    return () => {
+      document.removeEventListener('visibilitychange', resync);
+      window.removeEventListener('focus', resync);
+    };
+  }, [user, isDemo]);
+
   if (!user) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }
