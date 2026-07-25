@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils';
 import { sendEmail, sendDirectEmail, EMAIL_TEMPLATES } from '@/lib/emailService';
 import { AnalyticsDashboard } from './AnalyticsDashboard';
 import { FeedbackTab } from './FeedbackTab';
+import { PartnerApplicationsTab } from './PartnerApplicationsTab';
 
 interface AdminUser {
   id: number; name: string; email: string; role: string;
@@ -108,7 +109,7 @@ interface ClinicOverview {
 }
 
 type Filter = 'pending' | 'all' | 'approved' | 'rejected';
-type MainTab = 'insights' | 'feedback' | 'users' | 'doctors' | 'staff' | 'templates' | 'activity';
+type MainTab = 'insights' | 'feedback' | 'partners' | 'users' | 'doctors' | 'staff' | 'templates' | 'activity';
 type DoctorFilter = 'all' | 'active' | 'inactive' | 'dormant';
 
 // Clinic / polyclinic staff & invitees — everyone who is NOT a solo doctor,
@@ -1270,6 +1271,13 @@ export default function SuperAdminPage() {
             <MessageSquare className="w-4 h-4" /> Feedback
           </button>
           <button
+            onClick={() => setMainTab('partners')}
+            className={cn('py-2 px-5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2',
+              mainTab === 'partners' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700')}
+          >
+            <Building2 className="w-4 h-4" /> Partners
+          </button>
+          <button
             onClick={() => setMainTab('users')}
             className={cn('py-2 px-5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2',
               mainTab === 'users' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700')}
@@ -1328,6 +1336,9 @@ export default function SuperAdminPage() {
 
       {/* ── FEEDBACK TAB ── */}
       {mainTab === 'feedback' && <FeedbackTab />}
+
+      {/* ── PARTNER APPLICATIONS TAB ── */}
+      {mainTab === 'partners' && <PartnerApplicationsTab />}
 
       {/* ── USERS TAB ── */}
       {mainTab === 'users' && (
