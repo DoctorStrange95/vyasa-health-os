@@ -351,6 +351,185 @@ function EmailComposeModal({
   );
 }
 
+function BulkEmailModal({
+  recipients, onClose, onSent, customTemplates = [],
+}: {
+  recipients: DoctorOverview[];
+  onClose: () => void;
+  onSent?: (log: Pick<EmailLog, 'recipient_id' | 'recipient_email' | 'recipient_name' | 'template_name' | 'subject'>) => void;
+  customTemplates?: CustomTemplate[];
+}) {
+  const [templateKey, setTemplateKey] = useState('');
+  const [subject, setSubject] = useState('');
+  const [body, setBody] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set(recipients.map(d => d.id)));
+  const [recipientSearch, setRecipientSearch] = useState('');
+  const [preview, setPreview] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [statuses, setStatuses] = useState<Record<number, 'sent' | 'failed'>>({});
+
+  function pickTemplate(key: string, custom?: CustomTemplate) {
+    if (custom) {
+      setTemplateKey(`custom:${custom.id}`);
+      setSubject(custom.subject);
+      setBody(custom.body);
+    } else {
+      const tpl = EMAIL_TEMPLATES[key as keyof typeof EMAIL_TEMPLATES];
+      setTemplateKey(key);
+      setSubject(tpl?.subject ?? '');
+      setBody(tpl?.body ?? '');
+    }
+    setPreview(false);
+  }
+
+  function personalize(doc: DoctorOverview, value: string) {
+    return value
+      .replace(/\{doctorName\}/g, doc.name)
+      .replace(/\{profileSlug\}/g, doc.profile_slug ?? '');
+  }
+
+  const selected = recipients.filter(d => selectedIds.has(d.id));
+  const visibleRecipients = recipientSearch.trim()
+    ? recipients.filter(d => [d.name, d.email, d.specialty, d.city]
+        .some(v => v?.toLowerCase().includes(recipientSearch.toLowerCase())))
+    : recipients;
+
+  function toggleRecipient(id: number) {
+    setSelectedIds(current => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  async function doSend() {
+    if (selected.length === 0 || sending) return;
+    setSending(true);
+    for (const doc of selected) {
+      try {
+        const personalizedSubject = personalize(doc, subject);
+        const sent = await sendDirectEmail(doc.email, personalizedSubject, personalize(doc, body));
+        setStatuses(current => ({ ...current, [doc.id]: sent ? 'sent' : 'failed' }));
+        if (sent) onSent?.({
+          recipient_id: doc.id,
+          recipient_email: doc.email,
+          recipient_name: doc.name,
+          template_name: templateKey,
+          subject: personalizedSubject,
+        });
+      } catch {
+        setStatuses(current => ({ ...current, [doc.id]: 'failed' }));
+      }
+    }
+    setSending(false);
+  }
+
+  const sentCount = Object.values(statuses).filter(s => s === 'sent').length;
+  const failedCount = Object.values(statuses).filter(s => s === 'failed').length;
+  const complete = !sending && sentCount + failedCount > 0 && sentCount + failedCount >= selected.length;
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 flex-shrink-0">
+          <div>
+            <h3 className="font-bold text-slate-900 flex items-center gap-2"><Send className="w-4 h-4 text-teal-600" /> Bulk Email</h3>
+            <p className="text-xs text-slate-400 mt-0.5">{selected.length} of {recipients.length} recipient{recipients.length === 1 ? '' : 's'} selected · sent one-by-one from support@vyasaa.com</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"><X className="w-4 h-4 text-slate-400" /></button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 p-5 space-y-4">
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Recipients ({selected.length}/{recipients.length})</label>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setSelectedIds(new Set(recipients.map(d => d.id)))} disabled={sending} className="text-xs font-semibold text-teal-600 hover:underline cursor-pointer disabled:opacity-50">Select all</button>
+                <span className="text-slate-300">·</span>
+                <button onClick={() => setSelectedIds(new Set())} disabled={sending} className="text-xs font-semibold text-slate-500 hover:underline cursor-pointer disabled:opacity-50">Select none</button>
+              </div>
+            </div>
+            <div className="relative mb-2">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+              <input value={recipientSearch} onChange={e => setRecipientSearch(e.target.value)} placeholder="Filter recipients…" className="input pl-8 w-full text-sm py-1.5" />
+            </div>
+            <div className="border border-slate-200 rounded-xl max-h-48 overflow-y-auto divide-y divide-slate-100">
+              {visibleRecipients.map(doc => {
+                const status = statuses[doc.id];
+                return (
+                  <label key={doc.id} className={cn('flex items-center gap-2.5 px-3 py-2 text-sm cursor-pointer hover:bg-slate-50', status === 'sent' && 'bg-emerald-50/50', status === 'failed' && 'bg-red-50/50')}>
+                    <input type="checkbox" checked={selectedIds.has(doc.id)} onChange={() => toggleRecipient(doc.id)} disabled={sending} className="w-4 h-4 rounded border-slate-300 text-teal-600 flex-shrink-0" />
+                    <span className="flex-1 min-w-0 truncate font-medium text-slate-700">{doc.name}</span>
+                    <span className="text-xs text-slate-400 truncate">{doc.email}</span>
+                    {status === 'sent' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />}
+                    {status === 'failed' && <XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />}
+                  </label>
+                );
+              })}
+              {visibleRecipients.length === 0 && <p className="text-xs text-slate-400 px-3 py-4 text-center">No matches</p>}
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 block">Select Template</label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {OUTREACH_TEMPLATES.map(t => (
+                <button key={t.key} onClick={() => pickTemplate(t.key)} disabled={sending} className={cn('text-left px-3 py-2.5 rounded-xl border text-sm font-semibold transition-colors cursor-pointer disabled:opacity-50', templateKey === t.key ? 'bg-teal-50 border-teal-300 text-teal-800' : 'bg-white border-slate-200 text-slate-700 hover:border-teal-200 hover:bg-teal-50/40')}>
+                  <span className="mr-1.5">{t.icon}</span>{t.label}
+                </button>
+              ))}
+              {customTemplates.map(t => (
+                <button key={t.id} onClick={() => pickTemplate(t.id, t)} disabled={sending} className={cn('text-left px-3 py-2.5 rounded-xl border text-sm font-semibold transition-colors cursor-pointer disabled:opacity-50', templateKey === `custom:${t.id}` ? 'bg-violet-50 border-violet-300 text-violet-800' : 'bg-white border-slate-200 text-slate-700 hover:border-violet-200 hover:bg-violet-50/40')}>
+                  <FileText className="w-3.5 h-3.5 inline mr-1.5 opacity-60" />{t.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5 block">Subject</label>
+            <input value={subject} onChange={e => setSubject(e.target.value)} disabled={sending} className="input w-full text-sm" placeholder="Email subject… ({doctorName} supported)" />
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Message Body</label>
+              <button onClick={() => setPreview(v => !v)} disabled={!selected[0]} className="flex items-center gap-1 text-xs text-teal-600 font-semibold hover:underline cursor-pointer disabled:opacity-50 disabled:no-underline">
+                <Eye className="w-3.5 h-3.5" />{preview ? 'Edit' : `Preview for ${selected[0]?.name ?? '—'}`}
+              </button>
+            </div>
+            {preview ? (
+              <div className="bg-slate-50 rounded-xl border border-slate-200 p-4 text-sm text-slate-700 whitespace-pre-wrap leading-relaxed font-mono max-h-64 overflow-y-auto">{selected[0] ? personalize(selected[0], body) : body}</div>
+            ) : (
+              <textarea rows={9} value={body} onChange={e => setBody(e.target.value)} disabled={sending} className="input resize-none w-full text-sm font-mono" placeholder="Email body… ({doctorName} supported)" />
+            )}
+            <p className="text-[11px] text-slate-400 mt-1">{'{doctorName}'} is swapped in per-recipient automatically.</p>
+          </div>
+          {sentCount + failedCount > 0 && (
+            <div className="bg-slate-50 rounded-xl p-3 text-xs text-slate-600 flex items-center gap-3">
+              <span className="text-emerald-600 font-bold">{sentCount} sent</span>
+              {failedCount > 0 && <span className="text-red-600 font-bold">{failedCount} failed</span>}
+              <span className="text-slate-400">of {selected.length}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between gap-3 px-5 py-4 border-t border-slate-100 flex-shrink-0">
+          <p className="text-xs text-slate-400">Sent via Brevo from support@vyasaa.com</p>
+          <div className="flex gap-2">
+            <button onClick={onClose} className="btn-secondary btn-sm">{complete ? 'Close' : 'Cancel'}</button>
+            {!complete && (
+              <button onClick={doSend} disabled={sending || selected.length === 0 || !subject.trim() || !body.trim()} className="flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-50 transition-colors cursor-pointer">
+                {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                {sending ? `Sending… (${sentCount + failedCount}/${selected.length})` : `Send to ${selected.length}`}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Doctor Overview Card ─────────────────────────────────────────────────────
 
 function DoctorCard({ doc, onEmail, emailLogs }: { doc: DoctorOverview; onEmail: (doc: DoctorOverview) => void; emailLogs: EmailLog[] }) {
@@ -962,6 +1141,7 @@ export default function SuperAdminPage() {
   const [rejectModal, setRejectModal] = useState<{ id: number; name: string; reason: string } | null>(null);
   const [sessionsModal, setSessionsModal] = useState<{ user: AdminUser; sessions: LoginSession[]; loading: boolean } | null>(null);
   const [emailModal, setEmailModal] = useState<EmailModal | null>(null);
+  const [bulkEmailOpen, setBulkEmailOpen] = useState(false);
   const [doctorFilter, setDoctorFilter] = useState<DoctorFilter>('all');
   const [emailsSent, setEmailsSent] = useState(0);
   const [customTemplates, setCustomTemplates] = useState<CustomTemplate[]>(() => loadCustomTemplates());
@@ -1500,6 +1680,14 @@ export default function SuperAdminPage() {
                 placeholder="Search doctor, specialty, city…"
                 className="input pl-9 w-full" />
             </div>
+            {filteredDoctors.length > 0 && (
+              <button
+                onClick={() => setBulkEmailOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-bold rounded-xl cursor-pointer flex-shrink-0"
+              >
+                <Send className="w-4 h-4" /> Bulk Email ({filteredDoctors.length})
+              </button>
+            )}
             {inactiveCount > 0 && (
               <button
                 onClick={emailAllInactive}
@@ -1711,6 +1899,15 @@ export default function SuperAdminPage() {
         <EmailComposeModal
           initial={emailModal}
           onClose={() => setEmailModal(null)}
+          onSent={handleEmailSent}
+          customTemplates={customTemplates}
+        />
+      )}
+
+      {bulkEmailOpen && (
+        <BulkEmailModal
+          recipients={filteredDoctors}
+          onClose={() => setBulkEmailOpen(false)}
           onSent={handleEmailSent}
           customTemplates={customTemplates}
         />
