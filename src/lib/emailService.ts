@@ -92,7 +92,7 @@ vyasaa.com`
     subject: 'We miss you on Vyasa, {doctorName} 👋',
     body: `Dear Dr. {doctorName},
 
-We noticed you haven't logged into Vyasa Health OS in a while, and we wanted to check in.
+We noticed you haven't logged into Vyasa Integrated Healthcare in a while, and we wanted to check in.
 
 Your digital clinic is still here, fully set up and ready to go. Here's what's waiting for you:
 
@@ -111,7 +111,7 @@ https://app.vyasaa.com/login
 If you're facing any issues or have feedback, reply to this email — we'd love to hear from you.
 
 Warm regards,
-Vyasa Health Support Team
+Vyasa Integrated Healthcare Team
 support@vyasaa.com | vyasaa.com`
   },
 
@@ -120,7 +120,7 @@ support@vyasaa.com | vyasaa.com`
     subject: 'Your Vyasa account hasn\'t been used in 2 months — action needed',
     body: `Dear Dr. {doctorName},
 
-Your Vyasa Health OS account has been inactive for over 60 days.
+Your Vyasa Integrated Healthcare account has been inactive for over 60 days.
 
 We want to make sure your account continues to serve you well. To maintain your active status and ensure your profile remains visible to patients, we encourage you to log in and update your availability.
 
@@ -137,7 +137,7 @@ If you're experiencing any difficulties or would like a one-on-one walkthrough o
 If you no longer wish to use Vyasa, please let us know so we can update your account status accordingly.
 
 Best regards,
-Vyasa Health Support Team
+Vyasa Integrated Healthcare Team
 support@vyasaa.com`
   },
 
@@ -146,7 +146,7 @@ support@vyasaa.com`
     subject: 'New on Vyasa — Features you haven\'t tried yet, Dr. {doctorName}',
     body: `Dear Dr. {doctorName},
 
-We've been working hard on Vyasa Health OS, and there's a lot that's new since you last logged in.
+We've been working hard on Vyasa Integrated Healthcare, and there's a lot that's new since you last logged in.
 
 🆕 What's new on Vyasa:
 
@@ -193,7 +193,7 @@ If you'd like help completing your profile or setting up your public booking pag
 Reach us: support@vyasaa.com
 
 Best regards,
-Vyasa Health Team
+Vyasa Integrated Healthcare Team
 vyasaa.com`
   },
 
@@ -202,7 +202,7 @@ vyasaa.com`
     subject: 'Your Vyasa account is scheduled for review — Dr. {doctorName}',
     body: `Dear Dr. {doctorName},
 
-This is an important notice regarding your Vyasa Health OS account.
+This is an important notice regarding your Vyasa Integrated Healthcare account.
 
 Due to extended inactivity, your account has been flagged for periodic review. This is a routine process we carry out to ensure our platform serves only active, practicing medical professionals.
 
@@ -332,7 +332,7 @@ support@vyasaa.com | vyasaa.com`
 {body}
 
 Best regards,
-Vyasa Health Support Team
+Vyasa Integrated Healthcare Team
 support@vyasaa.com | vyasaa.com`
   }
 };

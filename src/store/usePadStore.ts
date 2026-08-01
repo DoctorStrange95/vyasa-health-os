@@ -14,7 +14,8 @@ export interface PadSettings {
   email: string;
   timings: string;
   quote: string;
-  logoUrl: string;
+  logoUrl: string;       // clinic/hospital logo (data URL or hosted URL)
+  stampUrl: string;      // doctor's rubber stamp image
   footerNote: string;
   theme: 'teal' | 'navy' | 'maroon' | 'dark';
   showLogo: boolean;
@@ -37,6 +38,7 @@ const DEFAULT: PadSettings = {
   timings: 'Mon–Sat  9am–5pm',
   quote: '',
   logoUrl: '',
+  stampUrl: '',
   footerNote: 'This prescription is valid for 30 days from the date of issue.',
   theme: 'teal',
   showLogo: true,
@@ -175,7 +177,7 @@ export const usePadStore = create<PadStore>()(
             if (err instanceof Error && err.message.includes('not found')) return;
             // Any other error — revert so we don't silently lose a real clinic
             set({ clinics: prev });
-            throw new Error('Failed to delete clinic from server');
+            throw new Error('Failed to delete clinic from server', { cause: err });
           }
         }
       },
@@ -248,6 +250,7 @@ export const usePadStore = create<PadStore>()(
         } catch { /* offline — keep local */ }
       },
 
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       recordPrescriptionUsage: (drugs, _diagnosis) => {
         const now = new Date().toISOString();
         set(state => {

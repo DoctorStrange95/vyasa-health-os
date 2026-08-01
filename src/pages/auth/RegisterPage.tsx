@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Eye, EyeOff, Loader2, ArrowLeft, CheckCircle2, ChevronRight } from 'lucide-react';
+import { Eye, EyeOff, Loader2, ArrowLeft, CheckCircle2, ChevronRight, Stethoscope, Building2, Link2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { INDIAN_MEDICAL_COUNCILS } from '@/lib/medicalCouncils';
 
@@ -192,12 +192,12 @@ export default function RegisterPage() {
 
         <div className="relative space-y-4">
           {[
-            { icon: '🩺', title: 'Free for doctors', desc: 'Full Rx + patient management, zero cost' },
-            { icon: '🏥', title: 'Hospital plans from ₹999/mo', desc: 'Full HMIS, unlimited staff, pharmacy + lab' },
-            { icon: '🔗', title: 'Marketplace access', desc: 'List beds/OTs — earn on idle infrastructure' },
+            { icon: <Stethoscope className="w-4 h-4 text-teal-400" />, title: 'Free for doctors', desc: 'Full Rx + patient management, zero cost' },
+            { icon: <Building2 className="w-4 h-4 text-teal-400" />, title: 'Hospital plans from ₹999/mo', desc: 'Full HMIS, unlimited staff, pharmacy + lab' },
+            { icon: <Link2 className="w-4 h-4 text-teal-400" />, title: 'Marketplace access', desc: 'List beds/OTs — earn on idle infrastructure' },
           ].map(f => (
             <div key={f.title} className="flex items-start gap-3">
-              <div className="w-9 h-9 rounded-lg bg-teal-500/15 flex items-center justify-center text-lg flex-shrink-0">{f.icon}</div>
+              <div className="w-9 h-9 rounded-lg bg-teal-500/15 flex items-center justify-center flex-shrink-0">{f.icon}</div>
               <div>
                 <div className="text-white font-semibold text-sm">{f.title}</div>
                 <div className="text-slate-400 text-xs">{f.desc}</div>
@@ -244,8 +244,8 @@ function ChooseMode({ onSelect }: { onSelect: (m: 'doctor' | 'hospital') => void
           onClick={() => onSelect('doctor')}
           className="w-full card p-5 flex items-center gap-5 hover:border-teal-400 hover:shadow-md active:scale-[.99] transition-all text-left group"
         >
-          <div className="w-14 h-14 rounded-2xl bg-teal-50 flex items-center justify-center text-3xl flex-shrink-0 group-hover:bg-teal-100 transition-colors">
-            🩺
+          <div className="w-14 h-14 rounded-2xl bg-teal-50 flex items-center justify-center flex-shrink-0 group-hover:bg-teal-100 transition-colors text-teal-600">
+            <Stethoscope className="w-7 h-7" />
           </div>
           <div className="flex-1 min-w-0">
             <div className="font-bold text-slate-900 text-base">I'm a Doctor</div>
@@ -263,8 +263,8 @@ function ChooseMode({ onSelect }: { onSelect: (m: 'doctor' | 'hospital') => void
           onClick={() => onSelect('hospital')}
           className="w-full card p-5 flex items-center gap-5 hover:border-teal-400 hover:shadow-md active:scale-[.99] transition-all text-left group"
         >
-          <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center text-3xl flex-shrink-0 group-hover:bg-blue-100 transition-colors">
-            🏥
+          <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center flex-shrink-0 group-hover:bg-blue-100 transition-colors text-blue-600">
+            <Building2 className="w-7 h-7" />
           </div>
           <div className="flex-1 min-w-0">
             <div className="font-bold text-slate-900 text-base">Register a Hospital / Clinic</div>
@@ -299,45 +299,66 @@ function DoctorForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =
 
   function validate() {
     const e: Record<string, string> = {};
-    if (!form.name.trim()) e.name = 'Required';
-    if (!form.email.includes('@')) e.email = 'Enter a valid email';
-    if (form.phone.length < 10) e.phone = 'Enter a valid 10-digit number';
-    if (!form.specialty) e.specialty = 'Required';
-    if (!form.degrees.trim()) e.degrees = 'Required';
-    if (!form.medicalCouncil) e.medicalCouncil = 'Required';
+    const nameClean = form.name.trim();
+    const emailClean = form.email.trim().toLowerCase();
+    const phoneDigits = form.phone.replace(/\D/g, '');
+
+    if (!nameClean)                                      e.name = 'Required';
+    else if (nameClean.length > 100)                     e.name = 'Name too long (max 100 chars)';
+    // RFC-compliant basic email check
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(emailClean)) e.email = 'Enter a valid email address';
+    if (phoneDigits.length < 10)                         e.phone = 'Enter a valid 10-digit number';
+    else if (phoneDigits.length > 15)                    e.phone = 'Phone number too long';
+    if (!form.specialty)                                 e.specialty = 'Required';
+    if (!form.degrees.trim())                            e.degrees = 'Required';
+    else if (form.degrees.trim().length > 200)           e.degrees = 'Too long (max 200 chars)';
+    if (!form.medicalCouncil)                            e.medicalCouncil = 'Required';
     if (form.medicalCouncil === 'other' && !form.otherCouncil.trim()) e.otherCouncil = 'Please specify your council';
-    if (!form.mciNumber.trim()) e.mciNumber = 'Required';
-    if (!form.regState) e.regState = 'Required';
-    if (form.password.length < 8) e.password = 'At least 8 characters';
-    if (form.password !== form.confirm) e.confirm = 'Passwords do not match';
+    if (!form.mciNumber.trim())                          e.mciNumber = 'Required';
+    else if (!/^[A-Za-z0-9\-\/\s]{3,30}$/.test(form.mciNumber.trim())) e.mciNumber = 'Enter a valid registration number';
+    if (!form.regState)                                  e.regState = 'Required';
+    if (form.password.length < 8)                        e.password = 'At least 8 characters required';
+    else if (form.password.length > 128)                 e.password = 'Password too long';
+    else if (!/[A-Z]/.test(form.password) && !/[0-9]/.test(form.password))
+                                                         e.password = 'Include at least one uppercase letter or number';
+    if (form.password !== form.confirm)                  e.confirm = 'Passwords do not match';
     return e;
   }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (loading) return; // prevent duplicate submission
     const errs = validate();
     if (Object.keys(errs).length) { setErrors(errs); return; }
     setLoading(true);
     try {
       const { api } = await import('@/lib/api');
       await api.post('/auth/register', {
-        name: form.name,
-        email: form.email,
-        phone: form.phone,
+        name: form.name.trim(),
+        email: form.email.trim().toLowerCase(),
+        phone: form.phone.replace(/\D/g, '').slice(0, 15),
         specialty: form.specialty,
-        degrees: form.degrees,
+        degrees: form.degrees.trim(),
         password: form.password,
-        medicalCouncil: form.medicalCouncil === 'other' ? form.otherCouncil : form.medicalCouncil,
-        licenseNumber: form.mciNumber,
+        medicalCouncil: form.medicalCouncil === 'other' ? form.otherCouncil.trim() : form.medicalCouncil,
+        licenseNumber: form.mciNumber.trim(),
         regState: form.regState,
         state: form.state,
-        city: form.city,
+        city: form.city?.trim(),
         role: 'clinic_admin',
       });
       setDone(true);
       setTimeout(onSuccess, 2000);
     } catch (err) {
-      setErrors({ email: err instanceof Error ? err.message : 'Registration failed. Please try again.' });
+      // Never display raw server messages to prevent info leakage
+      const msg = err instanceof Error ? err.message : '';
+      if (msg.toLowerCase().includes('already registered') || msg.includes('409')) {
+        setErrors({ email: 'This email is already registered. Try logging in instead.' });
+      } else if (msg.toLowerCase().includes('invalid') || msg.toLowerCase().includes('required')) {
+        setErrors({ email: 'Please check your details and try again.' });
+      } else {
+        setErrors({ email: 'Registration failed. Please try again in a moment.' });
+      }
     } finally {
       setLoading(false);
     }
@@ -351,7 +372,9 @@ function DoctorForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =
         <ArrowLeft className="w-4 h-4" /> Back
       </button>
       <div className="flex items-center gap-3 mb-6">
-        <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center text-2xl">🩺</div>
+        <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center text-teal-600">
+          <Stethoscope className="w-5 h-5" />
+        </div>
         <div>
           <h2 className="text-xl font-bold text-slate-900">Doctor Registration</h2>
           <p className="text-xs text-slate-500">Free — takes 2 minutes</p>
@@ -510,7 +533,9 @@ function HospitalForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: ()
         <ArrowLeft className="w-4 h-4" /> Back
       </button>
       <div className="flex items-center gap-3 mb-6">
-        <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-2xl">🏥</div>
+        <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
+          <Building2 className="w-5 h-5" />
+        </div>
         <div>
           <h2 className="text-xl font-bold text-slate-900">Register your Hospital</h2>
           <p className="text-xs text-slate-500">Full HMIS workspace in minutes</p>

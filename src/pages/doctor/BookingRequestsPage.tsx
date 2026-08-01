@@ -61,6 +61,7 @@ export default function BookingRequestsPage() {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<number | null>(null);
   const [notesModal, setNotesModal] = useState<{ id: number; notes: string; status: string } | null>(null);
+  const [actionError, setActionError] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -83,7 +84,8 @@ export default function BookingRequestsPage() {
       const updated = await api.patch<Partial<BookingRequest>>(`/booking-requests/${id}`, { status, notes });
       setRequests(prev => prev.map(r => r.id === id ? { ...r, ...updated } : r));
     } catch (e) {
-      alert(`Could not update booking: ${e instanceof Error ? e.message : 'unknown error'}`);
+      setActionError(e instanceof Error ? e.message : 'Could not update booking — please try again');
+      setTimeout(() => setActionError(''), 4000);
     } finally {
       setUpdating(null);
       setNotesModal(null);
@@ -114,6 +116,13 @@ export default function BookingRequestsPage() {
   return (
     <div className="max-w-3xl mx-auto p-4 sm:p-6">
       <ViewToggle view={view} setView={setView} pendingCount={pendingCount} />
+
+      {/* Action error banner */}
+      {actionError && (
+        <div className="mb-4 flex items-center gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700 font-medium">
+          <span className="flex-1">{actionError}</span>
+        </div>
+      )}
 
       {/* Header */}
       <div className="flex items-center justify-between mb-6">

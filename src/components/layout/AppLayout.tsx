@@ -11,11 +11,12 @@ import { ConsentModal } from '@/components/ConsentModal';
 import { useAppStore } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePadStore } from '@/store/usePadStore';
+import { connectSocket, disconnectSocket } from '@/lib/socket';
 import { cn } from '@/lib/utils';
 
 export function AppLayout() {
   const { sidebarCollapsed, mobileSidebarOpen, closeMobileSidebar, quickRegisterOpen, quickRxModalOpen } = useAppStore();
-  const { user } = useAuthStore();
+  const { user, isDemo } = useAuthStore();
   const syncClinicsFromApi = usePadStore(s => s.syncClinicsFromApi);
   const syncPadFromApi = usePadStore(s => s.syncPadFromApi);
   const refreshAppointments = useAppStore(s => s.refreshAppointments);
@@ -27,6 +28,32 @@ export function AppLayout() {
     syncPadFromApi();
     refreshAppointments();
   }, [syncClinicsFromApi, syncPadFromApi, refreshAppointments]);
+
+  // Connect socket as soon as user is authenticated so real-time events
+  // (vitals, chat, patient status) start flowing immediately — not just when
+  // the user navigates to a specific page.
+  useEffect(() => {
+    if (!user || isDemo) return;
+    const sock = connectSocket();
+    if (!sock) return;
+    // patient_status_change — emitted by backend when a patient's status/priority changes.
+    // Merge into the store so the doctor's patient list reflects it without a page refresh.
+    const onStatusChange = (data: { patientId: string; status?: string; priority?: string }) => {
+      const { patients, setPatients } = useAppStore.getState();
+      if (!data?.patientId) return;
+      const updated = patients.map(p =>
+        p.id === data.patientId
+          ? { ...p, ...(data.status && { status: data.status as never }), ...(data.priority && { priority: data.priority as never }) }
+          : p
+      );
+      setPatients(updated);
+    };
+    sock.on('patient_status_change', onStatusChange);
+    return () => {
+      sock.off('patient_status_change', onStatusChange);
+      disconnectSocket();
+    };
+  }, [user?.id, isDemo]);
 
   // Roles that get a mobile bottom nav
   const hasMobileBottomNav = user && ['doctor', 'clinic_admin', 'nurse'].includes(user.role);

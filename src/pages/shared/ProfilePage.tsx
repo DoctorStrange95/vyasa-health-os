@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { User, Mail, Phone, Building2, Stethoscope, Edit3, Save, Shield, Key, Bell, CheckCircle2, Loader2, Globe, Copy, ExternalLink, MessageCircle, LogOut, Eye, EyeOff, Camera, Smartphone } from 'lucide-react';
+import { User, Mail, Phone, Building2, Stethoscope, Edit3, Save, Shield, Key, Bell, CheckCircle2, Loader2, Globe, Copy, ExternalLink, MessageCircle, LogOut, Eye, EyeOff, Camera, Smartphone, AlertTriangle } from 'lucide-react';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePadStore } from '@/store/usePadStore';
 import { api, isApiEnabled } from '@/lib/api';
@@ -40,6 +40,13 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(false);
+  // Local toast (ProfilePage doesn't use Zustand store)
+  const [toast, setToast] = useState('');
+  const [toastType, setToastType] = useState<'success' | 'error' | 'warning'>('success');
+  function showMsg(msg: string, type: 'success' | 'error' | 'warning' = 'success') {
+    setToast(msg); setToastType(type);
+    setTimeout(() => setToast(''), 4000);
+  }
 
   // Public profile state
   const [pubProfile, setPubProfile] = useState<{
@@ -109,7 +116,7 @@ export default function ProfilePage() {
     } catch {
       // revert UI if save fails
       setPubProfile(p => p ? { ...p, [field]: !value } : p);
-      alert('Could not save. Please try again.');
+      showMsg('Could not save. Please try again.', 'error');
     } finally {
       setPubSaving(false);
     }
@@ -143,7 +150,7 @@ export default function ProfilePage() {
       setTimeout(() => setPubSaved(false), 3000);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
-      alert(`Could not save: ${msg}`);
+      showMsg(`Could not save: ${msg}`, 'error');
     } finally {
       setPubSaving(false);
     }
@@ -152,7 +159,7 @@ export default function ProfilePage() {
   function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) { alert('Photo must be under 2MB'); return; }
+    if (file.size > 2 * 1024 * 1024) { showMsg('Photo must be under 2 MB', 'warning'); return; }
     setPhotoUploading(true);
     const reader = new FileReader();
     reader.onload = ev => {
@@ -399,7 +406,7 @@ export default function ProfilePage() {
       setTimeout(() => setSaved(false), 3000);
     } catch (error) {
       const message = (error as any)?.response?.data?.error || (error as any)?.message || 'Could not save. Please try again.';
-      alert(message);
+      showMsg(message, 'error');
     } finally {
       setSaving(false);
     }
@@ -460,6 +467,17 @@ export default function ProfilePage() {
 
   return (
     <div className="max-w-3xl space-y-4 pb-28 md:pb-8">
+
+      {/* Local toast notification */}
+      {toast && (
+        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-5 py-3 rounded-2xl shadow-xl text-sm font-semibold text-white animate-fade-up ${
+          toastType === 'error' ? 'bg-red-600' : toastType === 'warning' ? 'bg-amber-500' : 'bg-slate-900'
+        }`}>
+          {toastType === 'error' && <AlertTriangle className="w-4 h-4 flex-shrink-0" />}
+          {toastType === 'success' && <CheckCircle2 className="w-4 h-4 flex-shrink-0" />}
+          {toast}
+        </div>
+      )}
 
       {/* ══ Hero Header Card ══ */}
       <div className="card p-0 overflow-hidden animate-fade-up">
@@ -881,7 +899,7 @@ export default function ProfilePage() {
                                 <input type="file" accept="image/*" className="hidden" onChange={e => {
                                   const file = e.target.files?.[0];
                                   if (!file) return;
-                                  if (file.size > 1024 * 1024) { alert('QR image must be under 1MB'); return; }
+                                  if (file.size > 1024 * 1024) { showMsg('QR image must be under 1 MB', 'warning'); return; }
                                   const reader = new FileReader();
                                   reader.onload = ev => setPubProfile(p => ({ ...p, payment_qr_url: ev.target?.result as string }));
                                   reader.readAsDataURL(file);

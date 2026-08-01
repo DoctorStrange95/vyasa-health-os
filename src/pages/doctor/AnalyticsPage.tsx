@@ -502,12 +502,54 @@ export default function AnalyticsPage() {
           Clinical Performance Indicators
         </h3>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {[
-            { label: 'Follow-up Compliance', value: '68%', desc: 'Patients who returned', good: true },
-            { label: 'Avg Wait Time', value: '14 min', desc: 'Before consultation', good: true },
-            { label: 'Admission Rate', value: totalPatients > 0 ? `${Math.round((ipdCount / totalPatients) * 100)}%` : '0%', desc: 'OPD to IPD conversions', good: false },
-            { label: 'Completed Today', value: `${todayPatients || queue.filter(q=>q.status==='completed').length}`, desc: 'Consultations done', good: true },
-          ].map(m => (
+          {(() => {
+            // Follow-up compliance: patients who had a follow-up visit after their first visit
+            const patientsWithMultipleVisits = Object.values(visits).filter(vList => vList.length > 1).length;
+            const followUpCompliance = totalPatients > 0
+              ? Math.round((patientsWithMultipleVisits / Math.max(totalPatients, 1)) * 100)
+              : null;
+
+            // Avg wait time: from queue registeredAt → in-progress time (only has data if queue entries exist)
+            const completedQueueEntries = queue.filter(q =>
+              q.status === 'completed' && q.registeredAt && q.waitMins != null
+            );
+            const avgWaitMins = completedQueueEntries.length > 0
+              ? Math.round(completedQueueEntries.reduce((s, q) => s + (q.waitMins ?? 0), 0) / completedQueueEntries.length)
+              : null;
+
+            // Admission rate
+            const admissionRate = totalPatients > 0 ? Math.round((ipdCount / totalPatients) * 100) : 0;
+
+            // Completed today
+            const completedToday = todayPatients || queue.filter(q => q.status === 'completed').length;
+
+            return [
+              {
+                label: 'Follow-up Compliance',
+                value: followUpCompliance !== null ? `${followUpCompliance}%` : '—',
+                desc: followUpCompliance !== null ? 'Patients with return visits' : 'No visit data yet',
+                good: true,
+              },
+              {
+                label: 'Avg Wait Time',
+                value: avgWaitMins !== null ? `${avgWaitMins} min` : '—',
+                desc: avgWaitMins !== null ? 'Before consultation' : 'No queue data yet',
+                good: true,
+              },
+              {
+                label: 'Admission Rate',
+                value: `${admissionRate}%`,
+                desc: 'OPD to IPD conversions',
+                good: false,
+              },
+              {
+                label: 'Completed Today',
+                value: `${completedToday}`,
+                desc: 'Consultations done',
+                good: true,
+              },
+            ];
+          })().map(m => (
             <div key={m.label} className="bg-slate-50 rounded-xl p-4 text-center">
               <div className={cn('text-2xl font-black mb-1', m.good ? 'text-teal-700' : 'text-amber-700')}>{m.value}</div>
               <div className="text-xs font-semibold text-slate-700">{m.label}</div>

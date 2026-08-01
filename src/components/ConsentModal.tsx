@@ -29,7 +29,7 @@ export function ConsentModal() {
         </div>
 
         <p className="text-sm text-slate-600 leading-relaxed">
-          Before you continue, please review and accept our updated policies. By using Vyasa Health OS,
+          Before you continue, please review and accept our updated policies. By using Vyasa Integrated Healthcare,
           you agree that patient data you create is managed responsibly in accordance with Indian healthcare law.
         </p>
 

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { Stethoscope, Loader2, CheckCircle2, Eye, EyeOff, AlertTriangle } from 'lucide-react';
+import { Stethoscope, Loader2, CheckCircle2, Eye, EyeOff, AlertTriangle, Users, Pill, FlaskConical, ReceiptText, ClipboardList, Settings, UserCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Role } from '@/types';
 
@@ -14,9 +14,14 @@ const ROLE_LABELS: Record<string, string> = {
   receptionist: 'Receptionist',
 };
 
-const ROLE_EMOJI: Record<string, string> = {
-  doctor: '🩺', nurse: '💉', pharmacist: '💊',
-  labtech: '🔬', admin: '⚙️', billing: '💰', receptionist: '🏥',
+const ROLE_ICON: Record<string, React.ReactNode> = {
+  doctor:       <Stethoscope className="w-5 h-5" />,
+  nurse:        <ClipboardList className="w-5 h-5" />,
+  pharmacist:   <Pill className="w-5 h-5" />,
+  labtech:      <FlaskConical className="w-5 h-5" />,
+  admin:        <Settings className="w-5 h-5" />,
+  billing:      <ReceiptText className="w-5 h-5" />,
+  receptionist: <Users className="w-5 h-5" />,
 };
 
 const DEPARTMENTS: Record<string, string[]> = {
@@ -116,7 +121,7 @@ export default function JoinPage() {
           <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-4">
             <CheckCircle2 className="w-8 h-8 text-emerald-500" />
           </div>
-          <div className="text-3xl mb-3">{ROLE_EMOJI[role] || '👤'}</div>
+          <div className="text-3xl mb-3">{ROLE_ICON[role] ?? <UserCircle className="w-8 h-8 text-emerald-500 mx-auto" />}</div>
           <h2 className="text-xl font-bold text-slate-900 mb-2">Request Submitted!</h2>
           <p className="text-sm text-slate-500 leading-relaxed mb-2">
             Your profile has been sent to the admin at <span className="font-semibold text-slate-700">{hospitalDisplay}</span> for approval.
@@ -143,7 +148,7 @@ export default function JoinPage() {
           </div>
           <div className="inline-flex flex-col items-center gap-1 bg-teal-50 border border-teal-200 rounded-xl px-4 py-3 mb-3">
             <div className="flex items-center gap-2">
-              <span className="text-xl">{ROLE_EMOJI[role] || '👤'}</span>
+              <span className="text-teal-500">{ROLE_ICON[role] ?? <UserCircle className="w-5 h-5" />}</span>
               <span className="text-sm font-semibold text-teal-800">
                 You're invited as <span className="text-teal-600">{ROLE_LABELS[role] || role}</span>
               </span>

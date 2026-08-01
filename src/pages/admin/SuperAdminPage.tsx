@@ -64,6 +64,12 @@ interface EmailLog {
 }
 
 const CUSTOM_TPL_KEY = 'vyasa_custom_email_templates';
+// TODO [BACKEND INTEGRATION]: Custom email templates are stored in localStorage.
+// Backend already has an `email_templates` table. Migrate to:
+//   GET  /admin/email-templates  → load templates
+//   POST /admin/email-templates  → create template
+//   DELETE /admin/email-templates/:id  → delete template
+// This ensures templates are shared across devices/browsers for superadmin.
 function loadCustomTemplates(): CustomTemplate[] {
   try { return JSON.parse(localStorage.getItem(CUSTOM_TPL_KEY) ?? '[]'); } catch { return []; }
 }
@@ -1151,6 +1157,12 @@ export default function SuperAdminPage() {
   const [emailsSent, setEmailsSent] = useState(0);
   const [customTemplates, setCustomTemplates] = useState<CustomTemplate[]>(() => loadCustomTemplates());
   const [emailLogs, setEmailLogs] = useState<EmailLog[]>([]);
+  const [adminToast, setAdminToast] = useState('');
+  const [adminToastType, setAdminToastType] = useState<'success'|'error'>('success');
+  function showAdminMsg(msg: string, type: 'success'|'error' = 'success') {
+    setAdminToast(msg); setAdminToastType(type);
+    setTimeout(() => setAdminToast(''), 4000);
+  }
 
   const loadEmailLogs = useCallback(async () => {
     try {
@@ -1184,8 +1196,9 @@ export default function SuperAdminPage() {
     });
   }
 
+  const [confirmAction, setConfirmAction] = useState<{ type: 'block'|'unblock'|'delete'; id: number; name: string } | null>(null);
+
   function deleteTemplate(id: string) {
-    if (!confirm('Delete this template?')) return;
     setCustomTemplates(prev => { const updated = prev.filter(x => x.id !== id); persistCustomTemplates(updated); return updated; });
   }
 
@@ -1254,7 +1267,7 @@ export default function SuperAdminPage() {
         await sendEmail(user.email, 'DOCTOR_APPROVED', { doctorName: user.name });
       }
       setUsers(prev => prev.map(u => u.id === id ? { ...u, approval_status: 'approved' } : u));
-    } catch (e) { alert(e instanceof Error ? e.message : 'Failed'); }
+    } catch (e) { showAdminMsg(e instanceof Error ? e.message : 'Action failed', 'error'); }
     finally { setActing(null); }
   }
 
@@ -1267,18 +1280,19 @@ export default function SuperAdminPage() {
         await sendEmail(user.email, 'DOCTOR_REJECTED', { doctorName: user.name, rejectionReason: reason });
       }
       setUsers(prev => prev.map(u => u.id === id ? { ...u, approval_status: 'rejected', rejection_reason: reason } : u));
-    } catch (e) { alert(e instanceof Error ? e.message : 'Failed'); }
+    } catch (e) { showAdminMsg(e instanceof Error ? e.message : 'Action failed', 'error'); }
     finally { setActing(null); setRejectModal(null); }
   }
 
   async function blockUser(id: number, name: string) {
-    if (!confirm(`Block ${name}? They will be unable to log in until you unblock them.`)) return;
+    // Caller should set confirmAction first; this executes after confirmation
     setActing(id);
     try {
       await api.post(`/admin/users/${id}/block`, {});
       setUsers(prev => prev.map(u => u.id === id ? { ...u, approval_status: 'suspended' } : u));
-    } catch (e) { alert(e instanceof Error ? e.message : 'Failed to block'); }
-    finally { setActing(null); }
+      showAdminMsg(`${name} blocked`, 'success');
+    } catch (e) { showAdminMsg(e instanceof Error ? e.message : 'Failed to block user', 'error'); }
+    finally { setActing(null); setConfirmAction(null); }
   }
 
   async function unblockUser(id: number) {
@@ -1286,19 +1300,19 @@ export default function SuperAdminPage() {
     try {
       await api.post(`/admin/users/${id}/unblock`, {});
       setUsers(prev => prev.map(u => u.id === id ? { ...u, approval_status: 'approved' } : u));
-    } catch (e) { alert(e instanceof Error ? e.message : 'Failed to unblock'); }
-    finally { setActing(null); }
+      showAdminMsg('User unblocked', 'success');
+    } catch (e) { showAdminMsg(e instanceof Error ? e.message : 'Failed to unblock user', 'error'); }
+    finally { setActing(null); setConfirmAction(null); }
   }
 
   async function deleteDoctor(id: number) {
-    if (!confirm('Delete this doctor profile permanently?')) return;
     setActing(id);
     try {
       await api.post(`/admin/users/${id}/delete`, {});
       setUsers(prev => prev.filter(u => u.id !== id));
-      alert('Doctor profile deleted successfully');
+      showAdminMsg('Doctor profile deleted', 'success');
     } catch (e: any) {
-      alert(e?.response?.data?.error || e?.message || 'Failed to delete doctor');
+      showAdminMsg(e?.response?.data?.error || e?.message || 'Failed to delete doctor', 'error');
     }
     finally { setActing(null); }
   }
@@ -1472,6 +1486,14 @@ export default function SuperAdminPage() {
 
   return (
     <div className="max-w-6xl mx-auto p-4 sm:p-6 space-y-6">
+      {/* Admin action toast */}
+      {adminToast && (
+        <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-3 rounded-2xl shadow-xl text-sm font-semibold text-white ${
+          adminToastType === 'error' ? 'bg-red-600' : 'bg-slate-900'
+        }`}>
+          {adminToast}
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -1721,7 +1743,7 @@ export default function SuperAdminPage() {
                         <Mail className="w-4 h-4" /> Email
                       </button>
                       {u.approval_status === 'approved' && (
-                        <button onClick={() => deleteDoctor(u.id)} disabled={acting === u.id}
+                        <button onClick={() => setConfirmAction({ type: 'delete', id: u.id, name: u.name })} disabled={acting === u.id}
                           className="flex items-center justify-center gap-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-sm font-bold rounded-lg px-4 py-2 disabled:opacity-50 flex-1 sm:flex-none">
                           {acting === u.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                           Delete
@@ -1734,7 +1756,7 @@ export default function SuperAdminPage() {
                           Unblock
                         </button>
                       ) : (
-                        <button onClick={() => blockUser(u.id, u.name)} disabled={acting === u.id}
+                        <button onClick={() => setConfirmAction({ type: 'block', id: u.id, name: u.name })} disabled={acting === u.id}
                           className="flex items-center justify-center gap-1.5 bg-white border border-amber-300 text-amber-700 hover:bg-amber-50 text-sm font-bold rounded-lg px-4 py-2 disabled:opacity-50 flex-1 sm:flex-none">
                           {acting === u.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ban className="w-4 h-4" />}
                           Block
@@ -1958,7 +1980,7 @@ export default function SuperAdminPage() {
                                         <button onClick={() => unblockUser(m.id)} disabled={acting === m.id}
                                           className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 flex-shrink-0">Unblock</button>
                                       ) : (
-                                        <button onClick={() => blockUser(m.id, m.name)} disabled={acting === m.id}
+                                        <button onClick={() => setConfirmAction({ type: 'block', id: m.id, name: m.name })} disabled={acting === m.id}
                                           className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-white border border-amber-300 text-amber-700 hover:bg-amber-50 disabled:opacity-50 flex-shrink-0">Block</button>
                                       )}
                                     </div>
@@ -2066,6 +2088,43 @@ export default function SuperAdminPage() {
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation modal for destructive admin actions */}
+      {confirmAction && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full">
+            <h3 className="font-bold text-slate-900 text-lg mb-2">
+              {confirmAction.type === 'delete' ? 'Delete doctor profile?' :
+               confirmAction.type === 'block' ? 'Block this user?' : 'Unblock this user?'}
+            </h3>
+            <p className="text-sm text-slate-500 mb-5">
+              {confirmAction.type === 'delete'
+                ? `This will permanently delete ${confirmAction.name}'s profile. This cannot be undone.`
+                : confirmAction.type === 'block'
+                ? `${confirmAction.name} will be unable to log in until unblocked.`
+                : `${confirmAction.name} will be able to log in again.`}
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmAction(null)} className="btn-secondary flex-1">Cancel</button>
+              <button
+                onClick={() => {
+                  if (confirmAction.type === 'delete') deleteDoctor(confirmAction.id);
+                  else if (confirmAction.type === 'block') blockUser(confirmAction.id, confirmAction.name);
+                  else unblockUser(confirmAction.id);
+                }}
+                disabled={acting === confirmAction.id}
+                className={`flex-1 py-2 px-4 rounded-xl text-sm font-semibold text-white transition-colors ${
+                  confirmAction.type === 'delete' ? 'bg-red-600 hover:bg-red-700' : 'bg-amber-500 hover:bg-amber-600'
+                }`}
+              >
+                {acting === confirmAction.id ? 'Working…' :
+                  confirmAction.type === 'delete' ? 'Delete permanently' :
+                  confirmAction.type === 'block' ? 'Block user' : 'Unblock user'}
+              </button>
             </div>
           </div>
         </div>

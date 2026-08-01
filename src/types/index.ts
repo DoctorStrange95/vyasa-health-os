@@ -47,6 +47,7 @@ export interface DoctorAvailability {
 export type Role =
   | 'doctor'
   | 'clinic_admin'   // solo-practice doctor who is also their own admin
+  | 'clinic_manager' // clinic/hospital owner or manager — NOT a doctor
   | 'nurse'
   | 'pharmacist'
   | 'labtech'

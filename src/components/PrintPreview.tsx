@@ -75,7 +75,7 @@ const cleanDrug = (name: string) =>
 const CONC_RE = /\s*\d+(?:\.\d+)?\s*(?:mg|mcg|IU|g)\s*\/\s*\d+(?:\.\d+)?\s*(?:mL|ml|L|g)\b/gi;
 const stripConc = (name: string) => name.replace(CONC_RE, '').replace(/\s+/g, ' ').trim();
 
-export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, clinicPhone, onClose, onWhatsApp, onEndConsult, specialtyExam, vaccines = [], procedures = [] }: PrintPreviewProps) {
+export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, clinicPhone, onClose, onWhatsApp, onEndConsult, specialtyExam: _specialtyExam, vaccines: _vaccines = [], procedures: _procedures = [] }: PrintPreviewProps) {
   const printRef = useRef<HTMLDivElement>(null);
   const { eSignUrl } = usePadStore();
   const theme = THEME_COLORS[pad.theme] ?? THEME_COLORS.teal;
@@ -126,301 +126,213 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
     const esc = (s: any) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const activeDrugs = draft.rxRows.filter(r => r.drug.trim());
 
-    // Left column (doctor)
-    const left = `
-      <div style="flex:1;min-width:0;">
-        <div style="color:${theme};font-size:22px;font-weight:bold;line-height:1.1;">${esc(doctorDisplayName)}</div>
-        ${pad.degrees ? `<div style="color:#475569;font-size:12px;margin-top:2px;">${esc(pad.degrees)}</div>` : ''}
-        ${pad.specialty ? `<div style="color:#475569;font-size:12px;font-weight:600;">${esc(pad.specialty)}</div>` : ''}
-        ${pad.regNumber ? `<div style="color:#94a3b8;font-size:12px;">Reg: ${esc(pad.regNumber)}</div>` : ''}
-        ${pad.showQuote && pad.quote ? `<div style="color:${theme};font-style:italic;font-size:11px;margin-top:4px;">"${esc(pad.quote)}"</div>` : ''}
+    const doctorName = pad.doctorName || 'Doctor';
+    const cName  = clinicName  || pad.clinicName  || '';
+    const cAddr  = clinicAddress || pad.address   || '';
+    const cPhone = clinicPhone  || pad.phone      || '';
+    const logoUrl  = (pad as { logoUrl?: string }).logoUrl  || '';
+    const stampUrl = (pad as { stampUrl?: string }).stampUrl || '';
+
+    // ── HEADER ─────────────────────────────────────────────────────────────
+    const rxBadge = logoUrl
+      ? `<div style="width:52px;height:52px;flex-shrink:0;display:flex;align-items:center;justify-content:center;">
+           <img src="${esc(logoUrl)}" alt="Logo" style="max-width:52px;max-height:52px;object-fit:contain;border-radius:6px;" />
+         </div>`
+      : `<div style="width:44px;height:44px;background:#f59e0b;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+           <span style="color:white;font-size:22px;font-weight:900;font-family:serif;line-height:1;">℞</span>
+         </div>`;
+
+    const doctorBlock = `
+      <div style="flex:1;min-width:0;padding-left:12px;">
+        <div style="font-size:16px;font-weight:800;color:#0f172a;">${esc(doctorName)}</div>
+        ${pad.specialty || pad.degrees ? `<div style="font-size:12px;color:#475569;margin-top:1px;">${[pad.specialty,pad.degrees].filter(Boolean).map(esc).join(', ')}</div>` : ''}
+        ${pad.regNumber ? `<div style="font-size:12px;color:#475569;margin-top:1px;">Reg. No: ${esc(pad.regNumber)}</div>` : ''}
       </div>`;
 
-    // Right column (clinic)
-    const cName = clinicName || pad.clinicName;
-    const cAddr = clinicAddress || pad.address;
-    const cPhone = clinicPhone || pad.phone;
-    const right = `
-      <div style="text-align:right;font-size:12px;color:#475569;max-width:50%;flex-shrink:0;word-break:break-word;">
-        ${cName ? `<div style="font-weight:700;color:#334155;">${esc(cName)}</div>` : ''}
-        ${cAddr ? `<div>${esc(cAddr)}</div>` : ''}
-        ${cPhone ? `<div>📞 ${esc(cPhone)}</div>` : ''}
-        ${pad.email ? `<div>✉ ${esc(pad.email)}</div>` : ''}
-        ${pad.showTimings && pad.timings ? `<div>⏰ ${esc(pad.timings)}</div>` : ''}
-      </div>`;
-
-    // Patient row cells
-    const cell = (label: string, val: string) =>
-      `<div style="font-size:12px;"><span style="color:#94a3b8;">${label}: </span><span style="font-weight:600;color:#0f172a;">${esc(val)}</span></div>`;
-    const ptCells = [
-      cell('Patient', patient.name),
-      cell('Age/Sex', `${patientAge}Y/${patient.gender}`),
-      cell('Date', today),
-      patient.mrn ? cell('MRN', patient.mrn) : '',
-      ps.vitalsRow && draft.vitals.bp ? cell('BP', draft.vitals.bp) : '',
-      ps.vitalsRow && draft.vitals.hr ? cell('Pulse', `${draft.vitals.hr}/min`) : '',
-      ps.vitalsRow && draft.vitals.temp ? cell('Temp', `${draft.vitals.temp}°C`) : '',
-      ps.vitalsRow && draft.vitals.spo2 ? cell('SpO2', `${draft.vitals.spo2}%`) : '',
-      ps.vitalsRow && draft.vitals.rr ? cell('RR', `${draft.vitals.rr}/min`) : '',
-      ps.vitalsRow && draft.vitals.weight ? cell('Wt', `${draft.vitals.weight}kg`) : '',
-      ps.vitalsRow && bmiVal ? cell('BMI', bmiVal) : '',
-    ].filter(Boolean).join('');
-
-    const sectionTitle = (t: string) =>
-      `<div style="color:${theme};font-size:11px;font-weight:bold;text-transform:uppercase;letter-spacing:0.05em;margin:14px 0 4px;">${t}</div>`;
-
-    let body = '';
-    if (ps.complaint && draft.chiefComplaint) body += sectionTitle('C/C') + `<div style="font-size:13px;">${esc(draft.chiefComplaint)}</div>`;
-    if (ps.hopi && draft.hopi) body += sectionTitle('History') + `<div style="font-size:13px;">${esc(draft.hopi)}</div>`;
-    {
-      const ph = [
-        draft.comorbidities?.length && `Comorbidities: ${draft.comorbidities.join(', ')}`,
-        draft.pastMedical?.trim() && `Past Medical: ${draft.pastMedical}`,
-        draft.pastSurgical?.trim() && `Past Surgical: ${draft.pastSurgical}`,
-        draft.familyHistory?.trim() && `Family H/o: ${draft.familyHistory}`,
-        draft.socialHistory?.trim() && `Social: ${draft.socialHistory}`,
-        draft.allergiesNote?.trim() && `Allergies: ${draft.allergiesNote}`,
-        draft.currentMeds?.trim() && `Current Meds: ${draft.currentMeds}`,
-      ].filter(Boolean) as string[];
-      if (ph.length) body += sectionTitle('Past & Family History') + ph.map(p => `<div style="font-size:13px;">${esc(p)}</div>`).join('');
-    }
-    if (ps.diagnosis && draft.diagnosis) {
-      body += sectionTitle('Diagnosis') + `<div style="font-size:13px;font-weight:500;">${esc(draft.diagnosis)}${draft.icdCode ? ` (${esc(draft.icdCode)})` : ''}</div>`;
-      if (draft.secondaryDx) body += `<div style="font-size:12px;color:#475569;">${esc(draft.secondaryDx)}</div>`;
-    }
-    // ── Examination: general + systemic findings, body diagram, then specialty modules ──
-    // Psychiatry fields are NEVER printed (sensitive clinical notes).
-    let examBody = '';
-    if (ps.specialtyExam) {
-      if (draft.bodySigns?.length) examBody += `<div style="font-size:13px;margin-bottom:4px;"><span style="color:#94a3b8;">General signs: </span>${esc(draft.bodySigns.join(', '))}</div>`;
-      if (draft.generalExam?.trim()) examBody += `<div style="font-size:13px;margin-bottom:4px;"><span style="color:#94a3b8;">General: </span>${esc(draft.generalExam)}</div>`;
-      if (draft.systemicExam?.trim()) examBody += `<div style="font-size:13px;margin-bottom:4px;"><span style="color:#94a3b8;">Systemic: </span>${esc(draft.systemicExam)}</div>`;
-      const bnotes = draft.bodyNotes ? Object.entries(draft.bodyNotes).filter(([, v]) => (v as string)?.trim()).map(([k, v]) => `${k}: ${v}`).join('; ') : '';
-      if (bnotes) examBody += `<div style="font-size:12px;color:#475569;margin-bottom:4px;">${esc(bnotes)}</div>`;
-    }
-    if (ps.specialtyExam && specialtyExam) {
-      const sp = specialtyExam;
-      const has = (...keys: string[]) => keys.some(k => sp[k]?.trim());
-      const spRow = (label: string, val: string) =>
-        val?.trim() ? `<div style="font-size:12px;margin-bottom:3px;"><span style="color:#94a3b8;min-width:130px;display:inline-block;">${label}</span><span style="font-weight:600;">${esc(val)}</span></div>` : '';
-      const dualRow = (label: string, re: string, le: string) =>
-        (re?.trim() || le?.trim()) ? `<div style="font-size:12px;margin-bottom:3px;"><span style="color:#94a3b8;min-width:130px;display:inline-block;">${label}</span><span style="font-weight:600;">RE: ${esc(re)||'—'} &nbsp;|&nbsp; LE: ${esc(le)||'—'}</span></div>` : '';
-
-      const subTitle = (t: string) =>
-        `<div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:0.05em;color:#94a3b8;margin:8px 0 3px;border-bottom:1px solid #f1f5f9;padding-bottom:2px;">${t}</div>`;
-
-      // Ophthalmology
-      if (has('va_re_ucva','va_re_bcva','va_le_ucva','va_le_bcva','iop_re','iop_le','refx_re_sph','refx_le_sph','ant_re','ant_le','post_re','post_le','add_power')) {
-        examBody += subTitle('Ophthalmic');
-        const va = (e: string) => [sp[`va_${e}_ucva`], sp[`va_${e}_bcva`]].filter(Boolean).join(' / ');
-        const rfx = (e: string) => [sp[`refx_${e}_sph`] && `Sph ${sp[`refx_${e}_sph`]}`, sp[`refx_${e}_cyl`] && `Cyl ${sp[`refx_${e}_cyl`]}`, sp[`refx_${e}_axis`] && `Axis ${sp[`refx_${e}_axis`]}`].filter(Boolean).join(' ');
-        examBody += dualRow('VA (UCVA / BCVA)', va('re'), va('le'));
-        examBody += dualRow('IOP', sp.iop_re ? `${sp.iop_re} mmHg` : '', sp.iop_le ? `${sp.iop_le} mmHg` : '');
-        examBody += dualRow('Refraction', rfx('re'), rfx('le'));
-        if (sp.add_power) examBody += spRow('Add Power', sp.add_power);
-        examBody += dualRow('Anterior Segment', sp.ant_re ?? '', sp.ant_le ?? '');
-        examBody += dualRow('Posterior Segment', sp.post_re ?? '', sp.post_le ?? '');
-      }
-
-      // Dentistry
-      if (has('dent_tooth_fdi','dent_diagnosis','dent_procedure','dent_material','dent_post_op','dent_xray_findings','dent_ohi_score')) {
-        examBody += subTitle('Dental');
-        examBody += spRow('Tooth (FDI)', sp.dent_tooth_fdi ?? '');
-        examBody += spRow('Dental Diagnosis', sp.dent_diagnosis ?? '');
-        examBody += spRow('Procedure', sp.dent_procedure ?? '');
-        examBody += spRow('Material', sp.dent_material ?? '');
-        if (sp.dent_local_anaesthetic && sp.dent_local_anaesthetic !== 'Not used') examBody += spRow('Local Anaesthetic', sp.dent_local_anaesthetic);
-        if (sp.dent_xray_type && sp.dent_xray_type !== 'Not taken') {
-          examBody += spRow('Radiograph', sp.dent_xray_type);
-          examBody += spRow('Radiographic Findings', sp.dent_xray_findings ?? '');
-        }
-        if (sp.dent_ohi_score) examBody += spRow('OHI Score', sp.dent_ohi_score);
-        examBody += spRow('Post-op Instructions', sp.dent_post_op ?? '');
-      }
-
-      // Surgery
-      if (has('surg_procedure_name','surg_pre_op_dx','surg_post_op_dx','surg_intraop','surg_postop','surg_anaesthesia','surg_implant')) {
-        examBody += subTitle('Surgical Notes');
-        examBody += spRow('Procedure', sp.surg_procedure_name ?? '');
-        examBody += spRow('Pre-op Diagnosis', sp.surg_pre_op_dx ?? '');
-        examBody += spRow('Post-op Diagnosis', sp.surg_post_op_dx ?? '');
-        examBody += spRow('Anaesthesia', sp.surg_anaesthesia ?? '');
-        if (sp.surg_duration_min) examBody += spRow('Duration', `${sp.surg_duration_min} min`);
-        if (sp.surg_blood_loss_ml) examBody += spRow('Blood Loss', `${sp.surg_blood_loss_ml} ml`);
-        examBody += spRow('Implant / Device', sp.surg_implant ?? '');
-        examBody += spRow('Intraoperative Findings', sp.surg_intraop ?? '');
-        examBody += spRow('Post-op Instructions', sp.surg_postop ?? '');
-      }
-
-      // Orthopaedics
-      if (has('orth_region','orth_laterality','orth_mechanism','orth_xray','orth_mri_ct','orth_fracture_type','orth_implant')) {
-        examBody += subTitle('Orthopaedic');
-        examBody += spRow('Region / Laterality', [sp.orth_region, sp.orth_laterality].filter(Boolean).join(' — '));
-        examBody += spRow('Mechanism of Injury', sp.orth_mechanism ?? '');
-        examBody += spRow('X-ray Findings', sp.orth_xray ?? '');
-        examBody += spRow('MRI / CT Findings', sp.orth_mri_ct ?? '');
-        examBody += spRow('Fracture Type', sp.orth_fracture_type ?? '');
-        examBody += spRow('Implant / Fixation', sp.orth_implant ?? '');
-      }
-
-      // Dermatology
-      if (has('derm_primary_lesion','derm_secondary_lesion','derm_distribution','derm_site','derm_dermoscopy','derm_biopsy','derm_treatment')) {
-        examBody += subTitle('Dermatology');
-        examBody += spRow('Primary Lesion', sp.derm_primary_lesion ?? '');
-        examBody += spRow('Secondary Lesion', sp.derm_secondary_lesion ?? '');
-        examBody += spRow('Distribution', sp.derm_distribution ?? '');
-        examBody += spRow('Site', sp.derm_site ?? '');
-        examBody += spRow('Dermatoscopy', sp.derm_dermoscopy ?? '');
-        if (sp.derm_biopsy && sp.derm_biopsy !== 'Not sent') examBody += spRow('Biopsy', sp.derm_biopsy);
-        examBody += spRow('Treatment Plan', sp.derm_treatment ?? '');
-      }
-
-      // OBG
-      if (has('obg_lmp','obg_edd','obg_ga_weeks','obg_gravida','obg_para','obg_presentation','obg_pv_findings','obg_usg')) {
-        examBody += subTitle('Obstetric & Gynaecology');
-        if (sp.obg_lmp) examBody += spRow('LMP', sp.obg_lmp);
-        if (sp.obg_edd) examBody += spRow('EDD', sp.obg_edd);
-        if (sp.obg_ga_weeks) examBody += spRow('Gestational Age', `${sp.obg_ga_weeks} weeks (${sp.obg_ga_source || 'LMP'})`);
-        const gpla = [sp.obg_gravida && `G${sp.obg_gravida}`, sp.obg_para && `P${sp.obg_para}`, sp.obg_live && `L${sp.obg_live}`, sp.obg_abortion && `A${sp.obg_abortion}`].filter(Boolean).join(' ');
-        if (gpla) examBody += spRow('Obstetric History', gpla);
-        examBody += spRow('Presentation', sp.obg_presentation ?? '');
-        examBody += spRow('P/V Findings', sp.obg_pv_findings ?? '');
-        examBody += spRow('USG Summary', sp.obg_usg ?? '');
-      }
-
-      // Paediatrics
-      if (has('paed_apgar_1','paed_apgar_5','paed_birth_wt','paed_ga_birth','paed_dev_motor','paed_dev_language','paed_immunisation','paed_notes')) {
-        examBody += subTitle('Paediatrics');
-        if (sp.paed_apgar_1 || sp.paed_apgar_5) examBody += spRow('APGAR', [sp.paed_apgar_1 && `1 min: ${sp.paed_apgar_1}`, sp.paed_apgar_5 && `5 min: ${sp.paed_apgar_5}`].filter(Boolean).join('  |  '));
-        if (sp.paed_birth_wt) examBody += spRow('Birth Weight', `${sp.paed_birth_wt} kg`);
-        if (sp.paed_ga_birth) examBody += spRow('GA at Birth', `${sp.paed_ga_birth} weeks`);
-        examBody += spRow('Developmental Milestones', [sp.paed_dev_motor && `Motor: ${sp.paed_dev_motor}`, sp.paed_dev_language && `Language: ${sp.paed_dev_language}`].filter(Boolean).join('  ·  '));
-        examBody += spRow('Immunisation', sp.paed_immunisation ?? '');
-        examBody += spRow('Notes', sp.paed_notes ?? '');
-      }
-
-      // General Medicine
-      if (has('gm_built','gm_pallor','gm_icterus','gm_cyanosis','gm_clubbing','gm_oedema','gm_lymph','gm_jvp')) {
-        const gmFindings = [
-          sp.gm_built && `Built: ${sp.gm_built}`,
-          sp.gm_pallor && sp.gm_pallor !== 'Absent' && `Pallor: ${sp.gm_pallor}`,
-          sp.gm_icterus && sp.gm_icterus !== 'Absent' && `Icterus: ${sp.gm_icterus}`,
-          sp.gm_cyanosis && sp.gm_cyanosis !== 'Absent' && `Cyanosis: ${sp.gm_cyanosis}`,
-          sp.gm_clubbing && sp.gm_clubbing !== 'Absent' && `Clubbing: ${sp.gm_clubbing}`,
-          sp.gm_oedema && sp.gm_oedema !== 'Absent' && `Oedema: ${sp.gm_oedema}`,
-          sp.gm_lymph && sp.gm_lymph !== 'Not palpable' && `LN: ${sp.gm_lymph}`,
-          sp.gm_jvp && sp.gm_jvp !== 'Normal' && `JVP: ${sp.gm_jvp}`,
-        ].filter(Boolean).join('  ·  ');
-        if (gmFindings) examBody += subTitle('Clinical Findings') + `<div style="font-size:13px;">${esc(gmFindings)}</div>`;
-      }
-      // Psychiatry: intentionally omitted from PDF
-    }
-    if (examBody) body += sectionTitle('Examination') + examBody;
-
-    if (ps.rx && activeDrugs.length) {
-      body += `<div style="color:${theme};font-size:24px;font-weight:bold;margin:14px 0 6px;">℞</div>`;
-      activeDrugs.forEach((r, i) => {
-        const formLabel = r.form && r.form !== 'Tab' ? `${r.form}. ` : 'Tab. ';
-        const detail = [
-          r.form === 'MDI' && r.puffs ? r.puffs : '',
-          r.route && r.form !== 'MDI' && r.form !== 'Cream' ? r.route : '',
-          r.frequency, r.duration, r.instructions,
-        ].filter(Boolean).map(esc).join(' · ');
-        body += `
-          <div style="margin-bottom:10px;">
-            <div style="font-weight:600;font-size:13px;">${i + 1}. ${esc(formLabel)}${esc(stripConc(cleanDrug(r.drug)))}${r.dose ? ` ${esc(r.dose)}` : ''}${r.strength ? ` (${esc(r.strength)})` : ''}</div>
-            <div style="font-size:12px;color:#475569;padding-left:16px;">${detail}</div>
-          </div>`;
-      });
-    }
-    if (ps.investigation && draft.investigation) body += sectionTitle('Investigations') + `<div style="font-size:13px;">${esc(draft.investigation)}</div>`;
-    if (ps.advice && draft.advice) body += sectionTitle('Advice') + `<div style="font-size:13px;">${esc(draft.advice)}</div>`;
-    if (ps.followup && draft.followUp && draft.followUp !== 'No follow-up') {
-      body += sectionTitle('Follow-up') + `<div style="font-size:13px;">After <strong>${esc(draft.followUp)}</strong>${draft.referredTo && !ps.referral ? ` · Refer to: ${esc(draft.referredTo)}` : ''}</div>`;
-    }
-    if (ps.referral && draft.referredTo) {
-      body += sectionTitle('Referral') + `<div style="font-size:13px;">Referred to: <strong>${esc(draft.referredTo)}</strong></div>`;
-    }
-    if (ps.vaccines && vaccines.length > 0) {
-      const rows = vaccines.map(v =>
-        `<tr style="border-bottom:1px solid #f1f5f9;">
-          <td style="padding:3px 8px 3px 0;font-weight:600;">${esc(v.name)}</td>
-          <td style="padding:3px 8px 3px 0;color:#64748b;">${esc(v.site || '—')}</td>
-          <td style="padding:3px 8px 3px 0;color:#64748b;">${esc(v.batchNo || '—')}</td>
-          <td style="padding:3px 0;color:#64748b;">${v.nextDueDate ? new Date(v.nextDueDate).toLocaleDateString('en-IN') : '—'}</td>
-        </tr>`
-      ).join('');
-      body += sectionTitle('Vaccines Given') + `
-        <table style="width:100%;border-collapse:collapse;font-size:12px;">
-          <thead><tr style="border-bottom:1px solid ${theme}60;">
-            <th style="text-align:left;padding:3px 8px 3px 0;font-weight:600;color:#475569;">Vaccine</th>
-            <th style="text-align:left;padding:3px 8px 3px 0;font-weight:600;color:#475569;">Site</th>
-            <th style="text-align:left;padding:3px 8px 3px 0;font-weight:600;color:#475569;">Batch</th>
-            <th style="text-align:left;padding:3px 0;font-weight:600;color:#475569;">Next Due</th>
-          </tr></thead>
-          <tbody>${rows}</tbody>
-        </table>`;
-    }
-    if (ps.procedures && procedures.length > 0) {
-      const items = procedures.map(p =>
-        `<div style="font-size:12px;margin:2px 0;"><span style="font-weight:600;">${esc(p.name)}</span>${p.notes ? `<span style="color:#64748b;"> — ${esc(p.notes)}</span>` : ''}</div>`
-      ).join('');
-      body += sectionTitle('Procedures Performed') + items;
-    }
-    (pad.customFields ?? []).forEach((cf: any) => {
-      if (cf.label) body += `<div style="margin:6px 0;font-size:13px;"><span style="font-weight:700;color:#64748b;text-transform:uppercase;font-size:11px;">${esc(cf.label)}: </span>${esc(cf.value)}</div>`;
-    });
-
-    const signature = `
-      <div style="margin-top:48px;display:flex;justify-content:flex-end;">
-        <div style="text-align:center;padding-top:4px;min-width:160px;">
-          ${eSignUrl ? `<img src="${esc(eSignUrl)}" alt="Signature" style="max-height:48px;max-width:160px;object-fit:contain;display:block;margin:0 auto 4px;" />` : ''}
-          <div style="border-top:1px solid #475569;padding-top:4px;font-size:12px;color:#475569;">
-            ${esc(doctorDisplayName)}<br/>
-            ${pad.degrees ? `<span style="color:#94a3b8;">${esc(pad.degrees)}</span>` : ''}
-          </div>
-        </div>
-      </div>`;
-
-    const qrHtml = bookingUrl
-      ? `<div style="text-align:center;">
-          <img src="https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${encodeURIComponent(bookingUrl)}&bgcolor=ffffff&color=0a1628&margin=2" width="44" height="44" alt="Scan to book" style="border-radius:4px;border:1px solid #e2e8f0;" />
-          <div style="font-size:8px;color:#94a3b8;margin-top:2px;">Scan to Book</div>
+    const qrBlock = qrSrc
+      ? `<div style="text-align:center;flex-shrink:0;">
+           <img src="${esc(qrSrc)}" width="60" height="60" alt="QR" style="border-radius:4px;border:1px solid #e2e8f0;display:block;" />
+           <div style="font-size:8px;color:#94a3b8;margin-top:2px;">Know your doctor</div>
          </div>`
       : '';
 
-    // Fixed header/footer repeat on every printed page via position:fixed inside iframe
-    const printHeader = `
-      <div id="phdr" style="position:fixed;top:0;left:0;right:0;background:#fff;padding:10px 20px 8px;border-bottom:3px solid ${theme};display:flex;align-items:flex-start;justify-content:space-between;gap:16px;">
-        ${left}${right}
+    const headerHtml = `
+      <div style="display:flex;align-items:center;gap:0;padding:12px 20px 10px;border-bottom:2px solid #e2e8f0;">
+        ${rxBadge}
+        ${doctorBlock}
+        ${qrBlock}
       </div>`;
-    const printFooter = `
-      <div id="pftr" style="position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #e2e8f0;padding:6px 20px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
-        ${qrHtml}
-        <div style="flex:1;text-align:center;font-size:9px;color:#94a3b8;padding:0 8px;">
-          ${pad.footerNote ? esc(pad.footerNote) : ''}
+
+    // ── PATIENT INFO ────────────────────────────────────────────────────────
+    const dateStr = new Date().toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
+    const ptName = esc(patient.name || '');
+    const ptAgeGender = [patientAge ? `${patientAge} Yrs` : '', patient.gender === 'M' ? 'Male' : patient.gender === 'F' ? 'Female' : patient.gender || ''].filter(Boolean).join(', ');
+    const allergies = esc(draft.allergiesNote || patient.allergies?.join(', ') || 'None');
+    const currentMeds = esc(draft.currentMeds || 'None');
+
+    const patientHtml = `
+      <div style="padding:12px 20px 8px;display:flex;justify-content:space-between;align-items:flex-start;">
+        <div>
+          <div style="font-size:14px;font-weight:700;color:#0f172a;">${ptName}</div>
+          <div style="font-size:12px;color:#64748b;margin-top:1px;">${esc(ptAgeGender)}</div>
+          <div style="font-size:12px;color:#475569;margin-top:8px;"><strong>Drug Allergies</strong> • ${allergies}</div>
+          <div style="font-size:12px;color:#475569;margin-top:2px;"><strong>Ongoing Medication</strong> • ${currentMeds}</div>
+        </div>
+        <div style="text-align:right;font-size:12px;color:#475569;">
+          <strong>Date : ${esc(dateStr)}</strong>
+          ${patient.mrn ? `<div style="color:#94a3b8;font-size:11px;margin-top:2px;">MRN: ${esc(patient.mrn)}</div>` : ''}
+        </div>
+      </div>
+      <div style="border-top:1px solid #e2e8f0;margin:0 20px;"></div>`;
+
+    // ── VITALS ──────────────────────────────────────────────────────────────
+    const vitalsItems = [
+      ps.vitalsRow && draft.vitals.bp     ? `BP: <b>${esc(draft.vitals.bp)}</b>` : '',
+      ps.vitalsRow && draft.vitals.hr     ? `Pulse: <b>${esc(draft.vitals.hr)}/min</b>` : '',
+      ps.vitalsRow && draft.vitals.temp   ? `Temp: <b>${esc(draft.vitals.temp)}°C</b>` : '',
+      ps.vitalsRow && draft.vitals.spo2   ? `SpO₂: <b>${esc(draft.vitals.spo2)}%</b>` : '',
+      ps.vitalsRow && draft.vitals.weight ? `Wt: <b>${esc(draft.vitals.weight)} kg</b>` : '',
+      ps.vitalsRow && bmiVal              ? `BMI: <b>${esc(bmiVal)}</b>` : '',
+    ].filter(Boolean);
+    const vitalsHtml = vitalsItems.length ? `
+      <div style="padding:8px 20px;font-size:12px;color:#475569;display:flex;flex-wrap:wrap;gap:12px;background:#f8fafc;">
+        ${vitalsItems.join(' &nbsp;·&nbsp; ')}
+      </div>
+      <div style="border-top:1px solid #e2e8f0;margin:0 20px;"></div>` : '';
+
+    // ── COMPLAINTS + DIAGNOSIS (2-col) ──────────────────────────────────────
+    const complaintHtml = (ps.complaint && draft.chiefComplaint) ? `
+      <div style="padding:12px 20px 0;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+          <div>
+            <div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:6px;">Chief Complaints</div>
+            ${draft.chiefComplaint.split(/\n|,/).map(c => c.trim()).filter(Boolean).map(c =>
+              `<div style="font-size:12px;color:#374151;margin-bottom:3px;">${esc(c)}</div>`
+            ).join('')}
+            ${draft.hopi ? `<div style="font-size:12px;color:#64748b;margin-top:4px;">${esc(draft.hopi)}</div>` : ''}
+          </div>
+          ${(ps.diagnosis && draft.diagnosis) ? `
+          <div>
+            <div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:6px;">Provisional Diagnosis</div>
+            <div style="font-size:12px;color:#374151;">${esc(draft.diagnosis)}${draft.icdCode ? ` (${esc(draft.icdCode)})` : ''}</div>
+            ${draft.secondaryDx ? `<div style="font-size:12px;color:#64748b;margin-top:2px;">${esc(draft.secondaryDx)}</div>` : ''}
+          </div>` : ''}
+        </div>
+      </div>
+      <div style="border-top:1px solid #e2e8f0;margin:12px 20px 0;"></div>` : '';
+
+    // ── MEDICATION TABLE ────────────────────────────────────────────────────
+    const rxHtml = (ps.rx && activeDrugs.length > 0) ? (() => {
+      const rows = activeDrugs.map((r, i) => {
+        const formLabel = r.form && r.form !== 'Tab' ? `${r.form}. ` : '';
+        const drugName = `${formLabel}${stripConc(cleanDrug(r.drug))}${r.dose ? ` ${r.dose}` : ''}${r.strength ? ` (${r.strength})` : ''}`;
+        const timing = r.frequency || '';
+        const durationStr = r.duration ? r.duration.replace(/\s*(day|days|d)\s*/i, ' day(s)') : '';
+        const dosage = [r.route !== 'Oral' && r.route ? r.route : '', r.instructions].filter(Boolean).join(' · ');
+        return `
+          <tr style="border-bottom:1px solid #f1f5f9;">
+            <td style="padding:8px 8px 8px 0;font-size:12px;color:#64748b;width:40px;">${i + 1}</td>
+            <td style="padding:8px 8px 8px 0;font-size:13px;">
+              <div style="font-weight:600;color:#0f172a;">${esc(drugName)}</div>
+            </td>
+            <td style="padding:8px 8px 8px 0;font-size:12px;color:#374151;">${esc(timing)}</td>
+            <td style="padding:8px 8px 8px 0;font-size:12px;color:#374151;">${esc(durationStr)}</td>
+            <td style="padding:8px 0 8px 0;font-size:12px;color:#374151;">${esc(dosage)}</td>
+          </tr>`;
+      }).join('');
+      return `
+        <div style="padding:14px 20px 0;">
+          <div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:8px;">Medication Advised</div>
+          <table style="width:100%;border-collapse:collapse;">
+            <thead>
+              <tr style="border-bottom:1.5px solid #e2e8f0;background:#f8fafc;">
+                <th style="text-align:left;padding:6px 8px 6px 0;font-size:11px;font-weight:600;color:#64748b;width:40px;">S.No.</th>
+                <th style="text-align:left;padding:6px 8px 6px 0;font-size:11px;font-weight:600;color:#64748b;">Medicine name</th>
+                <th style="text-align:left;padding:6px 8px 6px 0;font-size:11px;font-weight:600;color:#64748b;">Timing</th>
+                <th style="text-align:left;padding:6px 8px 6px 0;font-size:11px;font-weight:600;color:#64748b;">Duration</th>
+                <th style="text-align:left;padding:6px 0 6px 0;font-size:11px;font-weight:600;color:#64748b;">Dosage</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+        <div style="padding:8px 20px 0;font-size:12px;color:#475569;">
+          <strong>Substitution Instruction</strong><br/>Apply the generic equivalent wherever applicable
+        </div>
+        <div style="border-top:1px solid #e2e8f0;margin:12px 20px 0;"></div>`;
+    })() : '';
+
+    // ── INVESTIGATIONS + ADVICE + FOLLOW-UP ─────────────────────────────────
+    let extraBody = '';
+    if (ps.investigation && draft.investigation) {
+      extraBody += `<div style="padding:8px 20px 0;"><div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:4px;">Investigations Advised</div><div style="font-size:12px;color:#374151;">${esc(draft.investigation)}</div></div>`;
+    }
+    if (ps.advice && draft.advice) {
+      extraBody += `<div style="padding:8px 20px 0;"><div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:4px;">Advice</div><div style="font-size:12px;color:#374151;">${esc(draft.advice)}</div></div>`;
+    }
+    if (ps.followup && draft.followUp && draft.followUp !== 'No follow-up') {
+      extraBody += `<div style="padding:8px 20px 0;"><div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:4px;">Follow-up</div><div style="font-size:12px;color:#374151;">After <strong>${esc(draft.followUp)}</strong></div></div>`;
+    }
+    if (ps.referral && draft.referredTo) {
+      extraBody += `<div style="padding:8px 20px 0;"><div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:4px;">Referral</div><div style="font-size:12px;color:#374151;">Referred to: <strong>${esc(draft.referredTo)}</strong></div></div>`;
+    }
+    if (extraBody) extraBody += `<div style="border-top:1px solid #e2e8f0;margin:12px 20px 0;"></div>`;
+
+    // ── SIGNATURE BLOCK ─────────────────────────────────────────────────────
+    const signatureHtml = `
+      <div style="padding:16px 20px 8px;">
+        ${eSignUrl ? `<img src="${esc(eSignUrl)}" alt="Signature" style="max-height:48px;max-width:140px;object-fit:contain;display:block;margin-bottom:6px;" />` : '<div style="height:48px;"></div>'}
+        <div style="font-size:13px;font-weight:700;color:#0f172a;">${esc(doctorName)}</div>
+        ${pad.specialty || pad.degrees ? `<div style="font-size:12px;color:#475569;">${[pad.specialty,pad.degrees].filter(Boolean).map(esc).join(', ')}</div>` : ''}
+        ${pad.regNumber ? `<div style="font-size:12px;color:#475569;">Reg. No: ${esc(pad.regNumber)}</div>` : ''}
+        ${stampUrl ? `<img src="${esc(stampUrl)}" alt="Stamp" style="max-height:64px;max-width:120px;object-fit:contain;display:block;margin-top:6px;opacity:0.9;" />` : ''}
+      </div>
+      <div style="border-top:1.5px solid #e2e8f0;margin:8px 20px;"></div>`;
+
+    // ── DISCLAIMER NOTES ────────────────────────────────────────────────────
+    const noteLines = [
+      'This prescription is issued by a registered medical practitioner.',
+      'The diagnosis and treatment are provisional. An in-person visit is advised for thorough examination.',
+      'The prescription is valid only for the period and dosage advised.',
+      'The contents of this prescription are confidential and meant solely for the intended recipient.',
+    ];
+    const noteHtml = `
+      <div style="padding:8px 20px;">
+        <div style="font-size:12px;font-weight:700;color:#0f172a;margin-bottom:4px;">Note:</div>
+        ${noteLines.map((n, i) => `<div style="font-size:11px;color:#64748b;margin-bottom:3px;">${i + 1}. ${n}</div>`).join('')}
+      </div>`;
+
+    // ── CLINIC FOOTER ───────────────────────────────────────────────────────
+    const footerHtml = `
+      <div style="position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:3px solid ${theme};padding:6px 20px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+        <div style="font-size:10px;color:#475569;flex:1;">
+          ${cName ? `<div style="font-weight:600;color:#374151;">${esc(cName)}</div>` : ''}
+          ${pad.email ? `<div>Email: <span style="color:${theme};">${esc(pad.email)}</span></div>` : ''}
+          ${cAddr ? `<div>Address: ${esc(cAddr)}</div>` : ''}
+          ${cPhone ? `<div>Phone: ${esc(cPhone)}</div>` : ''}
         </div>
         <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
-          <img src="${window.location.origin}/logos/vyasa-logo.svg" width="14" height="14" alt="Vyasa" style="display:inline-block;vertical-align:middle;border-radius:3px;" />
-          <span style="font-size:9px;color:#94a3b8;letter-spacing:0.04em;">Powered by <strong style="color:#64748b;">Vyasa Integrated Healthcare</strong></span>
+          <img src="${window.location.origin}/logos/vyasa-logo.svg" width="14" height="14" alt="Vyasa" style="border-radius:3px;" />
+          <span style="font-size:9px;color:#94a3b8;">Powered by <strong style="color:#64748b;">Vyasa</strong></span>
         </div>
       </div>`;
 
-    return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Prescription</title>
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Prescription – ${esc(patient.name)}</title>
       <style>
         @page { size: A4; margin: 0; }
         * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        body { font-family: Arial, Helvetica, sans-serif; color: #0f172a; margin: 0; padding: 110px 24px 70px; }
-        #phdr, #pftr { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        body { font-family: Arial, Helvetica, sans-serif; color: #0f172a; margin: 0; padding: 0 0 60px; }
       </style></head>
       <body>
-        ${printHeader}
-        ${printFooter}
-        <div style="display:flex;flex-wrap:wrap;gap:8px 24px;background:#f1f5f9;border-radius:6px;padding:10px 14px;margin-bottom:12px;">
-          ${ptCells}
-        </div>
-        ${body}
-        ${signature}
+        ${headerHtml}
+        ${patientHtml}
+        ${vitalsHtml}
+        ${complaintHtml}
+        ${rxHtml}
+        ${extraBody}
+        ${signatureHtml}
+        ${noteHtml}
+        ${footerHtml}
       </body></html>`;
   }
 
@@ -546,372 +458,202 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
           </div>
         </div>
 
-        {/* A5 paper preview */}
+        {/* A4 paper preview — mirrors the print layout */}
         <div className="flex-1 p-4 bg-slate-100 overflow-y-auto">
-          <div ref={printRef} className="bg-white mx-auto shadow-xl p-6 max-w-lg"
-            style={{ minHeight: '700px', fontSize: '13px', fontFamily: 'Arial, sans-serif' }}>
+          <div ref={printRef} className="bg-white mx-auto shadow-xl"
+            style={{ maxWidth: '595px', minHeight: '700px', fontFamily: 'Arial, sans-serif', fontSize: '13px' }}>
 
-            {/* Pad header */}
-            <div className="pad-header pb-3 mb-3" style={{ borderBottom: `3px solid ${theme}` }}>
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="pad-name" style={{ color: theme, fontSize: '20px', fontWeight: 'bold' }}>
-                    {doctorDisplayName}
-                  </div>
-                  {pad.degrees && <div className="text-slate-600 text-xs">{pad.degrees}</div>}
-                  {pad.specialty && <div className="text-slate-600 text-xs font-medium">{pad.specialty}</div>}
-                  {pad.regNumber && <div className="text-slate-400 text-xs">Reg: {pad.regNumber}</div>}
-                  {pad.showQuote && pad.quote && <div className="italic text-xs mt-1" style={{ color: theme }}>"{pad.quote}"</div>}
+            {/* ── Header ── */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 0, padding: '14px 20px 12px', borderBottom: `2px solid #e2e8f0` }}>
+              {/* Logo (if uploaded) or ℞ badge fallback */}
+              {(pad as { logoUrl?: string }).logoUrl ? (
+                <div style={{ width: 52, height: 52, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <img src={(pad as { logoUrl?: string }).logoUrl} alt="Logo" style={{ maxWidth: 52, maxHeight: 52, objectFit: 'contain', borderRadius: 6 }} />
                 </div>
-                <div className="text-right text-xs text-slate-500 max-w-[45%] shrink-0 break-words">
-                  {(clinicName || pad.clinicName) && <div className="font-semibold text-slate-700">{clinicName || pad.clinicName}</div>}
-                  {(clinicAddress || pad.address) && <div>{clinicAddress || pad.address}</div>}
-                  {(clinicPhone || pad.phone) && <div>📞 {clinicPhone || pad.phone}</div>}
-                  {pad.email && <div>✉ {pad.email}</div>}
-                  {pad.showTimings && pad.timings && <div>⏰ {pad.timings}</div>}
+              ) : (
+                <div style={{ width: 44, height: 44, background: '#f59e0b', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <span style={{ color: 'white', fontSize: 22, fontWeight: 900, fontFamily: 'serif', lineHeight: 1 }}>℞</span>
                 </div>
+              )}
+              <div style={{ flex: 1, paddingLeft: 12 }}>
+                <div style={{ fontSize: 16, fontWeight: 800, color: '#0f172a' }}>{doctorDisplayName}</div>
+                {(pad.specialty || pad.degrees) && <div style={{ fontSize: 12, color: '#475569', marginTop: 1 }}>{[pad.specialty, pad.degrees].filter(Boolean).join(', ')}</div>}
+                {pad.regNumber && <div style={{ fontSize: 12, color: '#475569', marginTop: 1 }}>Reg. No: {pad.regNumber}</div>}
               </div>
+              {qrSrc && (
+                <div style={{ textAlign: 'center', flexShrink: 0 }}>
+                  <img src={qrSrc} width={56} height={56} alt="QR" style={{ borderRadius: 4, border: '1px solid #e2e8f0', display: 'block' }} />
+                  <div style={{ fontSize: 8, color: '#94a3b8', marginTop: 2 }}>Know your doctor</div>
+                </div>
+              )}
             </div>
 
-            {/* Patient row */}
-            <div className="flex flex-wrap gap-x-5 gap-y-1 bg-slate-50 rounded px-3 py-2 text-xs mb-3">
-              <div><span className="text-slate-400">Patient: </span><span className="font-semibold">{patient.name}</span></div>
-              <div><span className="text-slate-400">Age/Sex: </span><span className="font-semibold">{patientAge}Y/{patient.gender}</span></div>
-              <div><span className="text-slate-400">Date: </span><span className="font-semibold">{today}</span></div>
-              {patient.mrn && <div><span className="text-slate-400">MRN: </span><span className="font-semibold">{patient.mrn}</span></div>}
-              {ps.vitalsRow && draft.vitals.bp && <div><span className="text-slate-400">BP: </span><span className="font-semibold">{draft.vitals.bp}</span></div>}
-              {ps.vitalsRow && draft.vitals.hr && <div><span className="text-slate-400">Pulse: </span><span className="font-semibold">{draft.vitals.hr}/min</span></div>}
-              {ps.vitalsRow && draft.vitals.temp && <div><span className="text-slate-400">Temp: </span><span className="font-semibold">{draft.vitals.temp}°C</span></div>}
-              {ps.vitalsRow && draft.vitals.spo2 && <div><span className="text-slate-400">SpO2: </span><span className="font-semibold">{draft.vitals.spo2}%</span></div>}
-              {ps.vitalsRow && draft.vitals.rr && <div><span className="text-slate-400">RR: </span><span className="font-semibold">{draft.vitals.rr}/min</span></div>}
-              {ps.vitalsRow && draft.vitals.weight && <div><span className="text-slate-400">Wt: </span><span className="font-semibold">{draft.vitals.weight}kg</span></div>}
-              {ps.vitalsRow && bmiVal && <div><span className="text-slate-400">BMI: </span><span className="font-semibold">{bmiVal}</span></div>}
+            {/* ── Patient Info ── */}
+            <div style={{ padding: '12px 20px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{patient.name}</div>
+                <div style={{ fontSize: 12, color: '#64748b', marginTop: 1 }}>
+                  {[patientAge ? `${patientAge} Yrs` : '', patient.gender === 'M' ? 'Male' : patient.gender === 'F' ? 'Female' : patient.gender || ''].filter(Boolean).join(', ')}
+                </div>
+                <div style={{ fontSize: 12, color: '#475569', marginTop: 8 }}>
+                  <strong>Drug Allergies</strong> • {draft.allergiesNote || (patient.allergies?.join(', ')) || 'None'}
+                </div>
+                <div style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>
+                  <strong>Ongoing Medication</strong> • {draft.currentMeds || 'None'}
+                </div>
+              </div>
+              <div style={{ textAlign: 'right', fontSize: 12, color: '#475569' }}>
+                <strong>Date : {today}</strong>
+                {patient.mrn && <div style={{ color: '#94a3b8', fontSize: 11, marginTop: 2 }}>MRN: {patient.mrn}</div>}
+              </div>
             </div>
+            <hr style={{ margin: '0 20px', border: 'none', borderTop: '1px solid #e2e8f0' }} />
 
-            {/* Complaint */}
-            {ps.complaint && draft.chiefComplaint && (
-              <div className="mb-2">
-                <div className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: theme }}>C/C</div>
-                <div className="text-sm">{draft.chiefComplaint}</div>
-              </div>
-            )}
-
-            {/* History / HOPI */}
-            {ps.hopi && draft.hopi && (
-              <div className="mb-2">
-                <div className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: theme }}>History</div>
-                <div className="text-sm">{draft.hopi}</div>
-              </div>
-            )}
-
-            {/* Past & Family History */}
-            {((draft.comorbidities?.length ?? 0) > 0 || draft.pastMedical?.trim() || draft.pastSurgical?.trim() || draft.familyHistory?.trim() || draft.socialHistory?.trim() || draft.allergiesNote?.trim() || draft.currentMeds?.trim()) && (
-              <div className="mb-2">
-                <div className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: theme }}>Past &amp; Family History</div>
-                {draft.comorbidities && draft.comorbidities.length > 0 && <div className="text-sm"><span className="text-slate-400">Comorbidities: </span>{draft.comorbidities.join(', ')}</div>}
-                {draft.pastMedical?.trim() && <div className="text-sm"><span className="text-slate-400">Past Medical: </span>{draft.pastMedical}</div>}
-                {draft.pastSurgical?.trim() && <div className="text-sm"><span className="text-slate-400">Past Surgical: </span>{draft.pastSurgical}</div>}
-                {draft.familyHistory?.trim() && <div className="text-sm"><span className="text-slate-400">Family H/o: </span>{draft.familyHistory}</div>}
-                {draft.socialHistory?.trim() && <div className="text-sm"><span className="text-slate-400">Social: </span>{draft.socialHistory}</div>}
-                {draft.allergiesNote?.trim() && <div className="text-sm"><span className="text-slate-400">Allergies: </span>{draft.allergiesNote}</div>}
-                {draft.currentMeds?.trim() && <div className="text-sm"><span className="text-slate-400">Current Meds: </span>{draft.currentMeds}</div>}
-              </div>
-            )}
-
-            {/* Examination — general signs, body-map notes, general & systemic findings */}
-            {ps.specialtyExam && (draft.bodySigns?.length || (draft.bodyNotes && Object.values(draft.bodyNotes).some(v => v?.trim())) || draft.generalExam?.trim() || draft.systemicExam?.trim()) && (
-              <div className="mb-3">
-                <div className="text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: theme }}>Examination</div>
-                {draft.bodySigns && draft.bodySigns.length > 0 && <div className="text-sm mb-1"><span className="text-slate-400">General signs: </span>{draft.bodySigns.join(', ')}</div>}
-                {draft.generalExam?.trim() && <div className="text-sm mb-1"><span className="text-slate-400">General: </span>{draft.generalExam}</div>}
-                {draft.systemicExam?.trim() && <div className="text-sm mb-1"><span className="text-slate-400">Systemic: </span>{draft.systemicExam}</div>}
-                {draft.bodyNotes && Object.entries(draft.bodyNotes).filter(([, v]) => v?.trim()).map(([k, v]) => (
-                  <div key={k} className="text-xs text-slate-600"><span className="text-slate-400">{k}: </span>{v}</div>
-                ))}
-              </div>
-            )}
-
-            {/* Diagnosis */}
-            {ps.diagnosis && draft.diagnosis && (
-              <div className="mb-3">
-                <div className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: theme }}>Diagnosis</div>
-                <div className="text-sm font-medium">{draft.diagnosis} {draft.icdCode && `(${draft.icdCode})`}</div>
-                {draft.secondaryDx && <div className="text-xs text-slate-600 mt-0.5">{draft.secondaryDx}</div>}
-              </div>
-            )}
-
-            {/* Examination (specialty modules — psychiatry always excluded) */}
-            {ps.specialtyExam && specialtyExam && (() => {
-              const sp = specialtyExam;
-              const has = (...keys: string[]) => keys.some(k => sp[k]?.trim());
-              const Row = ({ label, val }: { label: string; val?: string }) =>
-                val?.trim() ? (
-                  <div className="flex gap-2 text-xs mb-1">
-                    <span className="text-slate-400 min-w-[110px] flex-shrink-0">{label}</span>
-                    <span className="font-medium text-slate-800">{val}</span>
-                  </div>
-                ) : null;
-              const DualRow = ({ label, re, le }: { label: string; re?: string; le?: string }) =>
-                (re?.trim() || le?.trim()) ? (
-                  <div className="flex gap-2 text-xs mb-1">
-                    <span className="text-slate-400 min-w-[110px] flex-shrink-0">{label}</span>
-                    <span className="font-medium text-slate-800">RE: {re || '—'} &nbsp;|&nbsp; LE: {le || '—'}</span>
-                  </div>
-                ) : null;
-              const Sub = ({ title }: { title: string }) => (
-                <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mt-2 mb-1 border-b border-slate-100 pb-0.5">{title}</div>
-              );
-
-              const hasOphth = has('va_re_ucva','va_re_bcva','va_le_ucva','va_le_bcva','iop_re','iop_le','refx_re_sph','refx_le_sph','ant_re','ant_le','post_re','post_le','add_power');
-              const hasDent  = has('dent_tooth_fdi','dent_diagnosis','dent_procedure','dent_material','dent_post_op','dent_xray_findings');
-              const hasSurg  = has('surg_procedure_name','surg_pre_op_dx','surg_post_op_dx','surg_intraop','surg_postop','surg_anaesthesia','surg_implant');
-              const hasOrth  = has('orth_region','orth_laterality','orth_mechanism','orth_xray','orth_mri_ct','orth_fracture_type','orth_implant');
-              const hasDerm  = has('derm_primary_lesion','derm_secondary_lesion','derm_distribution','derm_site','derm_dermoscopy','derm_biopsy','derm_treatment');
-              const hasObg   = has('obg_lmp','obg_edd','obg_ga_weeks','obg_gravida','obg_para','obg_presentation','obg_pv_findings','obg_usg');
-              const hasPaed  = has('paed_apgar_1','paed_apgar_5','paed_birth_wt','paed_ga_birth','paed_dev_motor','paed_dev_language','paed_immunisation','paed_notes');
-              const hasGm    = has('gm_built','gm_pallor','gm_icterus','gm_cyanosis','gm_clubbing','gm_oedema','gm_lymph','gm_jvp');
-              const anyData  = hasOphth || hasDent || hasSurg || hasOrth || hasDerm || hasObg || hasPaed || hasGm;
-              if (!anyData) return null;
-
-              return (
-                <div className="mb-3">
-                  <div className="text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: theme }}>Examination</div>
-
-                  {hasOphth && <>
-                    <Sub title="Ophthalmic" />
-                    <DualRow label="VA (UCVA/BCVA)" re={[sp.va_re_ucva,sp.va_re_bcva].filter(Boolean).join('/')} le={[sp.va_le_ucva,sp.va_le_bcva].filter(Boolean).join('/')} />
-                    <DualRow label="IOP" re={sp.iop_re ? `${sp.iop_re} mmHg` : ''} le={sp.iop_le ? `${sp.iop_le} mmHg` : ''} />
-                    <DualRow label="Refraction" re={[sp.refx_re_sph && `Sph ${sp.refx_re_sph}`,sp.refx_re_cyl && `Cyl ${sp.refx_re_cyl}`,sp.refx_re_axis && `Axis ${sp.refx_re_axis}`].filter(Boolean).join(' ')} le={[sp.refx_le_sph && `Sph ${sp.refx_le_sph}`,sp.refx_le_cyl && `Cyl ${sp.refx_le_cyl}`,sp.refx_le_axis && `Axis ${sp.refx_le_axis}`].filter(Boolean).join(' ')} />
-                    {sp.add_power && <Row label="Add Power" val={sp.add_power} />}
-                    <DualRow label="Anterior Segment" re={sp.ant_re} le={sp.ant_le} />
-                    <DualRow label="Posterior Segment" re={sp.post_re} le={sp.post_le} />
-                  </>}
-
-                  {hasDent && <>
-                    <Sub title="Dental" />
-                    <Row label="Tooth (FDI)" val={sp.dent_tooth_fdi} />
-                    <Row label="Dental Diagnosis" val={sp.dent_diagnosis} />
-                    <Row label="Procedure" val={sp.dent_procedure} />
-                    <Row label="Material" val={sp.dent_material} />
-                    {sp.dent_local_anaesthetic && sp.dent_local_anaesthetic !== 'Not used' && <Row label="Local Anaesthetic" val={sp.dent_local_anaesthetic} />}
-                    {sp.dent_xray_type && sp.dent_xray_type !== 'Not taken' && <Row label="Radiograph" val={sp.dent_xray_type} />}
-                    <Row label="Radiographic Findings" val={sp.dent_xray_findings} />
-                    {sp.dent_ohi_score && <Row label="OHI Score" val={sp.dent_ohi_score} />}
-                    <Row label="Post-op Instructions" val={sp.dent_post_op} />
-                  </>}
-
-                  {hasSurg && <>
-                    <Sub title="Surgical Notes" />
-                    <Row label="Procedure" val={sp.surg_procedure_name} />
-                    <Row label="Pre-op Diagnosis" val={sp.surg_pre_op_dx} />
-                    <Row label="Post-op Diagnosis" val={sp.surg_post_op_dx} />
-                    <Row label="Anaesthesia" val={sp.surg_anaesthesia} />
-                    {sp.surg_duration_min && <Row label="Duration" val={`${sp.surg_duration_min} min`} />}
-                    {sp.surg_blood_loss_ml && <Row label="Blood Loss" val={`${sp.surg_blood_loss_ml} ml`} />}
-                    <Row label="Implant / Device" val={sp.surg_implant} />
-                    <Row label="Intraoperative Findings" val={sp.surg_intraop} />
-                    <Row label="Post-op Instructions" val={sp.surg_postop} />
-                  </>}
-
-                  {hasOrth && <>
-                    <Sub title="Orthopaedic" />
-                    <Row label="Region / Laterality" val={[sp.orth_region,sp.orth_laterality].filter(Boolean).join(' — ')} />
-                    <Row label="Mechanism of Injury" val={sp.orth_mechanism} />
-                    <Row label="X-ray Findings" val={sp.orth_xray} />
-                    <Row label="MRI / CT Findings" val={sp.orth_mri_ct} />
-                    <Row label="Fracture Type" val={sp.orth_fracture_type} />
-                    <Row label="Implant / Fixation" val={sp.orth_implant} />
-                  </>}
-
-                  {hasDerm && <>
-                    <Sub title="Dermatology" />
-                    <Row label="Primary Lesion" val={sp.derm_primary_lesion} />
-                    <Row label="Secondary Lesion" val={sp.derm_secondary_lesion} />
-                    <Row label="Distribution" val={sp.derm_distribution} />
-                    <Row label="Site" val={sp.derm_site} />
-                    <Row label="Dermatoscopy" val={sp.derm_dermoscopy} />
-                    {sp.derm_biopsy && sp.derm_biopsy !== 'Not sent' && <Row label="Biopsy" val={sp.derm_biopsy} />}
-                    <Row label="Treatment Plan" val={sp.derm_treatment} />
-                  </>}
-
-                  {hasObg && <>
-                    <Sub title="Obstetric & Gynaecology" />
-                    {sp.obg_lmp && <Row label="LMP" val={sp.obg_lmp} />}
-                    {sp.obg_edd && <Row label="EDD" val={sp.obg_edd} />}
-                    {sp.obg_ga_weeks && <Row label="Gestational Age" val={`${sp.obg_ga_weeks} weeks (${sp.obg_ga_source || 'LMP'})`} />}
-                    {[sp.obg_gravida && `G${sp.obg_gravida}`,sp.obg_para && `P${sp.obg_para}`,sp.obg_live && `L${sp.obg_live}`,sp.obg_abortion && `A${sp.obg_abortion}`].filter(Boolean).length > 0 &&
-                      <Row label="Obstetric History" val={[sp.obg_gravida && `G${sp.obg_gravida}`,sp.obg_para && `P${sp.obg_para}`,sp.obg_live && `L${sp.obg_live}`,sp.obg_abortion && `A${sp.obg_abortion}`].filter(Boolean).join(' ')} />}
-                    <Row label="Presentation" val={sp.obg_presentation} />
-                    <Row label="P/V Findings" val={sp.obg_pv_findings} />
-                    <Row label="USG Summary" val={sp.obg_usg} />
-                  </>}
-
-                  {hasPaed && <>
-                    <Sub title="Paediatrics" />
-                    {(sp.paed_apgar_1 || sp.paed_apgar_5) && <Row label="APGAR" val={[sp.paed_apgar_1 && `1 min: ${sp.paed_apgar_1}`,sp.paed_apgar_5 && `5 min: ${sp.paed_apgar_5}`].filter(Boolean).join(' | ')} />}
-                    {sp.paed_birth_wt && <Row label="Birth Weight" val={`${sp.paed_birth_wt} kg`} />}
-                    {sp.paed_ga_birth && <Row label="GA at Birth" val={`${sp.paed_ga_birth} weeks`} />}
-                    <Row label="Milestones" val={[sp.paed_dev_motor && `Motor: ${sp.paed_dev_motor}`,sp.paed_dev_language && `Language: ${sp.paed_dev_language}`].filter(Boolean).join(' · ')} />
-                    <Row label="Immunisation" val={sp.paed_immunisation} />
-                    <Row label="Notes" val={sp.paed_notes} />
-                  </>}
-
-                  {hasGm && (() => {
-                    const findings = [
-                      sp.gm_built && `Built: ${sp.gm_built}`,
-                      sp.gm_pallor && sp.gm_pallor !== 'Absent' && `Pallor: ${sp.gm_pallor}`,
-                      sp.gm_icterus && sp.gm_icterus !== 'Absent' && `Icterus: ${sp.gm_icterus}`,
-                      sp.gm_cyanosis && sp.gm_cyanosis !== 'Absent' && `Cyanosis: ${sp.gm_cyanosis}`,
-                      sp.gm_clubbing && sp.gm_clubbing !== 'Absent' && `Clubbing: ${sp.gm_clubbing}`,
-                      sp.gm_oedema && sp.gm_oedema !== 'Absent' && `Oedema: ${sp.gm_oedema}`,
-                      sp.gm_lymph && sp.gm_lymph !== 'Not palpable' && `LN: ${sp.gm_lymph}`,
-                      sp.gm_jvp && sp.gm_jvp !== 'Normal' && `JVP: ${sp.gm_jvp}`,
-                    ].filter(Boolean).join('  ·  ');
-                    return findings ? <><Sub title="Clinical Findings" /><div className="text-xs text-slate-800">{findings}</div></> : null;
-                  })()}
+            {/* ── Vitals ── */}
+            {ps.vitalsRow && (draft.vitals.bp || draft.vitals.hr || draft.vitals.temp || draft.vitals.spo2 || draft.vitals.weight) && (
+              <>
+                <div style={{ padding: '8px 20px', fontSize: 12, color: '#475569', display: 'flex', flexWrap: 'wrap' as const, gap: '0 14px', background: '#f8fafc' }}>
+                  {draft.vitals.bp && <span>BP: <strong>{draft.vitals.bp}</strong></span>}
+                  {draft.vitals.hr && <span>Pulse: <strong>{draft.vitals.hr}/min</strong></span>}
+                  {draft.vitals.temp && <span>Temp: <strong>{draft.vitals.temp}°C</strong></span>}
+                  {draft.vitals.spo2 && <span>SpO₂: <strong>{draft.vitals.spo2}%</strong></span>}
+                  {draft.vitals.weight && <span>Wt: <strong>{draft.vitals.weight} kg</strong></span>}
+                  {bmiVal && <span>BMI: <strong>{bmiVal}</strong></span>}
                 </div>
-              );
-            })()}
+                <hr style={{ margin: '0 20px', border: 'none', borderTop: '1px solid #e2e8f0' }} />
+              </>
+            )}
 
-            {/* Rx */}
-            {ps.rx && draft.rxRows.some(r => r.drug.trim()) && (
-              <div className="mb-3">
-                <div className="text-xl font-bold mb-2" style={{ color: theme }}>℞</div>
-                {draft.rxRows.filter(r => r.drug.trim()).map((r, i) => (
-                  <div key={r.id} className="mb-2.5">
-                    <div className="font-semibold text-sm">
-                      {i + 1}. {r.form && r.form !== 'Tab' ? `${r.form}. ` : 'Tab. '}{stripConc(cleanDrug(r.drug))}
-                      {r.dose && ` ${r.dose}`}
-                      {r.strength && ` (${r.strength})`}
-                    </div>
-                    <div className="text-xs text-slate-600 pl-4">
-                      {r.form === 'MDI' && r.puffs ? `${r.puffs} · ` : ''}
-                      {r.route && r.form !== 'MDI' && r.form !== 'Cream' ? `${r.route} · ` : ''}
-                      {r.frequency} · {r.duration}
-                      {r.instructions && <> · {r.instructions}</>}
-                    </div>
+            {/* ── Complaints + Diagnosis (2-col) ── */}
+            {(ps.complaint && draft.chiefComplaint) && (
+              <>
+                <div style={{ padding: '12px 20px 0', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>Chief Complaints</div>
+                    {draft.chiefComplaint.split(/\n|,/).map(c => c.trim()).filter(Boolean).map((c, i) => (
+                      <div key={i} style={{ fontSize: 12, color: '#374151', marginBottom: 3 }}>{c}</div>
+                    ))}
+                    {ps.hopi && draft.hopi && <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>{draft.hopi}</div>}
                   </div>
-                ))}
-              </div>
-            )}
-
-            {/* Investigations */}
-            {ps.investigation && draft.investigation && (
-              <div className="mb-3">
-                <div className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: theme }}>Investigations</div>
-                <div className="text-sm">{draft.investigation}</div>
-              </div>
-            )}
-
-            {/* Advice */}
-            {ps.advice && draft.advice && (
-              <div className="mb-3">
-                <div className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: theme }}>Advice</div>
-                <div className="text-sm">{draft.advice}</div>
-              </div>
-            )}
-
-            {/* Follow-up */}
-            {ps.followup && draft.followUp && draft.followUp !== 'No follow-up' && (
-              <div className="mb-4">
-                <div className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: theme }}>Follow-up</div>
-                <div className="text-sm">After <strong>{draft.followUp}</strong>
-                  {draft.referredTo && <> · Refer to: {draft.referredTo}</>}
+                  {ps.diagnosis && draft.diagnosis && (
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>Provisional Diagnosis</div>
+                      <div style={{ fontSize: 12, color: '#374151' }}>{draft.diagnosis}{draft.icdCode ? ` (${draft.icdCode})` : ''}</div>
+                      {draft.secondaryDx && <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{draft.secondaryDx}</div>}
+                    </div>
+                  )}
                 </div>
-              </div>
+                <hr style={{ margin: '12px 20px 0', border: 'none', borderTop: '1px solid #e2e8f0' }} />
+              </>
             )}
 
-            {/* Referral */}
-            {ps.referral && draft.referredTo && (
-              <div className="mb-4">
-                <div className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: theme }}>Referral</div>
-                <div className="text-sm">Referred to: <strong>{draft.referredTo}</strong></div>
-              </div>
-            )}
-
-            {/* Vaccines */}
-            {ps.vaccines && vaccines.length > 0 && (
-              <div className="mb-4">
-                <div className="text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: theme }}>Vaccines Given</div>
-                <table className="w-full text-xs border-collapse">
+            {/* ── Medication table ── */}
+            {ps.rx && draft.rxRows.filter(r => r.drug.trim()).length > 0 && (
+              <div style={{ padding: '14px 20px 0' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 8 }}>Medication Advised</div>
+                <table style={{ width: '100%', borderCollapse: 'collapse' as const }}>
                   <thead>
-                    <tr className="border-b" style={{ borderColor: theme + '40' }}>
-                      <th className="text-left py-1 pr-3 font-semibold text-slate-600">Vaccine</th>
-                      <th className="text-left py-1 pr-3 font-semibold text-slate-600">Site</th>
-                      <th className="text-left py-1 pr-3 font-semibold text-slate-600">Batch</th>
-                      <th className="text-left py-1 font-semibold text-slate-600">Next Due</th>
+                    <tr style={{ borderBottom: '1.5px solid #e2e8f0', background: '#f8fafc' }}>
+                      {['S.No.', 'Medicine name', 'Timing', 'Duration', 'Dosage'].map(h => (
+                        <th key={h} style={{ textAlign: 'left', padding: '6px 8px 6px 0', fontSize: 11, fontWeight: 600, color: '#64748b' }}>{h}</th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {vaccines.map(v => (
-                      <tr key={v.id} className="border-b border-slate-100">
-                        <td className="py-1 pr-3 font-medium text-slate-800">{v.name}</td>
-                        <td className="py-1 pr-3 text-slate-600">{v.site || '—'}</td>
-                        <td className="py-1 pr-3 text-slate-600">{v.batchNo || '—'}</td>
-                        <td className="py-1 text-slate-600">{v.nextDueDate ? new Date(v.nextDueDate).toLocaleDateString('en-IN') : '—'}</td>
-                      </tr>
-                    ))}
+                    {draft.rxRows.filter(r => r.drug.trim()).map((r, i) => {
+                      const formLabel = r.form && r.form !== 'Tab' ? `${r.form}. ` : '';
+                      const drugName = `${formLabel}${stripConc(cleanDrug(r.drug))}${r.dose ? ` ${r.dose}` : ''}${r.strength ? ` (${r.strength})` : ''}`;
+                      const dosage = [r.route !== 'Oral' && r.route ? r.route : '', r.instructions].filter(Boolean).join(' · ');
+                      const durationDisplay = r.duration ? r.duration.replace(/\s*(day|days|d)\s*/i, ' day(s)') : '';
+                      return (
+                        <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '8px 8px 8px 0', fontSize: 12, color: '#64748b', width: 40 }}>{i + 1}</td>
+                          <td style={{ padding: '8px 8px 8px 0', fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{drugName}</td>
+                          <td style={{ padding: '8px 8px 8px 0', fontSize: 12, color: '#374151' }}>{r.frequency}</td>
+                          <td style={{ padding: '8px 8px 8px 0', fontSize: 12, color: '#374151' }}>{durationDisplay}</td>
+                          <td style={{ padding: '8px 0 8px 0', fontSize: 12, color: '#374151' }}>{dosage}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
-              </div>
-            )}
-
-            {/* Procedures */}
-            {ps.procedures && procedures.length > 0 && (
-              <div className="mb-4">
-                <div className="text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: theme }}>Procedures Performed</div>
-                <div className="space-y-0.5">
-                  {procedures.map(p => (
-                    <div key={p.id} className="text-xs text-slate-700">
-                      <span className="font-medium">{p.name}</span>
-                      {p.notes && <span className="text-slate-500"> — {p.notes}</span>}
-                    </div>
-                  ))}
+                <div style={{ marginTop: 10, fontSize: 12, color: '#475569' }}>
+                  <strong>Substitution Instruction</strong><br />Apply the generic equivalent wherever applicable
                 </div>
               </div>
             )}
 
-            {/* Custom fields */}
-            {pad.customFields?.map((cf: any) => cf.label && (
-              <div key={cf.label} className="mb-2">
-                <span className="text-xs font-bold text-slate-500 uppercase">{cf.label}: </span>
-                <span className="text-sm">{cf.value}</span>
+            {/* ── Investigations / Advice / Follow-up ── */}
+            {ps.investigation && draft.investigation && (
+              <div style={{ padding: '12px 20px 0' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>Investigations Advised</div>
+                <div style={{ fontSize: 12, color: '#374151' }}>{draft.investigation}</div>
               </div>
-            ))}
+            )}
+            {ps.advice && draft.advice && (
+              <div style={{ padding: '8px 20px 0' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>Advice</div>
+                <div style={{ fontSize: 12, color: '#374151' }}>{draft.advice}</div>
+              </div>
+            )}
+            {ps.followup && draft.followUp && draft.followUp !== 'No follow-up' && (
+              <div style={{ padding: '8px 20px 0' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>Follow-up</div>
+                <div style={{ fontSize: 12, color: '#374151' }}>After <strong>{draft.followUp}</strong></div>
+              </div>
+            )}
+            {ps.referral && draft.referredTo && (
+              <div style={{ padding: '8px 20px 0' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>Referral</div>
+                <div style={{ fontSize: 12, color: '#374151' }}>Referred to: <strong>{draft.referredTo}</strong></div>
+              </div>
+            )}
 
-            {/* Signature */}
-            <div className="mt-8 flex justify-end">
-              <div className="text-center min-w-[144px]">
-                {eSignUrl && (
-                  <img src={eSignUrl} alt="Signature" className="max-h-12 max-w-[144px] object-contain mx-auto mb-1" />
-                )}
-                <div className="border-t border-slate-400 pt-1 text-xs text-slate-500">
-                  {doctorDisplayName}<br />
-                  {pad.degrees && <span className="text-slate-400">{pad.degrees}</span>}
-                </div>
-              </div>
+            <hr style={{ margin: '14px 20px 0', border: 'none', borderTop: '1px solid #e2e8f0' }} />
+
+            {/* ── Signature ── */}
+            <div style={{ padding: '16px 20px 8px' }}>
+              {eSignUrl && <img src={eSignUrl} alt="Signature" style={{ maxHeight: 48, maxWidth: 140, objectFit: 'contain', display: 'block', marginBottom: 6 }} />}
+              {!eSignUrl && <div style={{ height: 48 }} />}
+              {(pad as { stampUrl?: string }).stampUrl && (
+                <img src={(pad as { stampUrl?: string }).stampUrl} alt="Stamp" style={{ maxHeight: 56, maxWidth: 110, objectFit: 'contain', display: 'block', marginBottom: 6, opacity: 0.9 }} />
+              )}
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{doctorDisplayName}</div>
+              {(pad.specialty || pad.degrees) && <div style={{ fontSize: 12, color: '#475569' }}>{[pad.specialty, pad.degrees].filter(Boolean).join(', ')}</div>}
+              {pad.regNumber && <div style={{ fontSize: 12, color: '#475569' }}>Reg. No: {pad.regNumber}</div>}
             </div>
 
-            {/* Fixed footer — QR | footer note | Vyasa branding */}
-            <div className="mt-5 pt-2 border-t border-slate-200 flex items-center gap-2">
-              {bookingUrl && (
-                <div className="flex flex-col items-center flex-shrink-0">
-                  <img src={qrSrc} width={44} height={44} alt="Scan to book" className="rounded border border-slate-200" />
-                  <span className="text-[8px] text-slate-400 mt-0.5">Scan to Book</span>
-                </div>
-              )}
-              <div className="flex-1 text-center text-[9px] text-slate-400 px-2">
-                {pad.footerNote}
+            <hr style={{ margin: '8px 20px', border: 'none', borderTop: '1.5px solid #e2e8f0' }} />
+
+            {/* ── Disclaimer ── */}
+            <div style={{ padding: '8px 20px 16px' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>Note:</div>
+              {[
+                'This prescription is issued by a registered medical practitioner.',
+                'The diagnosis and treatment are provisional. An in-person visit is advised for thorough examination.',
+                'The prescription is valid only for the period and dosage advised.',
+                'The contents of this prescription are confidential and meant solely for the intended recipient.',
+              ].map((n, i) => (
+                <div key={i} style={{ fontSize: 11, color: '#64748b', marginBottom: 3 }}>{i + 1}. {n}</div>
+              ))}
+            </div>
+
+            {/* ── Clinic footer ── */}
+            <div style={{ borderTop: `3px solid ${theme}`, padding: '8px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <div style={{ fontSize: 10, color: '#475569', flex: 1 }}>
+                {(clinicName || pad.clinicName) && <div style={{ fontWeight: 600, color: '#374151' }}>{clinicName || pad.clinicName}</div>}
+                {pad.email && <div>Email: <span style={{ color: theme }}>{pad.email}</span></div>}
+                {(clinicAddress || pad.address) && <div>Address: {clinicAddress || pad.address}</div>}
+                {(clinicPhone || pad.phone) && <div>Phone: {clinicPhone || pad.phone}</div>}
               </div>
-              <div className="flex items-center gap-1.5 flex-shrink-0">
-                <img src="/logos/vyasa-logo.svg" width={14} height={14} alt="Vyasa" className="rounded-sm" />
-                <span className="text-[9px] text-slate-400 tracking-wide">
-                  Powered by <strong className="text-slate-500">Vyasa Integrated Healthcare</strong>
-                </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                <img src={`${window.location.origin}/logos/vyasa-logo.svg`} width={14} height={14} alt="Vyasa" style={{ borderRadius: 3 }} />
+                <span style={{ fontSize: 9, color: '#94a3b8' }}>Powered by <strong style={{ color: '#64748b' }}>Vyasa</strong></span>
               </div>
             </div>
           </div>
         </div>
+
       </div>
     </div>
   );

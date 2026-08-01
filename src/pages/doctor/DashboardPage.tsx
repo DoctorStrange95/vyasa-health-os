@@ -1,16 +1,17 @@
 import { useState, useCallback } from 'react';
 import { useAppStore } from '@/store/useAppStore';
 import NurseHome from '@/pages/nurse/NurseHome';
+import ClinicAdminDashboard from '@/pages/admin/ClinicAdminDashboard';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePadStore } from '@/store/usePadStore';
-import { Link, useNavigate } from 'react-router-dom';
-import { PriorityBadge, StatusBadge } from '@/components/ui/Badge';
+import { Link, useNavigate, Navigate } from 'react-router-dom';
 import {
-  Users, BedDouble, Bell, Clock, TrendingUp, AlertTriangle, Activity,
+  Users, BedDouble, Bell, Clock, Activity,
   CheckCircle2, Pencil, X, UserPlus,
-  Building2, ChevronDown, Edit2, Calendar, CalendarDays, Settings2, BarChart3, DollarSign, ChevronRight, PlayCircle
+  Building2, ChevronDown, Edit2, Calendar, CalendarDays, BarChart3, ChevronRight, PlayCircle, FileText
 } from 'lucide-react';
-import { formatDateTime, cn, localDate } from '@/lib/utils';
+import React from 'react';
+import { cn, localDate } from '@/lib/utils';
 import { api, isApiEnabled } from '@/lib/api';
 import type { AppointmentEntry, QueueEntry } from '@/types';
 
@@ -166,7 +167,7 @@ function TodayClinicWidget() {
 
 export default function DashboardPage() {
   const { user } = useAuthStore();
-  const { patients, alerts, queue, setQueue, vitals, visits, appointments, bills, openQuickRxModal, updateAppointment, showToast, refreshAppointments, upsertPatient } = useAppStore();
+  const { patients, alerts, queue, setQueue, visits, appointments, openQuickRxModal, updateAppointment, showToast, refreshAppointments, upsertPatient } = useAppStore();
   const navigate = useNavigate();
 
   // One-click: confirm (if pending booking) + check in + open consult
@@ -264,341 +265,288 @@ export default function DashboardPage() {
   // Nurses get a simplified Home (summary cards), not the doctor dashboard.
   if (user?.role === 'nurse') return <NurseHome />;
 
+  // clinic_manager role = non-doctor clinic owner/admin → operations dashboard
+  // clinic_admin (solo doctor) ALWAYS gets the doctor dashboard regardless of specialty
+  if (user?.role === 'clinic_manager') return <ClinicAdminDashboard />;
+
+  // Non-clinical roles — redirect to their proper home instead of showing doctor dashboard
+  if (user?.role === 'labtech')    return <Navigate to="/app/labtech" replace />;
+  if (user?.role === 'pharmacist') return <Navigate to="/app/pharmacy" replace />;
+  if (user?.role === 'billing')    return <Navigate to="/app/billing" replace />;
+  if (user?.role === 'admin')      return <Navigate to="/app/staff" replace />;
+
+  // Stats
+  const totalPatients = myPatients.length;
+  const totalVisits = Object.values(visits).flat().length;
+  const totalRx = Object.values(useAppStore.getState().prescriptions).flat().length;
+  const followUpsDue = appointments.filter(a => a.date >= todayStr && a.status === 'scheduled').length;
+
+  // Recent activity feed
+  const recentActivity: { icon: React.ReactNode; text: string; time: string }[] = [];
+  Object.values(visits).flat().sort((a, b) => b.date.localeCompare(a.date)).slice(0, 2).forEach(v => {
+    const p = patients.find(pt => pt.id === v.patientId);
+    if (p) recentActivity.push({ icon: <FileText style={{ width: 14, height: 14, color: '#0d9488' }} />, text: `New prescription created for ${p.name}`, time: v.date });
+  });
+  [...todayAppointments].reverse().slice(0, 2).forEach(a => {
+    recentActivity.push({ icon: <Calendar style={{ width: 14, height: 14, color: '#7c3aed' }} />, text: `Appointment booked for ${a.patientName}`, time: a.time });
+  });
+
+  const firstNameOnly = user?.name?.split(' ').find(w => !/^dr\.?$/i.test(w)) ?? user?.name?.split(' ')[0] ?? '';
+
   return (
-    <div>
-      {/* Greeting + CTAs */}
-      <div className="flex items-start justify-between gap-4 mb-6 flex-wrap animate-fade-up">
+    <div className="w-full space-y-4">
+
+      {/* ── Greeting + primary CTA ── */}
+      <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">
-            {greeting}, {user?.name?.split(' ').slice(0, 2).join(' ')} 👋
+          <h1 className="text-xl font-extrabold text-slate-900">
+            {greeting}, {['doctor','clinic_admin','superadmin'].includes(user?.role ?? '') ? `Dr. ${firstNameOnly}` : firstNameOnly} 👋
           </h1>
-          <p className="text-slate-500 mt-1 text-sm">Here's your clinical overview for today.</p>
+          <p className="text-sm text-slate-500 mt-1">
+            {todayAppointments.length > 0
+              ? `${todayAppointments.length} appointment${todayAppointments.length > 1 ? 's' : ''} scheduled today`
+              : waitingQueue.length > 0
+              ? `${waitingQueue.length} patient${waitingQueue.length > 1 ? 's' : ''} waiting in queue`
+              : 'No appointments yet today — start by registering a patient'}
+          </p>
         </div>
         <div className="flex gap-2 flex-shrink-0">
-          <button
-            onClick={openQuickRxModal}
-            className="flex-shrink-0 flex items-center gap-2.5 bg-teal-600 hover:bg-teal-700 active:scale-95 text-white font-bold px-5 py-3 rounded-2xl shadow-lg shadow-teal-500/30 transition-all text-sm"
-          >
-            <Pencil className="w-4 h-4" />
-            Write Rx
+          <button onClick={() => navigate('/app/queue')}
+            className="flex items-center gap-2 bg-white border border-slate-200 text-slate-700 rounded-xl px-4 py-2.5 text-sm font-semibold hover:border-teal-300 transition-all">
+            <Users className="w-4 h-4 text-teal-500" /> OPD Queue
+          </button>
+          <button onClick={openQuickRxModal}
+            className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl px-4 py-2.5 text-sm font-bold shadow-sm shadow-teal-200 transition-all">
+            <Pencil className="w-4 h-4" /> Write Prescription
           </button>
         </div>
       </div>
 
+      {/* Clinic widget */}
       {user?.role === 'clinic_admin' && <TodayClinicWidget />}
 
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      {/* ── Stat tiles: 2×2 on mobile, 4 on desktop ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { icon: <BedDouble className="w-5 h-5 text-blue-500" />, label: 'IPD Patients', value: ipd.length, sub: `${critical.length} critical`, subColor: 'text-red-500', bg: 'bg-blue-50', to: '/app/patients', delay: 'delay-0' },
-          { icon: <Users className="w-5 h-5 text-teal-500" />, label: 'OPD Queue', value: waitingQueue.length, sub: 'waiting now', subColor: waitingQueue.length > 0 ? 'text-teal-600' : 'text-slate-400', bg: 'bg-teal-50', to: '/app/queue', delay: 'delay-50' },
-          { icon: <Bell className="w-5 h-5 text-red-500" />, label: 'Active Alerts', value: unackAlerts.length, sub: 'Unacknowledged', subColor: unackAlerts.length > 0 ? 'text-red-500' : 'text-slate-500', bg: 'bg-red-50', to: '/app/alerts', delay: 'delay-100' },
-          { icon: <Activity className="w-5 h-5 text-emerald-500" />, label: 'Upcoming Appts', value: upcomingCount, sub: `${todayAppointments.length} today`, subColor: 'text-slate-500', bg: 'bg-emerald-50', to: '/app/schedule', delay: 'delay-150' },
+          { to: '/app/patients', bg: 'bg-blue-50', iconBg: 'bg-blue-100', icon: <BedDouble size={18} className="text-blue-500" />, value: ipd.length, label: 'IPD Patients', badge: critical.length > 0 ? { text: `${critical.length} critical`, color: 'text-red-500' } : null },
+          { to: '/app/queue', bg: 'bg-teal-50', iconBg: 'bg-teal-100', icon: <Clock size={18} className="text-teal-500" />, value: waitingQueue.length, label: 'OPD Queue', badge: waitingQueue.length > 0 ? { text: 'Waiting now', color: 'text-teal-600' } : { text: 'Queue empty', color: 'text-slate-400' } },
+          { to: '/app/alerts', bg: 'bg-red-50', iconBg: 'bg-red-100', icon: <Bell size={18} className="text-red-400" />, value: unackAlerts.length, label: 'Active Alerts', badge: unackAlerts.length > 0 ? { text: 'Need attention', color: 'text-red-500' } : { text: 'All clear', color: 'text-emerald-500' } },
+          { to: '/app/schedule', bg: 'bg-violet-50', iconBg: 'bg-violet-100', icon: <CalendarDays size={18} className="text-violet-500" />, value: upcomingCount, label: 'Upcoming Appts', badge: { text: `${todayAppointments.length} today`, color: 'text-slate-500' } },
         ].map(s => (
-          <Link key={s.label} to={s.to} className={cn('stat-card hover:shadow-md transition-all duration-200 animate-fade-up', s.delay)}>
-            <div className="flex items-center justify-between mb-2">
-              <div className={`w-9 h-9 rounded-lg ${s.bg} flex items-center justify-center`}>{s.icon}</div>
+          <Link key={s.label} to={s.to} className={`${s.bg} rounded-2xl p-4 flex flex-col gap-3 hover:shadow-md transition-all no-underline`}>
+            <div className="flex items-center justify-between">
+              <div className={`${s.iconBg} w-9 h-9 rounded-xl flex items-center justify-center`}>{s.icon}</div>
+              <ChevronRight size={14} className="text-slate-400" />
             </div>
-            <div className="text-3xl font-black text-slate-900">{s.value}</div>
-            <div className="text-sm font-medium text-slate-600">{s.label}</div>
-            <div className={`text-xs mt-0.5 font-medium ${s.subColor}`}>{s.sub}</div>
+            <div>
+              <div className="text-2xl font-black text-slate-900 leading-none">{s.value}</div>
+              <div className="text-xs font-semibold text-slate-600 mt-1">{s.label}</div>
+              {s.badge && <div className={`text-[11px] font-semibold mt-0.5 ${s.badge.color}`}>{s.badge.text}</div>}
+            </div>
           </Link>
         ))}
       </div>
 
-      {/* Quick actions */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6 animate-fade-up delay-200">
+      {/* ── Quick actions: 3 on mobile, 5 on desktop ── */}
+      <div className="grid grid-cols-3 sm:grid-cols-5 gap-2.5">
         {[
-          { icon: UserPlus, label: 'New Patient', color: '#0d9488', bg: '#f0fdfa', action: openQuickRxModal },
-          { icon: CalendarDays, label: "Today's Schedule", color: '#7c3aed', bg: '#f5f3ff', to: '/app/schedule' },
-          { icon: Settings2, label: 'Pad Settings', color: '#0369a1', bg: '#f0f9ff', to: '/app/pad-settings' },
-          { icon: BarChart3, label: 'Analytics', color: '#b45309', bg: '#fffbeb', to: '/app/analytics' },
+          { icon: <UserPlus size={18} className="text-teal-600" />, bg: 'bg-teal-50', label: 'Register Patient', action: () => navigate('/app/register') },
+          { icon: <CalendarDays size={18} className="text-violet-600" />, bg: 'bg-violet-50', label: 'New Appointment', action: () => navigate('/app/schedule') },
+          { icon: <Pencil size={18} className="text-blue-600" />, bg: 'bg-blue-50', label: 'Write Rx', action: openQuickRxModal },
+          { icon: <Activity size={18} className="text-amber-600" />, bg: 'bg-amber-50', label: 'Lab Orders', action: () => navigate('/app/labs') },
+          { icon: <BarChart3 size={18} className="text-indigo-600" />, bg: 'bg-indigo-50', label: 'Analytics', action: () => navigate('/app/analytics') },
         ].map(q => (
-          q.to ? (
-            <Link key={q.label} to={q.to}
-              className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 bg-white hover:shadow-sm hover:border-slate-300 transition-all group">
-              <div style={{ width: 36, height: 36, borderRadius: 10, background: q.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <q.icon style={{ width: 16, height: 16, color: q.color }} />
-              </div>
-              <span className="text-sm font-semibold text-slate-700 group-hover:text-slate-900">{q.label}</span>
-            </Link>
-          ) : (
-            <button key={q.label} onClick={q.action}
-              className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 bg-white hover:shadow-sm hover:border-slate-300 transition-all group text-left">
-              <div style={{ width: 36, height: 36, borderRadius: 10, background: q.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <q.icon style={{ width: 16, height: 16, color: q.color }} />
-              </div>
-              <span className="text-sm font-semibold text-slate-700 group-hover:text-slate-900">{q.label}</span>
-            </button>
-          )
+          <button key={q.label} onClick={q.action}
+            className={`${q.bg} flex flex-col items-center justify-center gap-2 rounded-2xl p-3 hover:shadow-md transition-all border border-transparent hover:border-slate-200 cursor-pointer`}>
+            <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shadow-sm">{q.icon}</div>
+            <span className="text-[11px] font-semibold text-slate-600 text-center leading-tight">{q.label}</span>
+          </button>
         ))}
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+      {/* ── Main content: stacks on mobile, side-by-side on desktop ── */}
+      <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-4">
 
-        {/* ── Left column (2/3) ── */}
-        <div className="xl:col-span-2 space-y-5">
-
-          {/* Today's Appointments — primary action center */}
-          <div className="card animate-fade-up delay-150">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-              <div>
-                <h3 className="font-bold text-slate-900 flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-teal-500" />
-                  Today's Appointments
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  {todayAppointments.length > 0
-                    ? `${todayAppointments.length} scheduled — tap Start to consult`
-                    : 'No appointments today'}
-                </p>
-              </div>
-              <Link to="/app/schedule" className="btn-secondary btn-sm flex items-center gap-1.5">
-                Schedule <ChevronRight className="w-3.5 h-3.5" />
-              </Link>
+        {/* LEFT: Today's schedule — the most important section */}
+        <div style={{ background: 'white', borderRadius: 14, border: '1.5px solid #f3f4f6', overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: '1px solid #f3f4f6', background: '#fafafa' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Calendar size={15} color="#0d9488" />
+              <span style={{ fontWeight: 700, fontSize: 14, color: '#111827' }}>Today's Schedule</span>
+              {todayAppointments.length > 0 && (
+                <span style={{ background: '#0d9488', color: 'white', borderRadius: 20, padding: '2px 8px', fontSize: 11, fontWeight: 700 }}>{todayAppointments.length}</span>
+              )}
             </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button onClick={() => navigate('/app/register')}
+                style={{ display: 'flex', alignItems: 'center', gap: 5, background: '#f0fdfa', color: '#0d9488', border: '1.5px solid #99f6e4', borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                <UserPlus size={12} /> Walk-in
+              </button>
+              <Link to="/app/schedule" style={{ fontSize: 12, color: '#0d9488', fontWeight: 600, textDecoration: 'none' }}>View all</Link>
+            </div>
+          </div>
 
-            <div className="divide-y divide-slate-100">
-              {todayAppointments.map((apt, i) => {
+          {todayAppointments.length === 0 && walkinQueue.length === 0 ? (
+            <div style={{ padding: '40px 20px', textAlign: 'center' }}>
+              <div style={{ width: 52, height: 52, borderRadius: '50%', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
+                <Calendar size={24} color="#d1d5db" />
+              </div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 4 }}>No patients yet today</div>
+              <div style={{ fontSize: 13, color: '#9ca3af', marginBottom: 16 }}>Register a walk-in or schedule an appointment</div>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+                <button onClick={() => navigate('/app/register')}
+                  style={{ display: 'flex', alignItems: 'center', gap: 7, background: '#0d9488', color: 'white', border: 'none', borderRadius: 9, padding: '9px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  <UserPlus size={14} /> Register Walk-in
+                </button>
+                <Link to="/app/schedule"
+                  style={{ display: 'flex', alignItems: 'center', gap: 7, background: 'white', color: '#374151', border: '1.5px solid #e5e7eb', borderRadius: 9, padding: '9px 16px', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
+                  <CalendarDays size={14} /> Schedule Appointment
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Walk-ins at top if any */}
+              {walkinQueue.length > 0 && walkinQueue.map(q => (
+                <div key={q.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 18px', borderBottom: '1px solid #f3f4f6', background: '#fffbeb' }}>
+                  <div style={{ width: 36, height: 36, borderRadius: '50%', background: q.status === 'in-progress' ? '#0d9488' : '#f59e0b', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 13, fontWeight: 800, flexShrink: 0 }}>{q.token}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: '#111827' }}>{q.patientName}</div>
+                    <div style={{ fontSize: 12, color: '#92400e', fontWeight: 500 }}>Walk-in · {q.reason || 'OPD'}</div>
+                  </div>
+                  <span style={{ background: q.status === 'in-progress' ? '#f0fdfa' : '#fffbeb', color: q.status === 'in-progress' ? '#0d9488' : '#d97706', border: `1.5px solid ${q.status === 'in-progress' ? '#99f6e4' : '#fde68a'}`, borderRadius: 20, padding: '3px 10px', fontSize: 11, fontWeight: 700 }}>
+                    {q.status === 'in-progress' ? '● Consulting' : '○ Waiting'}
+                  </span>
+                  <Link to={`/app/consult/${q.patientId}`}
+                    style={{ background: '#0d9488', color: 'white', borderRadius: 8, padding: '7px 14px', fontSize: 12, fontWeight: 700, textDecoration: 'none', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <PlayCircle size={13} /> Start
+                  </Link>
+                </div>
+              ))}
+
+              {/* Scheduled appointments */}
+              {todayAppointments.map(apt => {
                 const isBR = apt.id.startsWith('BR-');
                 const qEntry = aptQueueEntry(apt);
                 const inProgress = qEntry?.status === 'in-progress';
-                const inQueue = !!qEntry;
+                const done = apt.status === 'completed';
                 return (
-                  <div key={apt.id}
-                    className={cn('flex items-center gap-4 px-5 py-4 hover:bg-teal-50/40 transition-colors animate-fade-up',
-                      i === 0 ? 'delay-50' : i === 1 ? 'delay-100' : 'delay-150',
-                      isBR && !inQueue && 'bg-amber-50/30')}>
-
-                    {/* Time chip / Token */}
-                    <div className={cn('w-11 h-11 rounded-xl flex flex-col items-center justify-center flex-shrink-0',
-                      inProgress ? 'bg-teal-500 shadow-sm' : isBR ? 'bg-amber-50 border border-amber-200' : 'bg-teal-50 border border-teal-100')}>
-                      {inProgress && qEntry ? (
-                        <>
-                          <span className="text-[9px] font-bold text-white leading-tight">TOKEN</span>
-                          <span className="text-sm font-black text-white leading-tight">{qEntry.token}</span>
-                        </>
-                      ) : (
-                        <span className={cn('text-[10px] font-bold leading-tight', isBR ? 'text-amber-600' : 'text-teal-700')}>{apt.time}</span>
-                      )}
+                  <div key={apt.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 18px', borderBottom: '1px solid #f9fafb', opacity: done ? 0.6 : 1 }}>
+                    {/* Time block */}
+                    <div style={{ minWidth: 44, textAlign: 'center', flexShrink: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: inProgress ? '#0d9488' : '#374151' }}>{apt.time}</div>
+                      {isBR && <div style={{ fontSize: 10, color: '#f59e0b', fontWeight: 700 }}>ONLINE</div>}
                     </div>
-
-                    {/* Patient info */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-semibold text-slate-900">{apt.patientName}</span>
-                        {apt.patientAge ? <span className="text-xs text-slate-500">{apt.patientAge}y</span> : null}
-                        {apt.patientGender ? <span className="text-xs text-slate-400">{apt.patientGender}</span> : null}
-                        {isBR && !inQueue && <span className="badge text-[10px] bg-amber-100 text-amber-700">Online Booking</span>}
-                        {inProgress && <span className="badge text-[10px] bg-teal-100 text-teal-700">In Consult</span>}
-                        {inQueue && !inProgress && <span className="badge text-[10px] bg-blue-100 text-blue-700">Queued</span>}
+                    {/* Avatar */}
+                    <div style={{ width: 34, height: 34, borderRadius: '50%', background: inProgress ? '#0d9488' : '#e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', color: inProgress ? 'white' : '#6b7280', fontSize: 12, fontWeight: 800, flexShrink: 0 }}>
+                      {apt.patientName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+                    </div>
+                    {/* Info */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: 14, fontWeight: 700, color: '#111827' }}>{apt.patientName}</span>
+                        {apt.patientAge && <span style={{ fontSize: 12, color: '#6b7280' }}>{apt.patientAge}y</span>}
+                        {apt.patientGender && <span style={{ fontSize: 12, color: '#9ca3af' }}>· {apt.patientGender === 'M' ? 'Male' : 'Female'}</span>}
                       </div>
-                      <div className="text-xs text-slate-500 truncate mt-0.5">{apt.reason}</div>
-                      {apt.patientPhone && (
-                        <div className="text-[11px] text-slate-400 mt-0.5">{apt.patientPhone}</div>
-                      )}
+                      <div style={{ fontSize: 12, color: '#6b7280', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{apt.reason || 'OPD visit'}</div>
                     </div>
-
-                    {/* Single action button */}
-                    {apt.status !== 'completed' && apt.status !== 'cancelled' && (
-                      <button
-                        onClick={() => startConsult(apt)}
-                        className={cn('btn-sm flex-shrink-0 flex items-center gap-1.5 !px-4',
-                          inProgress
-                            ? 'btn-primary'
-                            : 'bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-semibold')}
-                      >
-                        <PlayCircle className="w-3.5 h-3.5" />
-                        {inProgress ? 'Resume' : 'Start'}
+                    {/* Status + action */}
+                    {done ? (
+                      <span style={{ fontSize: 12, color: '#10b981', fontWeight: 600, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4 }}><CheckCircle2 size={13} /> Done</span>
+                    ) : (
+                      <button onClick={() => startConsult(apt)}
+                        style={{ background: inProgress ? '#0d9488' : 'white', color: inProgress ? 'white' : '#0d9488', border: `1.5px solid ${inProgress ? '#0d9488' : '#99f6e4'}`, borderRadius: 8, padding: '7px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <PlayCircle size={13} /> {inProgress ? 'Resume' : 'Start'}
                       </button>
-                    )}
-                    {apt.status === 'completed' && (
-                      <span className="text-xs text-emerald-600 font-medium flex-shrink-0">Done</span>
                     )}
                   </div>
                 );
               })}
-
-              {todayAppointments.length === 0 && (
-                <div className="px-5 py-10 text-center">
-                  <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
-                    <Calendar className="w-6 h-6 text-slate-300" />
-                  </div>
-                  <p className="text-sm text-slate-400 mb-2">No appointments today</p>
-                  <Link to="/app/schedule" className="text-xs font-semibold text-teal-600 hover:underline">
-                    Go to schedule
-                  </Link>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Walk-in Queue — only shows patients NOT tied to a today's appointment */}
-          {walkinQueue.length > 0 && (
-            <div className="card animate-fade-up delay-200">
-              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-                <div>
-                  <h3 className="font-bold text-slate-900 flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-teal-500" />
-                    Walk-in Queue
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    {walkinQueue.length} walk-in{walkinQueue.length > 1 ? 's' : ''} waiting
-                  </p>
-                </div>
-                <Link to="/app/queue" className="btn-secondary btn-sm flex items-center gap-1.5">
-                  Manage <ChevronRight className="w-3.5 h-3.5" />
-                </Link>
+              <div style={{ padding: '12px 18px', textAlign: 'center', borderTop: '1px solid #f9fafb' }}>
+                <Link to="/app/schedule" style={{ fontSize: 13, color: '#0d9488', fontWeight: 600, textDecoration: 'none' }}>See full schedule →</Link>
               </div>
-              <div className="divide-y divide-slate-100">
-                {walkinQueue.map((q, i) => (
-                  <div key={q.id}
-                    className={cn('flex items-center gap-4 px-5 py-3.5 hover:bg-teal-50/60 transition-colors group animate-fade-up',
-                      i === 0 ? 'delay-50' : 'delay-100')}>
-                    <div className={cn('w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-black flex-shrink-0 shadow-sm',
-                      q.status === 'in-progress' ? 'bg-teal-500' : 'bg-slate-400')}>
-                      {q.token}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-slate-900 text-sm group-hover:text-teal-800">{q.patientName}</div>
-                      <div className="text-xs text-slate-500 truncate">{q.reason || 'Walk-in'}</div>
-                    </div>
-                    <span className={cn('badge text-[11px] flex-shrink-0',
-                      q.status === 'in-progress' ? 'bg-teal-100 text-teal-700' : 'bg-amber-100 text-amber-700')}>
-                      {q.status === 'in-progress' ? 'In Consult' : 'Waiting'}
-                    </span>
-                    <Link to={`/app/consult/${q.patientId}`} className="btn-primary btn-sm flex-shrink-0">
-                      Consult <ChevronRight className="w-3.5 h-3.5" />
-                    </Link>
-                  </div>
-                ))}
-              </div>
-            </div>
+            </>
           )}
-
-          {/* My Patients — compact */}
-          <div className="card animate-fade-up delay-250">
-            <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100">
-              <div>
-                <h3 className="font-semibold text-slate-900 text-sm">My Patients</h3>
-                <p className="text-xs text-slate-400">{myPatients.length} total · {critical.length} critical</p>
-              </div>
-              <Link to="/app/patients"
-                className="btn-primary btn-sm">
-                View all {myPatients.length > 0 ? `(${myPatients.length})` : ''}
-              </Link>
-            </div>
-
-            <div className="divide-y divide-slate-100">
-              {myPatients.slice(0, 6).map(p => (
-                <div key={p.id} className="flex items-center gap-3 px-5 py-2.5 hover:bg-slate-50 transition-colors group">
-                  <div className="w-7 h-7 rounded-full bg-teal-500/10 flex items-center justify-center text-teal-700 font-bold text-xs flex-shrink-0">
-                    {p.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2)}
-                  </div>
-                  <Link to={`/app/patients/${p.id}`} className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-slate-900 group-hover:text-teal-700 truncate">{p.name}</div>
-                    <div className="text-xs text-slate-400 truncate">{p.age}y {p.gender} · {p.diagnosis || 'No diagnosis'}</div>
-                  </Link>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <StatusBadge status={p.status} />
-                    <PriorityBadge priority={p.priority} />
-                  </div>
-                  <Link to={`/app/consult/${p.id}`}
-                    className="btn-ghost btn-sm !px-2 !py-1 text-teal-600 hover:bg-teal-50 flex-shrink-0">
-                    <Pencil className="w-3.5 h-3.5" />
-                  </Link>
-                </div>
-              ))}
-              {myPatients.length === 0 && (
-                <div className="px-5 py-8 text-center">
-                  <p className="text-slate-400 text-sm mb-3">No patients assigned yet</p>
-                  <button onClick={openQuickRxModal} className="btn-primary btn-sm gap-2">
-                    <UserPlus className="w-3.5 h-3.5" /> Register first patient
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
         </div>
 
-        {/* ── Right column (1/3) ── */}
-        <div className="space-y-5">
+        {/* RIGHT: stacked panels */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
-          {/* Active Alerts */}
-          <div className="card animate-fade-up delay-250">
-            <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100">
-              <h3 className="font-semibold text-slate-900 text-sm flex items-center gap-2">
-                <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
-                Active Alerts
-              </h3>
-              <Link to="/app/alerts" className="text-xs text-teal-600 hover:underline">View all</Link>
+          {/* My Patients — compact list */}
+          <div style={{ background: 'white', borderRadius: 14, border: '1.5px solid #f3f4f6', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid #f3f4f6', background: '#fafafa' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                <Users size={14} color="#6366f1" />
+                <span style={{ fontWeight: 700, fontSize: 13, color: '#111827' }}>My Patients</span>
+                <span style={{ background: '#eef2ff', color: '#6366f1', borderRadius: 20, padding: '1px 7px', fontSize: 11, fontWeight: 700 }}>{myPatients.length}</span>
+              </div>
+              <Link to="/app/patients" style={{ fontSize: 12, color: '#0d9488', fontWeight: 600, textDecoration: 'none' }}>View all</Link>
             </div>
-            <div className="divide-y divide-slate-100 max-h-48 overflow-y-auto">
-              {unackAlerts.slice(0, 5).map(a => (
-                <div key={a.id} className="px-5 py-2.5">
-                  <div className="flex items-start gap-2">
-                    <span className="w-1.5 h-1.5 mt-1.5 rounded-full bg-red-500 flex-shrink-0" />
-                    <div className="min-w-0">
-                      <div className="text-xs font-semibold text-slate-900">{a.patientName}</div>
-                      <div className="text-xs text-slate-500 truncate">{a.message}</div>
-                      <div className="text-[10px] text-slate-400 mt-0.5">{formatDateTime(a.time)}</div>
-                    </div>
-                  </div>
+            {myPatients.length === 0 ? (
+              <div style={{ padding: '16px', textAlign: 'center' }}>
+                <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 10 }}>No patients assigned yet</div>
+                <button onClick={() => navigate('/app/register')}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: '#f0fdfa', color: '#0d9488', border: '1.5px solid #99f6e4', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  <UserPlus size={12} /> Register first patient
+                </button>
+              </div>
+            ) : myPatients.slice(0, 5).map(p => (
+              <Link key={p.id} to={`/app/patients/${p.id}`} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderBottom: '1px solid #f9fafb', textDecoration: 'none', transition: 'background 0.1s' }}
+                onMouseOver={e => (e.currentTarget as HTMLElement).style.background = '#f9fafb'}
+                onMouseOut={e => (e.currentTarget as HTMLElement).style.background = 'white'}>
+                <div style={{ width: 30, height: 30, borderRadius: '50%', background: p.priority === 'Critical' ? '#fef2f2' : '#f0fdfa', display: 'flex', alignItems: 'center', justifyContent: 'center', color: p.priority === 'Critical' ? '#ef4444' : '#0d9488', fontSize: 11, fontWeight: 800, flexShrink: 0 }}>
+                  {p.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2)}
                 </div>
-              ))}
-              {unackAlerts.length === 0 && (
-                <div className="px-5 py-4 flex items-center gap-2 text-xs text-emerald-600">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> All clear
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
+                  <div style={{ fontSize: 11, color: '#9ca3af' }}>{p.age}y · {p.status}</div>
                 </div>
-              )}
-            </div>
+                {p.priority === 'Critical' && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#ef4444', flexShrink: 0 }} />}
+              </Link>
+            ))}
           </div>
 
-          {/* Revenue snapshot */}
-          {bills.length > 0 && (() => {
-            const todayBills = bills.filter(b => b.createdAt.slice(0, 10) === todayStr);
-            const todayRevenue = todayBills.filter(b => b.status === 'paid').reduce((s, b) => s + b.total, 0);
-            const pendingRevenue = bills.filter(b => b.status === 'pending').reduce((s, b) => s + b.total, 0);
-            return (
-              <div className="card px-5 py-4 animate-fade-up delay-300">
-                <h3 className="font-semibold text-slate-900 mb-3 flex items-center gap-2 text-sm">
-                  <DollarSign className="w-3.5 h-3.5 text-emerald-500" />
-                  Revenue
-                </h3>
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-slate-600">Today's collections</span>
-                    <span className="font-bold text-emerald-600 text-sm">₹{todayRevenue.toLocaleString('en-IN')}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-slate-600">Bills today</span>
-                    <span className="font-bold text-slate-900 text-sm">{todayBills.length}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-slate-600">Pending</span>
-                    <span className="font-bold text-amber-600 text-sm">₹{pendingRevenue.toLocaleString('en-IN')}</span>
+          {/* Active Alerts */}
+          <div style={{ background: 'white', borderRadius: 14, border: `1.5px solid ${unackAlerts.length > 0 ? '#fecaca' : '#f3f4f6'}`, overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid #f3f4f6', background: unackAlerts.length > 0 ? '#fef2f2' : '#fafafa' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                <Bell size={14} color={unackAlerts.length > 0 ? '#ef4444' : '#9ca3af'} />
+                <span style={{ fontWeight: 700, fontSize: 13, color: '#111827' }}>Alerts</span>
+                {unackAlerts.length > 0 && <span style={{ background: '#ef4444', color: 'white', borderRadius: 20, padding: '1px 7px', fontSize: 11, fontWeight: 700 }}>{unackAlerts.length}</span>}
+              </div>
+              <Link to="/app/alerts" style={{ fontSize: 12, color: '#0d9488', fontWeight: 600, textDecoration: 'none' }}>View all</Link>
+            </div>
+            {unackAlerts.length === 0 ? (
+              <div style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <CheckCircle2 size={14} color="#10b981" />
+                <span style={{ fontSize: 13, color: '#10b981', fontWeight: 500 }}>All clear</span>
+              </div>
+            ) : unackAlerts.slice(0, 3).map(a => (
+              <div key={a.id} style={{ padding: '10px 16px', borderBottom: '1px solid #fef2f2' }}>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#ef4444', flexShrink: 0, marginTop: 5 }} />
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#111827' }}>{a.patientName}</div>
+                    <div style={{ fontSize: 12, color: '#6b7280', marginTop: 1 }}>{a.message}</div>
                   </div>
                 </div>
               </div>
-            );
-          })()}
+            ))}
+          </div>
 
-          {/* Today's summary */}
-          <div className="card px-5 py-4 animate-fade-up delay-300">
-            <h3 className="font-semibold text-slate-900 mb-3 flex items-center gap-2 text-sm">
-              <TrendingUp className="w-3.5 h-3.5 text-teal-500" />
-              Today's Summary
-            </h3>
-            <div className="space-y-2">
+          {/* Stats strip */}
+          <div style={{ background: 'white', borderRadius: 14, border: '1.5px solid #f3f4f6', padding: '14px 16px' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>This Month</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               {[
-                { label: 'Discharges today', value: myPatients.filter(p => p.status === 'Discharged').length },
-                { label: 'Labs pending', value: Object.values(vitals).flat().length > 0 ? 2 : 0 },
-                { label: 'Rx written', value: 4 },
-                { label: 'Consult notes', value: 3 },
+                { label: 'Patients', value: totalPatients, color: '#0d9488' },
+                { label: 'Consultations', value: totalVisits, color: '#6366f1' },
+                { label: 'Prescriptions', value: totalRx, color: '#f59e0b' },
+                { label: 'Follow-ups', value: followUpsDue, color: '#ef4444' },
               ].map(s => (
-                <div key={s.label} className="flex justify-between items-center">
-                  <span className="text-xs text-slate-600">{s.label}</span>
-                  <span className="font-bold text-slate-900 text-sm">{s.value}</span>
+                <div key={s.label} style={{ background: '#f8fafc', borderRadius: 10, padding: '10px 12px' }}>
+                  <div style={{ fontSize: 20, fontWeight: 900, color: '#111827' }}>{s.value}</div>
+                  <div style={{ fontSize: 11, color: s.color, fontWeight: 600, marginTop: 2 }}>{s.label}</div>
                 </div>
               ))}
             </div>
@@ -607,4 +555,6 @@ export default function DashboardPage() {
       </div>
     </div>
   );
+
+
 }

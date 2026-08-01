@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Pill, Users, Building2, Save, Plus, Trash2, CheckCircle2,
   RefreshCw, Printer, Mail, Phone, Link2, Copy, Check,
-  UserCheck, UserX, Settings, Edit2, MapPin, X, QrCode, PenLine, Upload, Shield, ChevronDown
+  UserCheck, UserX, Settings, Edit2, MapPin, X, QrCode, PenLine, Upload, Shield, ChevronDown,
+  Stethoscope, FlaskConical, ReceiptText, ClipboardList, Wrench
 } from 'lucide-react';
 import { usePadStore } from '@/store/usePadStore';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -28,6 +29,7 @@ const THEMES = [
 function RxPadTab() {
   const { settings: S, setSettings, resetSettings, eSignUrl, setESign } = usePadStore();
   const { user } = useAuthStore();
+  const { showToast } = useAppStore();
   const [saved, setSaved] = useState(false);
   const [eSignUploading, setESignUploading] = useState(false);
   const set = (k: string, v: unknown) => setSettings({ [k]: v } as never);
@@ -247,6 +249,55 @@ function RxPadTab() {
                 }} />
               </label>
             </div>
+
+            {/* ── Clinic Logo & Stamp ── */}
+            <div>
+              <label className="label flex items-center gap-1.5"><QrCode className="w-3.5 h-3.5 text-teal-500" /> Clinic Logo <span className="text-slate-400 font-normal normal-case">(shows top-left of prescription header)</span></label>
+              <p className="text-xs text-slate-400 mb-2">PNG/JPG, max 2 MB. Replaces the ℞ badge at the top of the prescription.</p>
+              {S.logoUrl && (
+                <div className="mb-2 flex items-center gap-3">
+                  <img src={S.logoUrl} alt="Logo" className="h-12 max-w-[100px] object-contain border border-slate-200 rounded-lg px-2 bg-white" />
+                  <button type="button" onClick={() => set('logoUrl', '')} className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1"><Trash2 className="w-3 h-3" /> Remove</button>
+                </div>
+              )}
+              <label className="flex items-center gap-2 cursor-pointer btn-secondary btn-sm w-fit">
+                <Upload className="w-3.5 h-3.5" />
+                {S.logoUrl ? 'Change Logo' : 'Upload Logo'}
+                <input type="file" accept="image/*" className="hidden" onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  if (file.size > 2 * 1024 * 1024) { showToast('Logo must be under 2 MB', 'error'); return; }
+                  const reader = new FileReader();
+                  reader.onload = ev => set('logoUrl', ev.target?.result as string);
+                  reader.readAsDataURL(file);
+                  e.target.value = '';
+                }} />
+              </label>
+            </div>
+
+            <div>
+              <label className="label flex items-center gap-1.5"><PenLine className="w-3.5 h-3.5 text-teal-500" /> Doctor's Stamp / Seal</label>
+              <p className="text-xs text-slate-400 mb-2">Appears below the signature. PNG with transparent background recommended.</p>
+              {(S as { stampUrl?: string }).stampUrl && (
+                <div className="mb-2 flex items-center gap-3">
+                  <img src={(S as { stampUrl?: string }).stampUrl} alt="Stamp" className="h-12 max-w-[100px] object-contain border border-slate-200 rounded-lg px-2 bg-white" />
+                  <button type="button" onClick={() => set('stampUrl', '')} className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1"><Trash2 className="w-3 h-3" /> Remove</button>
+                </div>
+              )}
+              <label className="flex items-center gap-2 cursor-pointer btn-secondary btn-sm w-fit">
+                <Upload className="w-3.5 h-3.5" />
+                {(S as { stampUrl?: string }).stampUrl ? 'Change Stamp' : 'Upload Stamp'}
+                <input type="file" accept="image/*" className="hidden" onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  if (file.size > 2 * 1024 * 1024) { showToast('Stamp must be under 2 MB', 'error'); return; }
+                  const reader = new FileReader();
+                  reader.onload = ev => set('stampUrl', ev.target?.result as string);
+                  reader.readAsDataURL(file);
+                  e.target.value = '';
+                }} />
+              </label>
+            </div>
           </div>
 
           <div className="card p-5 space-y-3">
@@ -353,9 +404,14 @@ const ROLE_COLOR: Record<string, string> = {
   receptionist: 'bg-pink-100 text-pink-700',
 };
 const CLINIC_ROLES: Role[] = ['nurse', 'receptionist', 'doctor', 'labtech', 'pharmacist'];
-const ROLE_EMOJI: Record<string, string> = {
-  doctor: '🩺', nurse: '💉', pharmacist: '💊', labtech: '🔬',
-  admin: '⚙️', billing: '💰', receptionist: '🏥',
+const ROLE_ICON: Record<string, React.ReactNode> = {
+  doctor:       <Stethoscope className="w-4 h-4" />,
+  nurse:        <ClipboardList className="w-4 h-4" />,
+  pharmacist:   <Pill className="w-4 h-4" />,
+  labtech:      <FlaskConical className="w-4 h-4" />,
+  admin:        <Wrench className="w-4 h-4" />,
+  billing:      <ReceiptText className="w-4 h-4" />,
+  receptionist: <Users className="w-4 h-4" />,
 };
 const ROLE_DESC: Record<string, string> = {
   nurse: 'Assists with vitals, medication admin', receptionist: 'Manages appointments & queue',
@@ -458,7 +514,7 @@ function StaffTab() {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
         {CLINIC_ROLES.filter(r => !(r === 'doctor' && currentUser?.role === 'clinic_admin')).map(r => (
           <div key={r} className="card p-3 text-center hover:border-teal-200 transition-colors cursor-pointer" onClick={() => setAddOpen(true)}>
-            <div className="text-2xl mb-1">{ROLE_EMOJI[r]}</div>
+            <div className="mb-1 text-teal-500">{ROLE_ICON[r]}</div>
             <div className="text-xs font-bold text-slate-800 capitalize">{r}</div>
             <div className="text-[10px] text-slate-400 mt-0.5">{ROLE_DESC[r]}</div>
           </div>
@@ -481,7 +537,7 @@ function StaffTab() {
               <div key={ps.id} className="card p-4 border-l-4 border-l-amber-400">
                 <div className="flex items-start gap-4 flex-wrap">
                   <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center text-xl flex-shrink-0">
-                    {ROLE_EMOJI[ps.role]}
+                    <span className="text-slate-500">{ROLE_ICON[ps.role]}</span>
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -520,7 +576,7 @@ function StaffTab() {
                   <div className="font-bold text-slate-900 text-sm">{s.name}</div>
                   <div className="flex flex-wrap gap-1.5 mt-1">
                     <span className={cn('badge', ROLE_COLOR[s.role] || 'bg-slate-100 text-slate-600')}>
-                      {ROLE_EMOJI[s.role]} {s.role}
+                      <span className="inline-flex items-center gap-1">{ROLE_ICON[s.role]} {s.role}</span>
                     </span>
                     <span className={cn('badge', s.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500')}>
                       {s.status}
@@ -627,7 +683,7 @@ function AddStaffModal({ open, onClose, onAdded }: { open: boolean; onClose: () 
               <button key={r} onClick={() => set('role', r)}
                 className={cn('flex flex-col items-center gap-1 p-2.5 rounded-xl border-2 text-xs font-semibold transition-all',
                   form.role === r ? 'border-teal-400 bg-teal-50 text-teal-700' : 'border-slate-200 text-slate-500 hover:border-slate-300')}>
-                <span className="text-lg">{ROLE_EMOJI[r]}</span>
+                <span className="text-teal-500">{ROLE_ICON[r]}</span>
                 <span className="capitalize">{r}</span>
               </button>
             ))}
@@ -684,7 +740,12 @@ function InviteLinkModal({ open, onClose }: { open: boolean; onClose: () => void
   const selectedClinics = clinics.filter(c => selectedClinicIds.includes(c.id));
   const clinicIdsParam = selectedClinics.map(c => c.id).join(',');
   const clinicNamesParam = selectedClinics.map(c => c.name).join(',');
-  const TOKEN = btoa(`${selectedRole}-${clinicIdsParam}-${Date.now()}`).slice(0, 16);
+  // Token generated once per role+clinics selection (useMemo avoids Date.now() in render)
+  const TOKEN = useMemo(
+    () => btoa(`${selectedRole}-${clinicIdsParam}-${Date.now()}`).slice(0, 16),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selectedRole, clinicIdsParam],
+  );
   // did = doctor's user ID — saved on registration so pending filter matches by who invited
   const link = selectedClinics.length > 0
     ? `${window.location.origin}/join?role=${selectedRole}&clinicIds=${encodeURIComponent(clinicIdsParam)}&clinicNames=${encodeURIComponent(clinicNamesParam)}&token=${TOKEN}&did=${user?.id ?? ''}`
@@ -715,7 +776,7 @@ function InviteLinkModal({ open, onClose }: { open: boolean; onClose: () => void
               <button key={r} onClick={() => { setSelectedRole(r); setCopied(false); }}
                 className={cn('flex flex-col items-center gap-1 p-2.5 rounded-xl border-2 text-xs font-semibold transition-all',
                   selectedRole === r ? 'border-teal-400 bg-teal-50 text-teal-700' : 'border-slate-200 text-slate-500 hover:border-slate-300')}>
-                <span className="text-xl">{ROLE_EMOJI[r]}</span>
+                <span className="text-teal-500">{ROLE_ICON[r]}</span>
                 <span className="capitalize">{r}</span>
               </button>
             ))}
@@ -966,7 +1027,7 @@ function ClinicModal({ clinic: init, onSave, onClose }: {
           <div>
             <label className="label mb-2">Weekly Schedule & Patient Caps</label>
             <div className="border border-slate-200 rounded-xl overflow-hidden">
-              {c.schedule.map((d, _i) => (
+              {c.schedule.map((d) => (
                 <div key={d.day} className={cn('px-4 py-3 border-b border-slate-100 last:border-0', d.open ? 'bg-white' : 'bg-slate-50')}>
                   <div className="flex items-start gap-3">
                     {/* Day toggle */}

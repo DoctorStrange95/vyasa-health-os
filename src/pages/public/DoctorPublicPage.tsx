@@ -258,7 +258,7 @@ export default function DoctorPublicPage() {
       .then(r => { if (!r.ok) throw new Error(); return r.json(); })
       .then((data: DoctorProfile) => {
         setDoctor(data);
-        document.title = `Dr. ${data.name} — Book Appointment | Vyasa Health`;
+        document.title = `Dr. ${data.name} — Book Appointment | Vyasa Integrated Healthcare`;
         if (data.acceptingPatients) {
           // Chambers a patient can book: those with a weekly schedule set.
           const bookable = (data.clinics ?? []).filter(c => c.hasSchedule);
@@ -337,9 +337,9 @@ export default function DoctorPublicPage() {
         fetchSlots(selectedClinic?.id);
         return;
       }
-      if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.error ?? 'Failed, try again.'); return; }
+      if (!res.ok) { const e = await res.json().catch(() => ({})); setSlotError(e.error ?? 'Booking failed — please try again.'); return; }
       setStep('done');
-    } catch { alert('Network error. Please try again.'); }
+    } catch { setSlotError('Network error — please check your connection and try again.'); }
     finally { setSubmitting(false); }
   }
 
@@ -1059,7 +1059,7 @@ export default function DoctorPublicPage() {
             <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>Powered by</span>
             <a href="https://vyasaa.com" style={{ color: '#0d9488', fontWeight: 700, textDecoration: 'none', fontSize: 12 }}>Vyasa Integrated Healthcare</a>
           </div>
-          <p style={{ fontSize: 11, color: '#cbd5e1', margin: 0 }}>© 2026 Vyasa Health Technologies Pvt. Ltd.</p>
+          <p style={{ fontSize: 11, color: '#cbd5e1', margin: 0 }}>© 2026 Vyasa Integrated Healthcare Pvt. Ltd.</p>
         </div>
       </div>
 

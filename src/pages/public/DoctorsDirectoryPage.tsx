@@ -200,9 +200,9 @@ export default function DoctorsDirectoryPage() {
     if (specialty) titleParts.push(specialty);
     if (city) titleParts.push(city);
     else if (state) titleParts.push(state);
-    const suffix = 'Find & Book a Doctor | Vyasa Health';
+    const suffix = 'Find & Book a Doctor | Vyasa Integrated Healthcare';
     document.title = titleParts.length > 0 ? `${titleParts.join(', ')} — ${suffix}` : suffix;
-    return () => { document.title = 'Vyasa Health OS'; };
+    return () => { document.title = 'Vyasa Integrated Healthcare'; };
   }, [specialty, city, state]);
 
   const { user } = useAuthStore();
@@ -467,9 +467,9 @@ export default function DoctorsDirectoryPage() {
               </ul>
             </div>
             <div>
-              <h2 className="text-white font-semibold text-sm mb-4 uppercase tracking-wider">About Vyasa Health</h2>
+              <h2 className="text-white font-semibold text-sm mb-4 uppercase tracking-wider">About Vyasa Integrated Healthcare</h2>
               <p className="text-sm leading-relaxed mb-4">
-                Vyasa Health connects patients with verified, NMC-registered doctors across India.
+                Vyasa Integrated Healthcare connects patients with verified, NMC-registered doctors across India.
                 Book appointments online with zero commission — no middlemen, no hidden charges.
               </p>
               <p className="text-sm leading-relaxed mb-4">
@@ -484,7 +484,7 @@ export default function DoctorsDirectoryPage() {
             </div>
           </div>
           <div className="border-t border-slate-800 pt-6 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-slate-500">
-            <p>© {new Date().getFullYear()} Vyasa Health Technologies. Find verified doctors in India — book appointments online.</p>
+            <p>© {new Date().getFullYear()} Vyasa Integrated Healthcare. Find verified doctors in India — book appointments online.</p>
             <div className="flex gap-4">
               <a href="https://vyasaa.com" className="hover:text-teal-400 transition-colors">vyasaa.com</a>
               <a href="https://vyasaa.com/privacy" className="hover:text-teal-400 transition-colors">Privacy Policy</a>

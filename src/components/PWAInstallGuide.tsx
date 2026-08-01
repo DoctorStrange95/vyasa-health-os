@@ -117,7 +117,7 @@ export function PWAInstallGuide({ compact = false }: { compact?: boolean }) {
           <div className="flex items-start gap-4">
             <img src="/logo.svg" alt="Vyasa" className="w-14 h-14 rounded-2xl flex-shrink-0" />
             <div className="flex-1 min-w-0">
-              <div className="font-bold text-lg leading-tight">Vyasa Health OS</div>
+              <div className="font-bold text-lg leading-tight">Vyasa Integrated Healthcare</div>
               <div className="text-sm text-white/70 mt-0.5">Install as an app — works offline, opens instantly</div>
               <button
                 onClick={triggerInstall}

@@ -37,7 +37,6 @@ const PrescriptionsPage = lazy(() => import('@/pages/doctor/PrescriptionsPage'))
 const LabOrdersPage = lazy(() => import('@/pages/doctor/LabOrdersPage'));
 const AdmitPage = lazy(() => import('@/pages/doctor/AdmitPage'));
 const DischargePage = lazy(() => import('@/pages/doctor/DischargePage'));
-const TriagePage = lazy(() => import('@/pages/doctor/TriagePage'));
 const NetworkPage = lazy(() => import('@/pages/doctor/NetworkPage'));
 const AnalyticsPage = lazy(() => import('@/pages/doctor/AnalyticsPage'));
 const ProfilePage = lazy(() => import('@/pages/shared/ProfilePage'));
@@ -120,6 +119,11 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 function RoleIndex() {
   const { user } = useAuthStore();
   if (user?.role === 'receptionist') return <Navigate to="/app/reception" replace />;
+  if (user?.role === 'nurse')        return <Navigate to="/app/dashboard" replace />;
+  if (user?.role === 'labtech')      return <Navigate to="/app/labtech" replace />;
+  if (user?.role === 'pharmacist')   return <Navigate to="/app/pharmacy" replace />;
+  if (user?.role === 'billing')      return <Navigate to="/app/billing" replace />;
+  if (user?.role === 'admin')        return <Navigate to="/app/staff" replace />;
   return <Navigate to="/app/dashboard" replace />;
 }
 
@@ -127,6 +131,13 @@ function RoleIndex() {
 function DoctorOnly({ children }: { children: React.ReactNode }) {
   const { user } = useAuthStore();
   if (user?.role === 'receptionist') return <Navigate to="/app/reception" replace />;
+  return <>{children}</>;
+}
+
+// Superadmin-only guard — any non-superadmin hitting /app/admin gets redirected
+function SuperAdminOnly({ children }: { children: React.ReactNode }) {
+  const { user } = useAuthStore();
+  if (user?.role !== 'superadmin') return <Navigate to="/app/dashboard" replace />;
   return <>{children}</>;
 }
 
@@ -171,7 +182,6 @@ export default function App() {
             {/* Doctor extended */}
             <Route path="prescriptions" element={<Suspense fallback={<Spinner />}><PrescriptionsPage /></Suspense>} />
             <Route path="labs" element={<Suspense fallback={<Spinner />}><LabOrdersPage /></Suspense>} />
-            <Route path="triage" element={<Suspense fallback={<Spinner />}><TriagePage /></Suspense>} />
             <Route path="admit" element={<Suspense fallback={<Spinner />}><AdmitPage /></Suspense>} />
             <Route path="discharge" element={<Suspense fallback={<Spinner />}><DischargePage /></Suspense>} />
             <Route path="network" element={<Suspense fallback={<Spinner />}><NetworkPage /></Suspense>} />
@@ -184,7 +194,7 @@ export default function App() {
             <Route path="settings" element={<Suspense fallback={<Spinner />}><SettingsPage /></Suspense>} />
             <Route path="schedule" element={<Navigate to="/app/bookings" replace />} />
             <Route path="bookings" element={<Suspense fallback={<Spinner />}><BookingRequestsPage /></Suspense>} />
-            <Route path="admin" element={<Suspense fallback={<Spinner />}><SuperAdminPage /></Suspense>} />
+            <Route path="admin" element={<Suspense fallback={<Spinner />}><SuperAdminOnly><SuperAdminPage /></SuperAdminOnly></Suspense>} />
 
             {/* Pharmacy */}
             <Route path="pharmacy" element={<Suspense fallback={<Spinner />}><PharmacyPage /></Suspense>} />

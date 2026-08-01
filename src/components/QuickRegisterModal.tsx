@@ -175,7 +175,7 @@ export function QuickRegisterModal() {
 
           {/* Printable slip */}
           <div ref={slipRef} className="p-4 text-[12px] text-slate-800">
-            <div className="title">Vyasa Health OS</div>
+            <div className="title">Vyasa Integrated Healthcare</div>
             <div className="sub">{clinicDisplay}{settings.phone ? ` · ${settings.phone}` : ''}</div>
 
             <div className="token-box">

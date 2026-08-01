@@ -18,7 +18,7 @@ const STATUS_COLORS: Record<string, string> = {
 const BLANK_RX_ROW = (): RxRow => ({ id: String(Date.now()), form: 'Tab', drug: '', dose: '', strength: '', puffs: '', doseML: '', route: 'Oral', frequency: 'OD', duration: '5 days', instructions: '' });
 
 export default function PrescriptionsPage() {
-  const { patients, prescriptions, addPrescription, vitals, visits } = useAppStore();
+  const { patients, prescriptions, addPrescription, vitals, visits, showToast } = useAppStore();
   const { user, isDemo } = useAuthStore();
   const { settings: pad, clinics } = usePadStore();
   const [expandedRx, setExpandedRx] = useState<string | null>(null);
@@ -83,7 +83,7 @@ export default function PrescriptionsPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (isDemo) {
-      alert('Writing prescriptions is not available in demo mode');
+      showToast('Prescription saving is not available in demo mode', 'warning');
       return;
     }
     const activeDrugs = rxRows.filter(r => r.drug.trim());

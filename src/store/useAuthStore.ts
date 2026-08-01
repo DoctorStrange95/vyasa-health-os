@@ -58,16 +58,17 @@ export interface GoogleRegisterPayload {
 }
 
 const DEMO_STAFF: Record<Role, StaffUser> = {
-  doctor:       { id: 1, name: 'Dr. Arjun Mehta',  role: 'doctor',       email: 'arjun@vyasa.health',   specialty: 'Internal Medicine', department: 'Medicine' },
-  clinic_admin: { id: 9, name: 'Dr. Nilanjan Roy',  role: 'clinic_admin', email: 'nilanjan@vyasa.health', specialty: 'General Medicine',  department: 'OPD' },
-  nurse:        { id: 2, name: 'Priya Sharma',      role: 'nurse',        email: 'priya@vyasa.health',    department: 'ICU' },
-  pharmacist:   { id: 3, name: 'Ravi Kumar',        role: 'pharmacist',   email: 'ravi@vyasa.health',     department: 'Pharmacy' },
-  labtech:      { id: 4, name: 'Sunita Rao',        role: 'labtech',      email: 'sunita@vyasa.health',   department: 'Laboratory' },
-  admin:        { id: 5, name: 'Admin User',        role: 'admin',        email: 'admin@vyasa.health' },
-  billing:      { id: 6, name: 'Billing Staff',     role: 'billing',      email: 'billing@vyasa.health' },
-  receptionist: { id: 7, name: 'Reception',         role: 'receptionist', email: 'reception@vyasa.health' },
-  patient:      { id: 8, name: 'Patient Demo',      role: 'patient',      email: 'patient@vyasa.health' },
-  superadmin:   { id: 0, name: 'Super Admin',       role: 'superadmin',   email: 'admin@vyasa.health' },
+  doctor:          { id: 1,  name: 'Dr. Arjun Mehta',  role: 'doctor',          email: 'arjun@vyasa.health',   specialty: 'Internal Medicine', department: 'Medicine' },
+  clinic_admin:    { id: 9,  name: 'Dr. Nilanjan Roy',  role: 'clinic_admin',    email: 'nilanjan@vyasa.health', specialty: 'General Medicine',  department: 'OPD' },
+  clinic_manager:  { id: 10, name: 'Aruna Roy',       role: 'clinic_manager',  email: 'aruna@vyasa.health',    department: 'Administration' },
+  nurse:           { id: 2,  name: 'Priya Sharma',      role: 'nurse',           email: 'priya@vyasa.health',    department: 'ICU' },
+  pharmacist:      { id: 3,  name: 'Ravi Kumar',        role: 'pharmacist',      email: 'ravi@vyasa.health',     department: 'Pharmacy' },
+  labtech:         { id: 4,  name: 'Sunita Rao',        role: 'labtech',         email: 'sunita@vyasa.health',   department: 'Laboratory' },
+  admin:           { id: 5,  name: 'Admin User',        role: 'admin',           email: 'admin@vyasa.health' },
+  billing:         { id: 6,  name: 'Billing Staff',     role: 'billing',         email: 'billing@vyasa.health' },
+  receptionist:    { id: 7,  name: 'Reception',         role: 'receptionist',    email: 'reception@vyasa.health' },
+  patient:         { id: 8,  name: 'Patient Demo',      role: 'patient',         email: 'patient@vyasa.health' },
+  superadmin:      { id: 0,  name: 'Super Admin',       role: 'superadmin',      email: 'admin@vyasa.health' },
 };
 
 interface BackendAuthResponse {

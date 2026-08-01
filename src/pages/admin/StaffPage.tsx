@@ -1,9 +1,11 @@
-import { useState } from 'react';
-import { Users, Mail, Phone, Plus, Link2, Copy, Check, UserCheck, UserX, Trash2 } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Users, Mail, Phone, Plus, Link2, Copy, Check, UserCheck, UserX, Trash2, Loader2 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { usePadStore } from '@/store/usePadStore';
 import { Modal } from '@/components/ui/Modal';
 import { cn } from '@/lib/utils';
+import { api, isApiEnabled } from '@/lib/api';
+import { useAuthStore } from '@/store/useAuthStore';
 import type { Role, Staff } from '@/types';
 
 const ROLE_COLOR: Record<string, string> = {
@@ -17,35 +19,43 @@ const ROLE_COLOR: Record<string, string> = {
 };
 
 const ALL_ROLES: Role[] = ['doctor', 'nurse', 'pharmacist', 'labtech', 'admin', 'billing', 'receptionist'];
-const ROLE_EMOJI: Record<string, string> = {
-  doctor: '🩺', nurse: '💉', pharmacist: '💊',
-  labtech: '🔬', admin: '⚙️', billing: '💰', receptionist: '🏥',
-};
 
 interface PendingStaff {
-  id: string;
+  id: number;
   name: string;
   email: string;
   phone: string;
   role: Role;
   department?: string;
-  qualification?: string;
-  requestedAt: string;
+  invited_clinic_name?: string;
+  created_at: string;
 }
-
-const DEMO_PENDING: PendingStaff[] = [
-  { id: 'PS1', name: 'Ranjit Yadav', email: 'ranjit@gmail.com', phone: '9812345670', role: 'nurse', department: 'ICU', qualification: 'BSc Nursing', requestedAt: '2026-06-04T10:30:00' },
-  { id: 'PS2', name: 'Dr. Seema Kapoor', email: 'seema@gmail.com', phone: '9823456781', role: 'doctor', department: 'Medicine', qualification: 'MBBS, MD Medicine', requestedAt: '2026-06-04T11:15:00' },
-  { id: 'PS3', name: 'Karthik L', email: 'karthik@gmail.com', phone: '9834567892', role: 'labtech', department: 'Haematology', qualification: 'BSc MLT', requestedAt: '2026-06-04T12:00:00' },
-];
 
 export default function StaffPage() {
   const { staff, setStaff, showToast } = useAppStore();
+  const { isDemo } = useAuthStore();
   const [addOpen, setAddOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [pending, setPending] = useState<PendingStaff[]>(DEMO_PENDING);
+  const [pending, setPending] = useState<PendingStaff[]>([]);
+  const [loadingPending, setLoadingPending] = useState(false);
   const [filterRole, setFilterRole] = useState<Role | 'all'>('all');
   const [confirmRemoveId, setConfirmRemoveId] = useState<number | null>(null);
+  const [actionId, setActionId] = useState<number | null>(null);
+
+  const fetchPending = useCallback(async () => {
+    if (!isApiEnabled() || isDemo) return;
+    setLoadingPending(true);
+    try {
+      const data = await api.get<PendingStaff[]>('/staff/pending');
+      setPending(Array.isArray(data) ? data : []);
+    } catch {
+      // Non-fatal — pending list will just be empty
+    } finally {
+      setLoadingPending(false);
+    }
+  }, [isDemo]);
+
+  useEffect(() => { fetchPending(); }, [fetchPending]);
 
   const filtered = staff.filter(s => filterRole === 'all' || s.role === filterRole);
 
@@ -56,21 +66,41 @@ export default function StaffPage() {
     showToast(`${member?.name ?? 'Staff'} removed from team`, 'info');
   }
 
-  function approveStaff(ps: PendingStaff) {
-    const newStaff: Staff = {
-      id: Date.now(),
-      name: ps.name, role: ps.role, email: ps.email,
-      phone: ps.phone, department: ps.department,
-      shift: 'Day', status: 'active',
-    };
-    setStaff([...staff, newStaff]);
-    setPending(p => p.filter(x => x.id !== ps.id));
-    showToast(`${ps.name} approved and added to staff`, 'success');
+  async function approveStaff(ps: PendingStaff) {
+    setActionId(ps.id);
+    try {
+      if (isApiEnabled()) {
+        await api.post(`/staff/${ps.id}/approve`, {});
+      }
+      const newMember: Staff = {
+        id: ps.id,
+        name: ps.name, role: ps.role, email: ps.email,
+        phone: ps.phone, department: ps.department,
+        shift: 'Day', status: 'active',
+      };
+      setStaff([...staff, newMember]);
+      setPending(p => p.filter(x => x.id !== ps.id));
+      showToast(`${ps.name} approved`, 'success');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Approval failed', 'error');
+    } finally {
+      setActionId(null);
+    }
   }
 
-  function rejectStaff(id: string) {
-    setPending(p => p.filter(x => x.id !== id));
-    showToast('Request rejected', 'info');
+  async function rejectStaff(ps: PendingStaff) {
+    setActionId(ps.id);
+    try {
+      if (isApiEnabled()) {
+        await api.post(`/staff/${ps.id}/reject`, {});
+      }
+      setPending(p => p.filter(x => x.id !== ps.id));
+      showToast(`${ps.name} rejected`, 'info');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Rejection failed', 'error');
+    } finally {
+      setActionId(null);
+    }
   }
 
   return (
@@ -91,19 +121,25 @@ export default function StaffPage() {
       </div>
 
       {/* Pending Approvals */}
-      {pending.length > 0 && (
+      {(loadingPending || pending.length > 0) && (
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
             <h2 className="font-bold text-slate-900 text-sm">Pending Approvals</h2>
-            <span className="badge bg-amber-100 text-amber-700">{pending.length}</span>
+            {loadingPending
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400" />
+              : <span className="badge bg-amber-100 text-amber-700">{pending.length}</span>
+            }
           </div>
+          {pending.length === 0 && !loadingPending && (
+            <p className="text-sm text-slate-400">No pending requests</p>
+          )}
           <div className="space-y-3">
             {pending.map(ps => (
               <div key={ps.id} className="card p-4 border-l-4 border-l-amber-400">
                 <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center text-xl flex-shrink-0">
-                    {ROLE_EMOJI[ps.role] || '👤'}
+                  <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center text-amber-600 font-bold text-sm flex-shrink-0">
+                    {ps.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -112,20 +148,28 @@ export default function StaffPage() {
                     </div>
                     <div className="flex items-center gap-4 mt-1 text-xs text-slate-500 flex-wrap">
                       <span>{ps.email}</span>
-                      <span>{ps.phone}</span>
+                      {ps.phone && <span>{ps.phone}</span>}
                       {ps.department && <span>{ps.department}</span>}
-                      {ps.qualification && <span>{ps.qualification}</span>}
+                      {ps.invited_clinic_name && <span>→ {ps.invited_clinic_name}</span>}
                     </div>
                     <div className="text-[10px] text-slate-400 mt-1">
-                      Requested via invite link · {new Date(ps.requestedAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      Registered via invite · {new Date(ps.created_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                     </div>
                   </div>
                   <div className="flex gap-2 flex-shrink-0">
-                    <button onClick={() => rejectStaff(ps.id)} className="btn-secondary btn-sm text-red-600 border-red-200 hover:bg-red-50">
-                      <UserX className="w-3.5 h-3.5" /> Reject
+                    <button
+                      onClick={() => rejectStaff(ps)}
+                      disabled={actionId === ps.id}
+                      className="btn-secondary btn-sm text-red-600 border-red-200 hover:bg-red-50 flex items-center gap-1">
+                      {actionId === ps.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserX className="w-3.5 h-3.5" />}
+                      Reject
                     </button>
-                    <button onClick={() => approveStaff(ps)} className="btn-primary btn-sm">
-                      <UserCheck className="w-3.5 h-3.5" /> Approve
+                    <button
+                      onClick={() => approveStaff(ps)}
+                      disabled={actionId === ps.id}
+                      className="btn-primary btn-sm flex items-center gap-1">
+                      {actionId === ps.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserCheck className="w-3.5 h-3.5" />}
+                      Approve
                     </button>
                   </div>
                 </div>
@@ -143,7 +187,7 @@ export default function StaffPage() {
             onClick={() => setFilterRole(r)}
             className={cn('btn btn-sm', filterRole === r ? 'btn-primary' : 'btn-secondary')}
           >
-            {r === 'all' ? `All (${staff.length})` : `${ROLE_EMOJI[r]} ${r} (${staff.filter(s => s.role === r).length})`}
+            {r === 'all' ? `All (${staff.length})` : `${r} (${staff.filter(s => s.role === r).length})`}
           </button>
         ))}
       </div>
@@ -160,7 +204,7 @@ export default function StaffPage() {
                 <div className="font-bold text-slate-900 text-sm">{s.name}</div>
                 <div className="flex items-center gap-2 mt-1 flex-wrap">
                   <span className={cn('badge', ROLE_COLOR[s.role] || 'bg-slate-100 text-slate-600')}>
-                    {ROLE_EMOJI[s.role]} {s.role}
+                    {s.role}
                   </span>
                   <span className={cn('badge', s.status === 'active' ? 'bg-emerald-100 text-emerald-700' : s.status === 'off-duty' ? 'bg-slate-100 text-slate-500' : 'bg-amber-100 text-amber-700')}>
                     {s.status}
@@ -278,7 +322,8 @@ function AddStaffModal({ open, onClose }: { open: boolean; onClose: () => void }
                   form.role === r ? 'border-teal-400 bg-teal-50 text-teal-700' : 'border-slate-200 text-slate-500 hover:border-slate-300'
                 )}
               >
-                <span className="text-lg">{ROLE_EMOJI[r]}</span>
+                <span className="text-lg">
+                </span>
                 <span className="capitalize">{r}</span>
               </button>
             ))}
@@ -336,21 +381,29 @@ function AddStaffModal({ open, onClose }: { open: boolean; onClose: () => void }
 
 function InviteLinkModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { clinics } = usePadStore();
+  const { user } = useAuthStore();
   const [selectedRole, setSelectedRole] = useState<Role>('nurse');
   const [selectedClinicIds, setSelectedClinicIds] = useState<string[]>(() => clinics.map(c => c.id));
   const [copied, setCopied] = useState(false);
+  // Token is stable per role+clinics selection — generated once, not on every render
+  const [token, setToken] = useState(() => btoa(`${selectedRole}-${Date.now()}`).slice(0, 16));
 
   function toggleClinic(id: string) {
     setSelectedClinicIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
     setCopied(false);
   }
 
+  function regenerateToken(role: Role) {
+    setSelectedRole(role);
+    setToken(btoa(`${role}-${Date.now()}`).slice(0, 16));
+    setCopied(false);
+  }
+
   const selectedClinics = clinics.filter(c => selectedClinicIds.includes(c.id));
   const clinicIdsParam = selectedClinics.map(c => c.id).join(',');
   const clinicNamesParam = selectedClinics.map(c => c.name).join(',');
-  const TOKEN = btoa(`${selectedRole}-${clinicIdsParam}-${Date.now()}`).slice(0, 16);
   const link = selectedClinics.length > 0
-    ? `${window.location.origin}/join?role=${selectedRole}&clinicIds=${encodeURIComponent(clinicIdsParam)}&clinicNames=${encodeURIComponent(clinicNamesParam)}&token=${TOKEN}`
+    ? `${window.location.origin}/join?role=${selectedRole}&clinicIds=${encodeURIComponent(clinicIdsParam)}&clinicNames=${encodeURIComponent(clinicNamesParam)}&token=${token}&did=${user?.id ?? ''}`
     : '';
 
   function copy() {
@@ -373,12 +426,13 @@ function InviteLinkModal({ open, onClose }: { open: boolean; onClose: () => void
             {ALL_ROLES.map(r => (
               <button
                 key={r}
-                onClick={() => { setSelectedRole(r); setCopied(false); }}
+                onClick={() => { regenerateToken(r); setCopied(false); }}
                 className={cn('flex flex-col items-center gap-1 p-3 rounded-xl border-2 text-xs font-semibold transition-all',
                   selectedRole === r ? 'border-teal-400 bg-teal-50 text-teal-700' : 'border-slate-200 text-slate-500 hover:border-slate-300'
                 )}
               >
-                <span className="text-xl">{ROLE_EMOJI[r]}</span>
+                <span className="text-xl">
+                </span>
                 <span className="capitalize">{r}</span>
               </button>
             ))}
@@ -414,7 +468,7 @@ function InviteLinkModal({ open, onClose }: { open: boolean; onClose: () => void
         ) : (
           <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
             <div className="flex items-center gap-2 mb-1">
-              <span className={cn('badge', ROLE_COLOR[selectedRole])}>{ROLE_EMOJI[selectedRole]} {selectedRole}</span>
+              <span className={cn('badge', ROLE_COLOR[selectedRole])}>{selectedRole}</span>
               <span className="text-xs text-slate-500">for {selectedClinics.map(c => c.name).join(' + ')}</span>
             </div>
             <div className="flex items-center gap-2 mt-3">

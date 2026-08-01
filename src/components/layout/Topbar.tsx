@@ -3,8 +3,8 @@ import { useAuthStore } from '@/store/useAuthStore';
 import { useAppStore } from '@/store/useAppStore';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { cn } from '@/lib/utils';
-import { api } from '@/lib/api';
 import { Link, useNavigate } from 'react-router-dom';
+import { api } from '@/lib/api';
 
 interface BookingRequest {
   id: number;
@@ -83,10 +83,12 @@ export function Topbar({ title, subtitle }: TopbarProps) {
     } catch { /* noop */ }
   }, [isDemo]);
 
-  // Poll every 60 seconds and on mount
+  // Poll every 60 seconds but skip when tab is hidden (saves requests, avoids memory leaks)
   useEffect(() => {
     loadRequests();
-    const t = setInterval(loadRequests, 60000);
+    const t = setInterval(() => {
+      if (document.visibilityState === 'visible') loadRequests();
+    }, 60000);
     return () => clearInterval(t);
   }, [loadRequests]);
 
@@ -102,7 +104,9 @@ export function Topbar({ title, subtitle }: TopbarProps) {
 
   useEffect(() => {
     loadChatNotifs();
-    const t = setInterval(loadChatNotifs, 20000);
+    const t = setInterval(() => {
+      if (document.visibilityState === 'visible') loadChatNotifs();
+    }, 20000);
     return () => clearInterval(t);
   }, [loadChatNotifs]);
 
@@ -166,6 +170,7 @@ export function Topbar({ title, subtitle }: TopbarProps) {
                 if (e.key === 'Enter' && searchResults.length > 0) selectPatient(searchResults[0].id);
               }}
               placeholder="Search patients…"
+              aria-label="Search patients, appointments, and prescriptions"
               className="w-full pl-9 pr-8 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500 transition"
             />
             {search && (
@@ -236,7 +241,7 @@ export function Topbar({ title, subtitle }: TopbarProps) {
         </div>
 
         {!isDemo && (
-          <button className="hidden md:block p-2 rounded-lg hover:bg-slate-100 transition-colors text-slate-500">
+          <button aria-label="Refresh data" className="hidden md:block p-2 rounded-lg hover:bg-slate-100 transition-colors text-slate-500">
             <RefreshCw className="w-4 h-4" />
           </button>
         )}
@@ -248,6 +253,7 @@ export function Topbar({ title, subtitle }: TopbarProps) {
         {/* Notification bell with dropdown */}
         <div className="relative" ref={dropRef}>
           <button
+            aria-label={`Notifications${totalBadge > 0 ? ` (${totalBadge} unread)` : ''}`}
             onClick={() => { const opening = !bellOpen; setBellOpen(opening); if (opening) { loadRequests(); loadChatNotifs(); localStorage.setItem('vyasa_chat_seen', String(Date.now())); } }}
             className="relative p-2 rounded-lg hover:bg-slate-100 transition-colors text-slate-500"
           >
@@ -355,18 +361,18 @@ export function Topbar({ title, subtitle }: TopbarProps) {
           )}
         </div>
 
-        {/* Avatar + name */}
-        <div className="flex items-center gap-2 pl-2 border-l border-slate-200">
+        {/* Avatar + name — click goes to My Profile */}
+        <Link to="/app/profile" className="flex items-center gap-2 pl-2 border-l border-slate-200 hover:opacity-80 transition-opacity" aria-label="My profile">
           <div className="w-8 h-8 rounded-full bg-teal-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
             {user?.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
           </div>
           <div className="hidden md:block">
             <div className="text-sm font-semibold text-slate-800 leading-tight">{user?.name}</div>
             <div className="text-[11px] text-slate-400 capitalize">
-              {user?.role === 'clinic_admin' ? 'Solo Practice' : user?.role}
+              {user?.role === 'clinic_admin' ? 'Solo Practice' : user?.role === 'clinic_manager' ? 'Clinic Manager' : user?.role}
             </div>
           </div>
-        </div>
+        </Link>
       </div>
     </header>
   );

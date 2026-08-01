@@ -1,11 +1,21 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, createContext, useContext } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ChevronDown, ChevronUp, CheckCircle2, Printer, Send, Save,
   Plus, ArrowLeft, FileText, Loader2,
   Activity, Pill, FlaskConical, ClipboardList, MessageCircle, X,
-  BedDouble, Share2, Syringe, Scissors, Upload, Camera, Calculator, Pencil
+  BedDouble, Share2, Syringe, Scissors, Upload, Camera, Calculator, Pencil, GripVertical
 } from 'lucide-react';
+import {
+  DndContext, closestCenter, KeyboardSensor, PointerSensor,
+  useSensor, useSensors, type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy,
+  useSortable, arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { useConsultSectionOrder, type SectionId } from '@/hooks/useConsultSectionOrder';
 import { useAppStore } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePadStore } from '@/store/usePadStore';
@@ -19,6 +29,7 @@ import { SpecialtyExamSection, detectSpecialty, specialtyLabel, ALL_SPECIALTY_MO
 import type { SpecialtyKey } from '@/components/prescription/SpecialtyExamSection';
 import { cn, formatDateTime } from '@/lib/utils';
 import { api, isApiEnabled, trackEvent } from '@/lib/api';
+import { connectSocket, joinPatientRoom, leavePatientRoom } from '@/lib/socket';
 import type { VaccineEntry, ProcedureEntry, AttachmentEntry, VisitRecord, LabOrder, Vitals } from '@/types';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -159,22 +170,79 @@ function PreviousVisitsPanel({ visits, labs }: { patientId: string; visits: Visi
 
 // ─── Section wrapper ──────────────────────────────────────────────────────────
 
-function Section({ id, title, icon: Icon, filled, children }: {
-  id: string; title: string; icon: typeof Activity; filled: boolean; children: React.ReactNode;
+// Context that provides the current sectionOrder so Section/SortableItem can
+// look up their own CSS order index without prop drilling.
+const SectionOrderCtx = createContext<string[]>([]);
+
+function Section({ id, title, icon: Icon, filled, children, sectionIdx }: {
+  id: string; title: string; icon: typeof Activity; filled: boolean; children: React.ReactNode; sectionIdx?: number;
 }) {
   const [open, setOpen] = useState(true);
+  const order = useContext(SectionOrderCtx);
+  const idx = order.indexOf(id);
+  const {
+    attributes, listeners, setNodeRef, setActivatorNodeRef,
+    transform, transition, isDragging,
+  } = useSortable({ id });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 50 : undefined,
+    order: idx >= 0 ? idx : (sectionIdx ?? 0),
+  };
+
   return (
-    <div className="card overflow-hidden" id={id}>
-      <button type="button" onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center gap-3 px-5 py-3.5 hover:bg-slate-50 transition-colors">
-        <div className={cn('w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0',
-          filled ? 'bg-teal-500 text-white' : 'bg-slate-100 text-slate-400')}>
-          {filled ? <CheckCircle2 className="w-4 h-4" /> : <Icon className="w-3.5 h-3.5" />}
-        </div>
-        <span className="font-semibold text-slate-800 text-sm flex-1 text-left">{title}</span>
-        {open ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
-      </button>
+    <div ref={setNodeRef} style={style} className="card overflow-hidden" id={id}>
+      <div className="w-full flex items-center gap-3 px-5 py-3.5 hover:bg-slate-50 transition-colors">
+        {/* Drag handle */}
+        <button
+          ref={setActivatorNodeRef}
+          type="button"
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-400 flex-shrink-0 touch-none"
+          title="Drag to reorder"
+          aria-label="Drag to reorder section"
+        >
+          <GripVertical className="w-4 h-4" />
+        </button>
+        {/* Title (click to collapse) */}
+        <button type="button" onClick={() => setOpen(o => !o)}
+          className="flex items-center gap-3 flex-1 text-left">
+          <div className={cn('w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0',
+            filled ? 'bg-teal-500 text-white' : 'bg-slate-100 text-slate-400')}>
+            {filled ? <CheckCircle2 className="w-4 h-4" /> : <Icon className="w-3.5 h-3.5" />}
+          </div>
+          <span className="font-semibold text-slate-800 text-sm flex-1">{title}</span>
+          {open ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+        </button>
+      </div>
       {open && <div className="px-5 pb-5 border-t border-slate-100">{children}</div>}
+    </div>
+  );
+}
+
+function SortableItem({ id, children, sectionIdx }: { id: string; children: React.ReactNode; sectionIdx?: number }) {
+  const order = useContext(SectionOrderCtx);
+  const idx = order.indexOf(id);
+  const { setNodeRef, transform, transition, isDragging, attributes, listeners, setActivatorNodeRef } = useSortable({ id });
+  return (
+    <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1, order: idx >= 0 ? idx : (sectionIdx ?? 0) }}>
+      <div className="relative">
+        <button
+          ref={setActivatorNodeRef}
+          type="button"
+          {...attributes}
+          {...listeners}
+          className="absolute top-3 left-3 z-10 cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-400 touch-none"
+          aria-label="Drag to reorder"
+        >
+          <GripVertical className="w-4 h-4" />
+        </button>
+        {children}
+      </div>
     </div>
   );
 }
@@ -199,6 +267,16 @@ export default function ConsultPage() {
   useEffect(() => {
     if (!patientId || !isApiEnabled()) return;
     api.get<Vitals[]>(`/vitals/patient/${patientId}`).then(rows => { if (rows.length) setVitals(patientId, rows); }).catch(() => {});
+  }, [patientId]);
+
+  // Join the patient's socket room so live vitals from nurses appear automatically
+  // while the doctor has the consult open. Also re-fetches vitals if the doctor
+  // comes back to the tab after the nurse recorded them.
+  useEffect(() => {
+    if (!patientId || !isApiEnabled()) return;
+    connectSocket();
+    joinPatientRoom(patientId);
+    return () => { leavePatientRoom(patientId); };
   }, [patientId]);
 
   const patient = patients.find(p => p.id === patientId);
@@ -280,6 +358,26 @@ export default function ConsultPage() {
   const prevLabs = labOrders[patientId ?? ''] ?? [];
   const prevVitals = (vitals[patientId ?? ''] ?? []).slice(-1)[0];
 
+  // Live vitals auto-fill: when nurse records vitals while doctor has consult open,
+  // update the vitals section in the draft so doctor sees latest values immediately.
+  useEffect(() => {
+    if (!prevVitals) return;
+    setDraft(d => ({
+      ...d,
+      vitals: {
+        bp:     prevVitals.bp       ?? d.vitals.bp,
+        hr:     prevVitals.pulse    ? String(prevVitals.pulse)  : d.vitals.hr,
+        temp:   prevVitals.temp     ? String(prevVitals.temp)   : d.vitals.temp,
+        spo2:   prevVitals.spo2     ? String(prevVitals.spo2)   : d.vitals.spo2,
+        weight: prevVitals.weight   ? String(prevVitals.weight) : d.vitals.weight,
+        height: prevVitals.height   ? String(prevVitals.height) : d.vitals.height,
+        rr:     prevVitals.rr       ? String(prevVitals.rr)     : d.vitals.rr,
+      },
+    }));
+  // Only fire when patientId changes or a new vitals entry arrives (identified by its id)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prevVitals?.id, patientId]);
+
   const [draft, setDraft] = useState<ConsultDraft>({ ...BLANK_DRAFT });
   const [editingPatient, setEditingPatient] = useState(false);
   const [patientEdit, setPatientEdit] = useState({ name: '', age: '', gender: 'M' as 'M' | 'F' | 'Other' });
@@ -305,6 +403,23 @@ export default function ConsultPage() {
   const [procSearch, setProcSearch] = useState('');
   const [editVisitId, setEditVisitId] = useState<string | null>(null);
   const autoSaveTimer = useRef<number>(0);
+
+  // ── Drag-and-drop section order ────────────────────────────────────────────
+  const { order: sectionOrder, reorder: reorderSections } = useConsultSectionOrder();
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const oldIdx = sectionOrder.indexOf(active.id as SectionId);
+      const newIdx = sectionOrder.indexOf(over.id as SectionId);
+      if (oldIdx !== -1 && newIdx !== -1) {
+        reorderSections(arrayMove(sectionOrder, oldIdx, newIdx));
+      }
+    }
+  }
 
   // Pre-fill from patient data
   useEffect(() => {
@@ -609,42 +724,108 @@ export default function ConsultPage() {
   function printReferral() {
     if (!patient) return;
     const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-    const w = window.open('', '_blank', 'width=700,height=900');
-    if (!w) return;
-    w.document.write(`<html><head><title>Referral Letter</title>
+    const esc = (s: unknown) => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const padData = usePadStore.getState();
+    const eSign = padData.eSignUrl || '';
+    const stamp = (padData.settings as { stampUrl?: string }).stampUrl || '';
+    const urgencyBg = referForm.urgency === 'Emergency' ? '#fee2e2' : referForm.urgency === 'Urgent' ? '#fef3c7' : '#dcfce7';
+    const urgencyColor = referForm.urgency === 'Emergency' ? '#b91c1c' : referForm.urgency === 'Urgent' ? '#b45309' : '#166534';
+
+    const html = `<!DOCTYPE html><html><head><title>Referral Letter</title>
     <style>
-      body { font-family: Arial, sans-serif; font-size: 13px; padding: 32px; color: #111; }
-      h2 { font-size: 18px; margin-bottom: 4px; }
-      .sub { color: #555; font-size: 12px; margin-bottom: 24px; }
-      .to { background: #f1f5f9; padding: 12px; border-radius: 6px; margin-bottom: 20px; }
-      label { font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 0.05em; }
-      .val { font-weight: 600; margin-bottom: 12px; }
-      .urgency { display:inline-block; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: bold;
-        background: ${referForm.urgency === 'Emergency' ? '#fee2e2' : referForm.urgency === 'Urgent' ? '#fef3c7' : '#dcfce7'};
-        color: ${referForm.urgency === 'Emergency' ? '#b91c1c' : referForm.urgency === 'Urgent' ? '#b45309' : '#166534'}; }
-      .sig { margin-top: 48px; border-top: 1px solid #333; width: 200px; padding-top: 4px; font-size: 12px; }
-      @page { margin: 12mm; }
+      @page { size: A4; margin: 18mm; }
+      * { box-sizing: border-box; }
+      body { font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #111827; margin: 0; }
+      .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #0d9488; padding-bottom: 12px; margin-bottom: 20px; }
+      .doc-name { font-size: 17px; font-weight: 800; color: #0d9488; }
+      .doc-sub { font-size: 12px; color: #475569; margin-top: 2px; }
+      h2 { font-size: 18px; font-weight: 800; margin: 0 0 4px; color: #111827; }
+      .date { font-size: 12px; color: #6b7280; margin-bottom: 20px; }
+      .to-box { background: #f1f5f9; border-left: 4px solid #0d9488; padding: 12px 16px; border-radius: 0 8px 8px 0; margin-bottom: 20px; }
+      .to-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #94a3b8; margin-bottom: 4px; }
+      .to-name { font-size: 15px; font-weight: 700; color: #0f172a; }
+      label { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; margin-top: 14px; margin-bottom: 3px; }
+      .val { font-size: 13px; color: #1e293b; font-weight: 500; }
+      .urgency { display:inline-block; padding: 3px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; background: ${urgencyBg}; color: ${urgencyColor}; }
+      .sig-block { margin-top: 48px; display: flex; align-items: flex-end; gap: 24px; }
+      .sig-line { border-top: 1px solid #374151; padding-top: 6px; font-size: 12px; color: #374151; min-width: 180px; }
+      .footer { margin-top: 32px; padding-top: 12px; border-top: 1px solid #e2e8f0; font-size: 10px; color: #94a3b8; text-align: center; }
     </style></head><body>
-    <h2>Referral Letter</h2>
-    <div class="sub">${today}</div>
-    <div class="to">
-      <label>To</label>
-      <div class="val">${referForm.doctorName ? `Dr. ${referForm.doctorName}` : 'Consultant'} ${referForm.specialty ? `(${referForm.specialty})` : ''}</div>
+    <div class="header">
+      <div>
+        <div class="doc-name">${esc(user?.name || 'Doctor')}</div>
+        <div class="doc-sub">${esc([padData.settings.degrees, padData.settings.specialty].filter(Boolean).join(', '))}</div>
+        ${padData.settings.regNumber ? `<div class="doc-sub">Reg. No: ${esc(padData.settings.regNumber)}</div>` : ''}
+      </div>
+      <div style="text-align:right;font-size:11px;color:#64748b;">
+        ${padData.settings.clinicName ? `<div style="font-weight:700;color:#374151;">${esc(padData.settings.clinicName)}</div>` : ''}
+        ${padData.settings.address ? `<div>${esc(padData.settings.address)}</div>` : ''}
+        ${padData.settings.phone ? `<div>${esc(padData.settings.phone)}</div>` : ''}
+      </div>
     </div>
-    <label>Patient</label>
-    <div class="val">${patient.name}, ${patient.age}Y/${patient.gender} · MRN: ${patient.mrn}</div>
+
+    <h2>Referral Letter</h2>
+    <div class="date">Date: ${esc(today)}</div>
+
+    <div class="to-box">
+      <div class="to-label">Referred To</div>
+      <div class="to-name">${referForm.doctorName ? `Dr. ${esc(referForm.doctorName)}` : 'Concerned Specialist'}${referForm.specialty ? ` — ${esc(referForm.specialty)}` : ''}</div>
+    </div>
+
+    <label>Patient Details</label>
+    <div class="val">${esc(patient.name)}, ${patient.age ? `${patient.age}Y` : ''}/${esc(patient.gender)} · MRN: ${esc(patient.mrn || '—')}</div>
+
     <label>Urgency</label>
-    <div class="val"><span class="urgency">${referForm.urgency}</span></div>
+    <div class="val"><span class="urgency">${esc(referForm.urgency)}</span></div>
+
     <label>Reason for Referral</label>
-    <div class="val">${referForm.reason || draft.diagnosis || '—'}</div>
-    <label>Diagnosis</label>
-    <div class="val">${draft.diagnosis || '—'}</div>
-    ${referForm.notes ? `<label>Clinical Notes</label><div class="val">${referForm.notes}</div>` : ''}
-    ${draft.rxRows.some(r=>r.drug.trim()) ? `<label>Current Medications</label><div class="val">${draft.rxRows.filter(r=>r.drug.trim()).map(r=>`${r.drug} ${r.dose} ${r.frequency}`).join(', ')}</div>` : ''}
-    <div class="sig">Referring Doctor<br/><small>${user?.name || 'Doctor'}</small></div>
-    </body></html>`);
-    w.document.close(); w.focus();
-    setTimeout(() => { w.print(); }, 300);
+    <div class="val">${esc(referForm.reason || draft.diagnosis || 'For specialist evaluation')}</div>
+
+    <label>Provisional Diagnosis</label>
+    <div class="val">${esc(draft.diagnosis || '—')}</div>
+
+    ${referForm.notes ? `<label>Clinical Summary / Notes</label><div class="val">${esc(referForm.notes)}</div>` : ''}
+
+    ${draft.rxRows.some(r => r.drug.trim()) ? `
+    <label>Current Medications</label>
+    <div class="val">${draft.rxRows.filter(r => r.drug.trim()).map(r => `${esc(r.drug)} ${esc(r.dose)} — ${esc(r.frequency)}`).join('<br/>')}</div>` : ''}
+
+    ${draft.vitals.bp || draft.vitals.hr ? `
+    <label>Recent Vitals</label>
+    <div class="val">${[
+      draft.vitals.bp && `BP: ${draft.vitals.bp}`,
+      draft.vitals.hr && `Pulse: ${draft.vitals.hr}/min`,
+      draft.vitals.temp && `Temp: ${draft.vitals.temp}°C`,
+      draft.vitals.spo2 && `SpO₂: ${draft.vitals.spo2}%`,
+    ].filter(Boolean).join(' · ')}</div>` : ''}
+
+    <div class="sig-block">
+      <div>
+        ${eSign ? `<img src="${esc(eSign)}" alt="Signature" style="max-height:48px;max-width:140px;object-fit:contain;display:block;margin-bottom:6px;" />` : '<div style="height:44px;"></div>'}
+        ${stamp ? `<img src="${esc(stamp)}" alt="Stamp" style="max-height:56px;max-width:110px;object-fit:contain;display:block;margin-bottom:6px;" />` : ''}
+        <div class="sig-line">
+          ${esc(user?.name || 'Doctor')}<br/>
+          <span style="font-size:11px;color:#64748b;">${esc(padData.settings.degrees || '')}</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">This referral letter is confidential and intended solely for the receiving clinician.</div>
+    </body></html>`;
+
+    // Use hidden iframe (no popup blocker, works on mobile)
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
+    document.body.appendChild(iframe);
+    const doc = iframe.contentWindow?.document;
+    if (!doc) { document.body.removeChild(iframe); return; }
+    doc.open(); doc.write(html); doc.close();
+    const win = iframe.contentWindow!;
+    setTimeout(() => {
+      win.focus();
+      win.print();
+      setTimeout(() => { try { document.body.removeChild(iframe); } catch {} }, 1000);
+    }, 350);
   }
 
   // ─── BMI ───────────────────────────────────────────────────────────────────
@@ -797,8 +978,13 @@ export default function ConsultPage() {
           )}
 
           <div className="flex items-center gap-1.5 flex-shrink-0">
-            <button onClick={() => setShowCalc(true)} className="btn-secondary btn-sm p-2" title="Clinical Calculators">
-              <Calculator className="w-3.5 h-3.5" />
+            <button
+              onClick={() => setShowCalc(true)}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl border border-teal-200 bg-teal-50 hover:bg-teal-100 text-teal-700 font-semibold text-xs transition-all flex-shrink-0"
+              title="Clinical Calculators"
+            >
+              <Calculator className="w-4 h-4" />
+              <span className="hidden md:inline">Calculator</span>
             </button>
             {!isIPD && (
               <button onClick={() => setShowPrint(true)} className="hidden sm:flex btn-secondary btn-sm p-2" title="Print Prescription">
@@ -807,7 +993,7 @@ export default function ConsultPage() {
             )}
             <button type="button" onClick={handleFinalize} disabled={saving} className="btn-primary btn-sm px-3 py-2">
               {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-              <span className="hidden sm:inline">{saving ? 'Saving…' : editVisitId ? 'Update' : isIPD ? 'Save' : 'Save'}</span>
+              <span className="hidden sm:inline">{saving ? 'Saving…' : editVisitId ? 'Update' : 'Save'}</span>
             </button>
           </div>
         </div>
@@ -829,23 +1015,126 @@ export default function ConsultPage() {
             <div className="h-full rounded-full bg-teal-500 transition-all duration-500" style={{ width: `${completePct}%` }} />
           </div>
           <span className="text-xs text-slate-500 flex-shrink-0">{completePct}%</span>
+          <span className="text-xs text-slate-400 flex-shrink-0">· Diagnosis required, rest optional</span>
+        </div>
+
+        {/* ── Section navigation chips ── */}
+        <div className="overflow-x-auto border-t border-slate-100 bg-slate-50/60">
+          <div className="flex items-center gap-1.5 px-3 py-2 min-w-max">
+            {[
+              { id: 's-vitals',  label: 'Vitals',        dot: filled.vitals },
+              { id: 's-cc',      label: 'Chief Complaint', dot: filled.complaint },
+              { id: 's-hopi',    label: 'HOPI',           dot: filled.history },
+              ...(!isIPD ? [{ id: 's-past', label: 'Past History', dot: filled.pastHistory }] : []),
+              { id: 's-exam',    label: 'Examination',    dot: filled.exam },
+              { id: 's-inv',     label: 'Investigations', dot: filled.labs },
+              { id: 's-dx',      label: 'Diagnosis',      dot: filled.diagnosis },
+              { id: 's-rx',      label: 'Prescription',   dot: filled.rx },
+              { id: 's-vax',     label: 'Vaccines',       dot: vaccines.length > 0 },
+              { id: 's-proc',    label: 'Procedures',     dot: procedures.length > 0 },
+            ].map(s => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => {
+                  document.getElementById(s.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }}
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all whitespace-nowrap',
+                  s.dot
+                    ? 'border-teal-300 bg-teal-50 text-teal-700'
+                    : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-700'
+                )}
+              >
+                {s.dot && <span className="w-1.5 h-1.5 rounded-full bg-teal-500 flex-shrink-0" />}
+                {s.label}
+              </button>
+            ))}
+
+            {/* Divider */}
+            <div className="w-px h-5 bg-slate-200 mx-1 flex-shrink-0" />
+
+            {/* Clinical Calculator — quick-access chip */}
+            <button
+              type="button"
+              onClick={() => setShowCalc(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-semibold hover:bg-indigo-100 transition-all whitespace-nowrap"
+            >
+              <Calculator className="w-3.5 h-3.5" />
+              Clinical Calculator
+            </button>
+
+            {/* Scroll to Body Diagram chip */}
+            <button
+              type="button"
+              onClick={() => {
+                document.getElementById('s-exam')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-violet-200 bg-violet-50 text-violet-700 text-xs font-semibold hover:bg-violet-100 transition-all whitespace-nowrap"
+            >
+              <Activity className="w-3.5 h-3.5" />
+              Body Diagram
+            </button>
+          </div>
+        </div>
+
+        {/* ── Specialty modules row (2nd chip bar) ── */}
+        <div className="overflow-x-auto border-t border-slate-100 bg-white">
+          <div className="flex items-center gap-1.5 px-3 py-2 min-w-max">
+            <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider mr-1 flex-shrink-0">Specialty</span>
+            {ALL_SPECIALTY_MODULES.map(key => {
+              const m = MODULE_META[key];
+              const isOpen = openModules.has(key);
+              const color = SPECIALTY_COLORS[key];
+              return (
+                <button key={key} type="button" onClick={() => {
+                  toggleModule(key);
+                  setTimeout(() => document.getElementById('s-exam')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+                }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all whitespace-nowrap"
+                  style={isOpen
+                    ? { borderColor: color, background: `${color}15`, color }
+                    : { borderColor: '#e2e8f0', color: '#64748b' }}>
+                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: isOpen ? color : '#cbd5e1' }} />
+                  {m.short}
+                  {isOpen && <span className="ml-0.5 text-[10px] opacity-60">✕</span>}
+                </button>
+              );
+            })}
+            <div className="w-px h-5 bg-slate-200 mx-1 flex-shrink-0" />
+            <button
+              type="button"
+              onClick={() => setShowCalc(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-teal-300 bg-teal-50 text-teal-700 text-xs font-bold hover:bg-teal-100 transition-all whitespace-nowrap"
+            >
+              <Calculator className="w-3.5 h-3.5" />
+              Clinical Calculator
+            </button>
+          </div>
         </div>
       </div>
 
       {/* ─── Body ──────────────────────────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3 pb-32 sm:pb-20">
+      <div className="flex-1 overflow-y-auto p-4 pb-32 sm:pb-20">
 
         {/* Edit-mode banner */}
         {editVisitId && (
-          <div className="flex items-center gap-2.5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 text-sm text-amber-800">
+          <div className="flex items-center gap-2.5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 text-sm text-amber-800 mb-3">
             <CheckCircle2 className="w-4 h-4 text-amber-500 flex-shrink-0" />
             <span><strong>Editing today's consultation</strong> — changes will update the existing record, not create a new one.</span>
           </div>
         )}
 
-        {/* 0. Previous Visits */}
-        <PreviousVisitsPanel patientId={patientId ?? ''} visits={visits[patientId ?? ''] ?? []} labs={labOrders[patientId ?? ''] ?? []} />
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={sectionOrder} strategy={verticalListSortingStrategy}>
+            <SectionOrderCtx.Provider value={sectionOrder}>
+            {/* sections rendered in sectionOrder — CSS order drives visual position */}
+            <div className="flex flex-col gap-3">
 
+        {/* 0. Previous Visits — sortable wrapper */}
+        <SortableItem id="s-prev">
+          <PreviousVisitsPanel patientId={patientId ?? ''} visits={visits[patientId ?? ''] ?? []} labs={labOrders[patientId ?? ''] ?? []} />
+        </SortableItem>
         {/* 1. Vitals */}
         <Section id="s-vitals" title="Vitals" icon={Activity} filled={filled.vitals}>
           <div className="pt-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
@@ -1075,6 +1364,16 @@ export default function ConsultPage() {
                       </button>
                     );
                   })}
+
+                  {/* Clinical Calculator */}
+                  <button
+                    type="button"
+                    onClick={() => setShowCalc(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-teal-300 bg-teal-50 text-teal-700 text-xs font-bold whitespace-nowrap hover:bg-teal-100 transition-all"
+                  >
+                    <Calculator className="w-3.5 h-3.5" />
+                    Clinical Calculator
+                  </button>
                 </div>
               </div>
               {/* Expanded module panels */}
@@ -1633,44 +1932,51 @@ export default function ConsultPage() {
           </div>
         </Section>
 
-        {/* Action row */}
-        <div className="space-y-2 pb-4">
-          {/* OPD secondary actions */}
-          {!isIPD && (
-            <div className="grid grid-cols-3 gap-2">
-              <button type="button" onClick={() => setShowPrint(true)} className="btn-secondary text-sm py-3">
-                <Printer className="w-4 h-4" />
-                <span className="hidden sm:inline">Print Rx</span>
-                <span className="sm:hidden">Print</span>
-              </button>
-              <button type="button" onClick={sendWhatsApp} className="btn-secondary text-sm text-emerald-700 border-emerald-300 hover:bg-emerald-50 py-3">
-                <Send className="w-4 h-4" />
-                <span className="hidden sm:inline">WhatsApp</span>
-                <span className="sm:hidden">WA</span>
-              </button>
-              <button type="button" onClick={() => setShowRefer(true)}
-                className={cn('text-sm py-3', referForm.specialty || referForm.doctorName ? 'btn-primary bg-violet-600 hover:bg-violet-700 border-violet-600' : 'btn-secondary')}>
-                <Share2 className="w-4 h-4" />
-                <span className="hidden sm:inline">{referForm.specialty || referForm.doctorName ? 'Edit Referral' : 'Refer Patient'}</span>
-                <span className="sm:hidden">Refer</span>
-              </button>
-            </div>
-          )}
-          {/* Primary actions */}
-          <div className="flex gap-2">
-            {!isIPD && (
-              <button type="button" onClick={() => { setAdmitTab('admit'); setShowAdmit(true); }}
-                className="btn-secondary flex-1 text-sm border-amber-300 text-amber-700 hover:bg-amber-50 py-3">
-                <BedDouble className="w-4 h-4" />
-                <span className="hidden sm:inline">Admit / Refer</span>
-                <span className="sm:hidden">Admit</span>
-              </button>
-            )}
-            <button type="button" onClick={handleFinalize} disabled={saving} className="btn-primary flex-1 py-3 text-base">
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              {saving ? 'Saving…' : isIPD ? 'Save Round Note' : editVisitId ? 'Update & Save' : 'Finalise & Save'}
+        {/* Action row — REMOVED from here, now a fixed bottom bar below */}
+
+            </div>{/* space-y-3 */}
+            </SectionOrderCtx.Provider>
+          </SortableContext>
+        </DndContext>
+      </div>
+
+      {/* ─── Bottom action bar ─────────────────────────────────────────────── */}
+      <div className="bg-white border-t border-slate-200 px-4 py-3 space-y-2">
+        {/* OPD secondary actions */}
+        {!isIPD && (
+          <div className="grid grid-cols-3 gap-2">
+            <button type="button" onClick={() => setShowPrint(true)} className="btn-secondary text-sm py-2.5">
+              <Printer className="w-4 h-4" />
+              <span className="hidden sm:inline">Print Rx</span>
+              <span className="sm:hidden">Print</span>
+            </button>
+            <button type="button" onClick={sendWhatsApp} className="btn-secondary text-sm text-emerald-700 border-emerald-300 hover:bg-emerald-50 py-2.5">
+              <Send className="w-4 h-4" />
+              <span className="hidden sm:inline">WhatsApp</span>
+              <span className="sm:hidden">WA</span>
+            </button>
+            <button type="button" onClick={() => setShowRefer(true)}
+              className={cn('text-sm py-2.5', referForm.specialty || referForm.doctorName ? 'btn-primary bg-violet-600 hover:bg-violet-700 border-violet-600' : 'btn-secondary')}>
+              <Share2 className="w-4 h-4" />
+              <span className="hidden sm:inline">{referForm.specialty || referForm.doctorName ? 'Edit Referral' : 'Refer Patient'}</span>
+              <span className="sm:hidden">Refer</span>
             </button>
           </div>
+        )}
+        {/* Primary save/admit */}
+        <div className="flex gap-2">
+          {!isIPD && (
+            <button type="button" onClick={() => { setAdmitTab('admit'); setShowAdmit(true); }}
+              className="btn-secondary flex-1 text-sm border-amber-300 text-amber-700 hover:bg-amber-50 py-3">
+              <BedDouble className="w-4 h-4" />
+              <span className="hidden sm:inline">Admit / Refer</span>
+              <span className="sm:hidden">Admit</span>
+            </button>
+          )}
+          <button type="button" onClick={handleFinalize} disabled={saving} className="btn-primary flex-1 py-3 text-base">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {saving ? 'Saving…' : isIPD ? 'Save Round Note' : editVisitId ? 'Update & Save' : 'Finalise & Save'}
+          </button>
         </div>
       </div>
 

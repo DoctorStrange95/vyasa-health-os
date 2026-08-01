@@ -4,7 +4,12 @@ import { GoogleOAuthProvider } from '@react-oauth/google'
 import './index.css'
 import App from './App.tsx'
 
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '159542704035-to8f1u2vv2u4khede4t1g8cpkamk40f1.apps.googleusercontent.com'
+// Google OAuth Client ID — falls back to the production client ID if env var not set locally.
+// This is a public OAuth client ID (not a secret — safe to have in source).
+// Override via VITE_GOOGLE_CLIENT_ID in your .env file.
+const GOOGLE_CLIENT_ID =
+  (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined) ??
+  '159542704035-to8f1u2vv2u4khede4t1g8cpkamk40f1.apps.googleusercontent.com';
 
 // After a new deploy, an old cached page may try to lazy-load chunks that no
 // longer exist. Vite fires this event — show a brief update notice then reload.
