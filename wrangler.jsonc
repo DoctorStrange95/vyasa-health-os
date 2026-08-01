@@ -1,6 +1,5 @@
 {
   "$schema": "https://json.schemastore.org/wrangler.json",
   "name": "vyasa-health-os",
-  "account_id": "f6a2a66fcb811912d156692aad09bd89",
   "pages_build_output_dir": "dist"
 }
