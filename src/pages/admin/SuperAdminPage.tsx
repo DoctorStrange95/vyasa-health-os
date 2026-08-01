@@ -153,6 +153,10 @@ const OUTREACH_TEMPLATES = [
   { key: 'FEATURE_HIGHLIGHT', label: 'New features highlight',                icon: '🆕' },
   { key: 'PATIENT_WAITING',   label: 'Patients are waiting for you',          icon: '🩺' },
   { key: 'ACCOUNT_REVIEW',    label: 'Scheduled account review',              icon: '📋' },
+  { key: 'VERIFY_REGISTRATION', label: 'Verify registration certificate',     icon: '📄' },
+  { key: 'MEETING_REQUEST',   label: 'Request a meeting',                     icon: '🤝' },
+  { key: 'DEMO_SCHEDULE',     label: 'Schedule a demo',                       icon: '🖥️' },
+  { key: 'WHATSAPP_COMMUNITY', label: 'Invite to WhatsApp community',         icon: '💬' },
   { key: 'CUSTOM',            label: 'Custom message',                        icon: '✏️' },
 ];
 
@@ -1142,6 +1146,7 @@ export default function SuperAdminPage() {
   const [sessionsModal, setSessionsModal] = useState<{ user: AdminUser; sessions: LoginSession[]; loading: boolean } | null>(null);
   const [emailModal, setEmailModal] = useState<EmailModal | null>(null);
   const [bulkEmailOpen, setBulkEmailOpen] = useState(false);
+  const [pendingEmailSending, setPendingEmailSending] = useState(false);
   const [doctorFilter, setDoctorFilter] = useState<DoctorFilter>('all');
   const [emailsSent, setEmailsSent] = useState(0);
   const [customTemplates, setCustomTemplates] = useState<CustomTemplate[]>(() => loadCustomTemplates());
@@ -1324,6 +1329,71 @@ export default function SuperAdminPage() {
     setEmailModal({ doc, templateKey: defaultKey, subject, body, preview: false, sending: false, sent: false });
   }
 
+  function userToDoctor(user: AdminUser): DoctorOverview {
+    return {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      specialty: user.specialty,
+      degrees: user.degrees,
+      phone: user.phone,
+      reg_number: user.reg_number,
+      license_number: user.license_number,
+      city: user.city,
+      state: user.state,
+      profile_slug: user.profile_slug,
+      approval_status: user.approval_status,
+      created_at: user.created_at,
+      approved_at: null,
+      clinic_id: null,
+      clinic_name: null,
+      consultation_fee: null,
+      years_experience: null,
+      total_bookings: 0,
+      confirmed_bookings: 0,
+      pending_bookings: 0,
+      total_visits: 0,
+      total_patients: 0,
+      login_count: user.login_count,
+      last_login: user.last_login,
+      show_in_directory: false,
+    };
+  }
+
+  function openUserEmail(user: AdminUser, templateKey = 'VERIFY_REGISTRATION') {
+    const doc = userToDoctor(user);
+    const { subject, body } = buildEmail(templateKey, doc);
+    setEmailModal({ doc, templateKey, subject, body, preview: false, sending: false, sent: false });
+  }
+
+  async function emailAllPending() {
+    const pendingUsers = users.filter(user => user.approval_status === 'pending' && !isDemo(user));
+    if (pendingUsers.length === 0 || !confirm(`Send the 'Verify registration certificate' email to all ${pendingUsers.length} pending doctor(s)?`)) return;
+
+    setPendingEmailSending(true);
+    let sentCount = 0;
+    for (const user of pendingUsers) {
+      try {
+        const sent = await sendEmail(user.email, 'VERIFY_REGISTRATION', { doctorName: user.name });
+        if (sent) {
+          sentCount += 1;
+          const { subject } = buildEmail('VERIFY_REGISTRATION', userToDoctor(user));
+          await handleEmailSent({
+            recipient_id: user.id,
+            recipient_email: user.email,
+            recipient_name: user.name,
+            template_name: 'VERIFY_REGISTRATION',
+            subject,
+          });
+        }
+      } catch {
+        // Continue with the remaining recipients if one message fails.
+      }
+    }
+    setPendingEmailSending(false);
+    alert(`Sent to ${sentCount} of ${pendingUsers.length} pending doctor(s).`);
+  }
+
   function emailAllInactive() {
     const inactiveDocs = doctors.filter(d => {
       const d2 = daysSince(d.last_login);
@@ -1371,6 +1441,7 @@ export default function SuperAdminPage() {
   const inactiveCount = realDoctors.filter(d => d.login_count === 0 || daysSince(d.last_login) > 30).length;
 
   const pendingCount = users.filter(u => u.approval_status === 'pending').length;
+  const emailEligiblePendingCount = users.filter(u => u.approval_status === 'pending' && !isDemo(u)).length;
 
   const STAT_CARDS = stats ? [
     { icon: Users, label: 'Total Users', value: stats.users?.total ?? '0', sub: `+${stats.users?.new_this_week ?? 0} this week`, color: 'text-teal-600', bg: 'bg-teal-50' },
@@ -1545,6 +1616,19 @@ export default function SuperAdminPage() {
             </div>
           </div>
 
+          {filter === 'pending' && emailEligiblePendingCount > 0 && (
+            <div className="flex justify-end -mt-1">
+              <button
+                onClick={emailAllPending}
+                disabled={pendingEmailSending}
+                className="flex items-center justify-center gap-1.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white text-sm font-bold rounded-lg px-4 py-2"
+              >
+                {pendingEmailSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+                Email all pending — request certificate ({emailEligiblePendingCount})
+              </button>
+            </div>
+          )}
+
           {/* User list */}
           {loading ? (
             <div className="flex justify-center py-16"><Loader2 className="w-7 h-7 animate-spin text-teal-500" /></div>
@@ -1555,7 +1639,9 @@ export default function SuperAdminPage() {
             </div>
           ) : (
             <div className="space-y-3">
-              {filtered.map(u => (
+              {filtered.map(u => {
+                const userEmailLogs = emailLogs.filter(log => log.recipient_id === u.id || log.recipient_email === u.email);
+                return (
                 <div key={u.id} className="card p-4 sm:p-5">
                   <div className="flex flex-col sm:flex-row sm:items-start gap-3">
                     {/* Identity */}
@@ -1566,6 +1652,11 @@ export default function SuperAdminPage() {
                         <span className={cn('text-xs font-bold px-2 py-0.5 rounded-full border capitalize', STATUS_STYLE[u.approval_status])}>
                           {u.approval_status}
                         </span>
+                        {userEmailLogs.length > 0 && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-violet-50 text-violet-700 border-violet-200 flex items-center gap-1">
+                            <Mail className="w-2.5 h-2.5" />{userEmailLogs.length} emailed
+                          </span>
+                        )}
                       </div>
                       <div className="text-sm text-slate-600 mt-1">{u.email}</div>
                       {u.phone && <div className="text-sm text-teal-600 font-semibold mt-0.5">📱 {u.phone}</div>}
@@ -1587,6 +1678,24 @@ export default function SuperAdminPage() {
                           {u.login_count} login{Number(u.login_count) !== 1 ? 's' : ''} — view history
                         </button>
                       </div>
+                      {userEmailLogs.length > 0 && (
+                        <div className="border-t border-slate-100 pt-2.5 mt-2.5">
+                          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                            <Mail className="w-3 h-3" /> Email History ({userEmailLogs.length})
+                          </div>
+                          <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                            {userEmailLogs.map(log => (
+                              <div key={log.id} className="flex items-start gap-2 text-xs bg-violet-50/60 rounded-lg px-3 py-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-semibold text-slate-700 truncate">{log.subject}</div>
+                                  <div className="text-slate-400 text-[10px] mt-0.5">{log.template_name}</div>
+                                </div>
+                                <div className="text-[10px] text-slate-400 flex-shrink-0 text-right">{fmtDateTime(log.sent_at)}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Actions */}
@@ -1604,6 +1713,13 @@ export default function SuperAdminPage() {
                           <XCircle className="w-4 h-4" /> Reject
                         </button>
                       )}
+                      <button
+                        onClick={() => openUserEmail(u, u.approval_status === 'pending' ? 'VERIFY_REGISTRATION' : 'INACTIVE_30_DAYS')}
+                        disabled={acting === u.id}
+                        className="flex items-center justify-center gap-1.5 bg-white border border-teal-200 text-teal-700 hover:bg-teal-50 text-sm font-bold rounded-lg px-4 py-2 disabled:opacity-50 flex-1 sm:flex-none"
+                      >
+                        <Mail className="w-4 h-4" /> Email
+                      </button>
                       {u.approval_status === 'approved' && (
                         <button onClick={() => deleteDoctor(u.id)} disabled={acting === u.id}
                           className="flex items-center justify-center gap-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-sm font-bold rounded-lg px-4 py-2 disabled:opacity-50 flex-1 sm:flex-none">
@@ -1627,7 +1743,8 @@ export default function SuperAdminPage() {
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </>

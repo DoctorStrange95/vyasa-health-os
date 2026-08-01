@@ -247,6 +247,83 @@ Nilanjan & the Vyasa team
 support@vyasaa.com | vyasaa.com`
   },
 
+  MEETING_REQUEST: {
+    name: 'meeting_request',
+    subject: 'Can we have a quick meeting, Dr. {doctorName}?',
+    body: `Dear Dr. {doctorName},
+
+I'd love to have a short meeting with you to understand your practice better and show you how Vyasa can save you time every day.
+
+Let me know a time that's comfortable for you — morning, afternoon, or evening — and I'll arrange it around your schedule. Even 15 minutes would be wonderful.
+
+Simply reply to this email with a convenient day and time, and I'll confirm right away.
+
+Looking forward to speaking with you.
+
+Warm regards,
+Dr Nilanjan Roy (MD, AIIMS)
+Founder, Vyasa
+support@vyasaa.com | vyasaa.com`
+  },
+
+  DEMO_SCHEDULE: {
+    name: 'demo_schedule',
+    subject: 'Your personal Vyasa demo, Dr. {doctorName}',
+    body: `Dear Dr. {doctorName},
+
+I'd like to personally walk you through Vyasa Health OS and show you exactly how it fits your day-to-day practice.
+
+Would a quick demo today at [ENTER TIME] work for you?
+
+In about 15 minutes I'll show you how to:
+• Write and share a prescription on WhatsApp in seconds
+• Manage your OPD queue and patient records digitally
+• Accept online bookings from new patients
+
+If that time doesn't suit you, just reply with a slot that does and I'll adjust.
+
+Warm regards,
+Dr Nilanjan Roy (MD, AIIMS)
+Founder, Vyasa
+support@vyasaa.com | vyasaa.com`
+  },
+
+  WHATSAPP_COMMUNITY: {
+    name: 'whatsapp_community',
+    subject: "An invitation to join our doctors' community, Dr. {doctorName}",
+    body: `Dear Dr. {doctorName},
+
+We're building a private WhatsApp community of doctors using Vyasa — a place to share feedback directly with me, get early access to new features, and exchange ideas with fellow practitioners.
+
+I'd be glad to add you personally.
+
+Do you agree to join our WhatsApp community with the founder? Simply reply to this email with "Yes" and the best number to reach you, and I'll send you the invite.
+
+Warm regards,
+Dr Nilanjan Roy (MD, AIIMS)
+Founder, Vyasa
+support@vyasaa.com | vyasaa.com`
+  },
+
+  VERIFY_REGISTRATION: {
+    name: 'verify_registration',
+    subject: 'Action needed to approve your Vyasa account, Dr. {doctorName}',
+    body: `Dear Dr. {doctorName},
+
+Thank you for registering with Vyasa Integrated Healthcare. Your account is currently pending approval.
+
+While verifying your details, we were unable to confirm your medical registration online. To complete your verification and activate your account, could you please share a copy of your medical registration certificate (or council registration number with the issuing council)?
+
+Simply reply to this email with the certificate attached, and we'll approve your account promptly — usually within a few hours.
+
+We take this step to ensure Vyasa remains a trusted platform for genuine, practicing medical professionals. We appreciate your understanding.
+
+Warm regards,
+Dr Nilanjan Roy (MD, AIIMS)
+Founder, Vyasa
+support@vyasaa.com | vyasaa.com`
+  },
+
   CUSTOM: {
     name: 'custom',
     subject: '{subject}',
