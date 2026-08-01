@@ -3,7 +3,7 @@ const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? 'https:
 const EMAIL_HEADER = `
 <div style="font-family:Arial,Helvetica,sans-serif;max-width:620px;margin:0 auto;background:#f1f5f9;padding:20px 16px;">
   <div style="background:#0a1628;padding:36px 28px 32px;border-radius:12px 12px 0 0;text-align:center;">
-    <img src="https://app.vyasaa.com/email-assets/vyasa-email-logo-v1.jpg" width="92" alt="Vyasa" style="display:block;width:92px;height:auto;margin:0 auto 18px;border:0;" />
+    <img src="https://app.vyasaa.com/email-assets/vyasa-email-logo-v1.jpg" width="92" alt="Vyasa" style="display:block;width:92px;height:92px;margin:0 auto 18px;border:6px solid #ffffff;border-radius:16px;box-sizing:border-box;background:#000000;" />
     <div style="color:#ffffff;font-size:34px;font-weight:900;letter-spacing:12px;font-family:Georgia,'Times New Roman',serif;line-height:1;text-transform:uppercase;margin-bottom:14px;">VYASA</div>
     <div style="display:inline-block;width:48px;height:2px;background:#0d9488;border-radius:2px;margin-bottom:12px;"></div>
     <div style="color:#94a3b8;font-size:10px;letter-spacing:3px;text-transform:uppercase;font-family:Arial,sans-serif;">Integrated Healthcare Pvt. Ltd.</div>
