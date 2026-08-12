@@ -38,6 +38,7 @@ const LabOrdersPage = lazy(() => import('@/pages/doctor/LabOrdersPage'));
 const AdmitPage = lazy(() => import('@/pages/doctor/AdmitPage'));
 const DischargePage = lazy(() => import('@/pages/doctor/DischargePage'));
 const NetworkPage = lazy(() => import('@/pages/doctor/NetworkPage'));
+const ReferralsPage = lazy(() => import('@/pages/doctor/ReferralsPage'));
 const AnalyticsPage = lazy(() => import('@/pages/doctor/AnalyticsPage'));
 const ProfilePage = lazy(() => import('@/pages/shared/ProfilePage'));
 const FeedbackPage = lazy(() => import('@/pages/shared/FeedbackPage'));
@@ -185,6 +186,7 @@ export default function App() {
             <Route path="admit" element={<Suspense fallback={<Spinner />}><AdmitPage /></Suspense>} />
             <Route path="discharge" element={<Suspense fallback={<Spinner />}><DischargePage /></Suspense>} />
             <Route path="network" element={<Suspense fallback={<Spinner />}><NetworkPage /></Suspense>} />
+            <Route path="referrals" element={<Suspense fallback={<Spinner />}><ReferralsPage /></Suspense>} />
             <Route path="analytics" element={<Suspense fallback={<Spinner />}><AnalyticsPage /></Suspense>} />
             <Route path="profile" element={<Suspense fallback={<Spinner />}><ProfilePage /></Suspense>} />
             <Route path="feedback" element={<Suspense fallback={<Spinner />}><FeedbackPage /></Suspense>} />

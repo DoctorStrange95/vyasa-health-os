@@ -1,4 +1,4 @@
-import { Bell, Search, RefreshCw, Wifi, WifiOff, Menu, CheckCircle, XCircle, Calendar, Phone, ChevronRight, X } from 'lucide-react';
+import { Bell, Search, RefreshCw, Wifi, WifiOff, Menu, CheckCircle, XCircle, Calendar, Phone, ChevronRight, X, ArrowRightLeft } from 'lucide-react';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useAppStore } from '@/store/useAppStore';
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -41,6 +41,7 @@ export function Topbar({ title, subtitle }: TopbarProps) {
   const [requests, setRequests] = useState<BookingRequest[]>([]);
   const [updating, setUpdating] = useState<number | null>(null);
   const [chatNotifs, setChatNotifs] = useState<Array<{ id: string; patientId: string; senderId: number; senderName: string; message: string; time: string }>>([]);
+  const [appNotifs, setAppNotifs] = useState<Array<{ id: number; type: string; title: string; message: string; entityType: string; entityId: string; read: boolean; createdAt: string }>>([]);
   const dropRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -115,6 +116,27 @@ export function Topbar({ title, subtitle }: TopbarProps) {
     setChatNotifs([]);
   }
 
+  const loadAppNotifs = useCallback(async () => {
+    if (isDemo) return;
+    try {
+      const rows = await api.get<typeof appNotifs>('/notifications');
+      setAppNotifs(rows.filter(n => !n.read));
+    } catch { /* noop */ }
+  }, [isDemo]);
+
+  useEffect(() => {
+    loadAppNotifs();
+    const t = setInterval(() => {
+      if (document.visibilityState === 'visible') loadAppNotifs();
+    }, 30000);
+    return () => clearInterval(t);
+  }, [loadAppNotifs]);
+
+  async function markAppNotifsRead() {
+    if (appNotifs.length === 0) return;
+    try { await api.patch('/notifications/read-all', {}); setAppNotifs([]); } catch { /* noop */ }
+  }
+
   // Close dropdown on outside click
   useEffect(() => {
     if (!bellOpen) return;
@@ -137,7 +159,7 @@ export function Topbar({ title, subtitle }: TopbarProps) {
   }
 
   const pendingCount = requests.length;
-  const totalBadge = unack + pendingCount + chatNotifs.length;
+  const totalBadge = unack + pendingCount + chatNotifs.length + appNotifs.length;
 
   return (
     <header className="h-14 md:h-16 bg-white border-b border-slate-200 flex items-center gap-3 px-3 md:px-5 flex-shrink-0">
@@ -254,7 +276,7 @@ export function Topbar({ title, subtitle }: TopbarProps) {
         <div className="relative" ref={dropRef}>
           <button
             aria-label={`Notifications${totalBadge > 0 ? ` (${totalBadge} unread)` : ''}`}
-            onClick={() => { const opening = !bellOpen; setBellOpen(opening); if (opening) { loadRequests(); loadChatNotifs(); localStorage.setItem('vyasa_chat_seen', String(Date.now())); } }}
+            onClick={() => { const opening = !bellOpen; setBellOpen(opening); if (opening) { loadRequests(); loadChatNotifs(); loadAppNotifs(); localStorage.setItem('vyasa_chat_seen', String(Date.now())); markAppNotifsRead(); } }}
             className="relative p-2 rounded-lg hover:bg-slate-100 transition-colors text-slate-500"
           >
             <Bell className="w-5 h-5" />
@@ -301,7 +323,30 @@ export function Topbar({ title, subtitle }: TopbarProps) {
                     })}
                   </div>
                 )}
-                {pendingCount === 0 && chatNotifs.length === 0 ? (
+                {/* In-app notifications (referrals, etc.) */}
+                {appNotifs.length > 0 && (
+                  <div className="border-b border-slate-100">
+                    <div className="px-4 py-2 text-[11px] font-bold uppercase tracking-wide text-indigo-600 bg-indigo-50/50">Notifications</div>
+                    {appNotifs.slice(0, 5).map(n => (
+                      <Link key={n.id}
+                        to={n.entityType === 'referral' ? '/app/referrals' : '/app/dashboard'}
+                        onClick={() => setBellOpen(false)}
+                        className="block px-4 py-3 border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <ArrowRightLeft className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" />
+                            <span className="text-sm font-semibold text-slate-900">{n.title}</span>
+                          </div>
+                          <span className="text-[10px] text-slate-400 flex-shrink-0">
+                            {new Date(n.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                          </span>
+                        </div>
+                        <div className="text-xs text-slate-600 mt-0.5 line-clamp-2">{n.message}</div>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+                {pendingCount === 0 && chatNotifs.length === 0 && appNotifs.length === 0 ? (
                   <div className="text-center py-10 text-slate-400 text-sm">
                     <Bell className="w-8 h-8 mx-auto mb-2 opacity-30" />
                     No notifications

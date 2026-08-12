@@ -443,16 +443,28 @@ export default function DashboardPage() {
                     </div>
                     {/* Info */}
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                         <span style={{ fontSize: 14, fontWeight: 700, color: '#111827' }}>{apt.patientName}</span>
                         {apt.patientAge && <span style={{ fontSize: 12, color: '#6b7280' }}>{apt.patientAge}y</span>}
                         {apt.patientGender && <span style={{ fontSize: 12, color: '#9ca3af' }}>· {apt.patientGender === 'M' ? 'Male' : 'Female'}</span>}
+                        {apt.consultationType === 'video' && (
+                          <span style={{ background: '#eef2ff', color: '#6366f1', border: '1px solid #c7d2fe', borderRadius: 20, padding: '1px 7px', fontSize: 10, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+                            Video
+                          </span>
+                        )}
                       </div>
                       <div style={{ fontSize: 12, color: '#6b7280', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{apt.reason || 'OPD visit'}</div>
                     </div>
                     {/* Status + action */}
                     {done ? (
                       <span style={{ fontSize: 12, color: '#10b981', fontWeight: 600, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4 }}><CheckCircle2 size={13} /> Done</span>
+                    ) : apt.consultationType === 'video' && apt.googleMeetLink ? (
+                      <a href={apt.googleMeetLink} target="_blank" rel="noopener noreferrer"
+                        style={{ background: '#6366f1', color: 'white', border: 'none', borderRadius: 8, padding: '7px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 5, textDecoration: 'none' }}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+                        Join Meet
+                      </a>
                     ) : (
                       <button onClick={() => startConsult(apt)}
                         style={{ background: inProgress ? '#0d9488' : 'white', color: inProgress ? 'white' : '#0d9488', border: `1.5px solid ${inProgress ? '#0d9488' : '#99f6e4'}`, borderRadius: 8, padding: '7px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5 }}>

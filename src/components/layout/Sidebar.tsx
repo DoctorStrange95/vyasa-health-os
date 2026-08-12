@@ -10,7 +10,7 @@ import {
   DollarSign, Receipt, UserCheck, BedDouble,
   BarChart3, ScrollText, Settings2, CalendarDays,
   ClipboardCheck, ShieldCheck, MessageSquare, Building2,
-  HelpCircle, ChevronDown, Menu, X,
+  HelpCircle, ChevronDown, Menu, X, ArrowRightLeft,
 } from 'lucide-react';
 import type { Role } from '@/types';
 
@@ -42,6 +42,7 @@ const CLINIC_ADMIN_GROUPS: NavGroup[] = [
       { icon: ClipboardCheck,  label: 'Booking Requests', to: '/app/bookings' },
       { icon: Pill,            label: 'Prescriptions',    to: '/app/prescriptions' },
       { icon: FlaskConical,    label: 'Lab Orders',       to: '/app/labs' },
+      { icon: ArrowRightLeft,  label: 'Referrals',        to: '/app/referrals' },
     ],
   },
   {
@@ -93,10 +94,11 @@ const DOCTOR_GROUPS: NavGroup[] = [
   {
     label: 'Consultation',
     items: [
-      { icon: Pill,         label: 'Prescriptions', to: '/app/prescriptions' },
-      { icon: FlaskConical, label: 'Lab Orders',    to: '/app/labs' },
-      { icon: FileText,     label: 'Discharge',     to: '/app/discharge' },
-      { icon: Bell,         label: 'Alerts',        to: '/app/alerts' },
+      { icon: Pill,            label: 'Prescriptions',    to: '/app/prescriptions' },
+      { icon: FlaskConical,    label: 'Lab Orders',       to: '/app/labs' },
+      { icon: ArrowRightLeft,  label: 'Referrals',        to: '/app/referrals' },
+      { icon: FileText,        label: 'Discharge',        to: '/app/discharge' },
+      { icon: Bell,            label: 'Alerts',           to: '/app/alerts' },
     ],
   },
   {

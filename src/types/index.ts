@@ -330,6 +330,10 @@ export interface AppointmentEntry {
   amountPaid?: number;
   paymentMode?: PaymentMode;
   token?: number;
+  // Video consultation
+  consultationType?: 'offline' | 'video';
+  googleMeetLink?: string;
+  durationMins?: number;
 }
 
 // ─── OPD Queue ───────────────────────────────────────────────────────────────

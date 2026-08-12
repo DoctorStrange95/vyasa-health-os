@@ -233,7 +233,8 @@ export default function DoctorPublicPage() {
   const [notFound, setNotFound] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const [step, setStep] = useState<'select-clinic' | 'select-date' | 'select-time' | 'details' | 'payment' | 'done'>('select-date');
+  const [step, setStep] = useState<'select-clinic' | 'select-type' | 'select-date' | 'select-time' | 'details' | 'payment' | 'done'>('select-date');
+  const [consultationType, setConsultationType] = useState<'offline' | 'video'>('offline');
   const [selectedClinic, setSelectedClinic] = useState<PublicClinic | null>(null);
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTime, setSelectedTime] = useState('');
@@ -268,7 +269,7 @@ export default function DoctorPublicPage() {
           } else {
             const only = bookable[0] ?? data.clinics?.[0] ?? null;
             setSelectedClinic(only);
-            setStep('select-date');
+            setStep('select-type');
             return fetchSlots(only?.id);
           }
         }
@@ -328,6 +329,7 @@ export default function DoctorPublicPage() {
           preferred_date: selectedDate,
           preferred_time: selectedTime,
           clinic_id: selectedClinic?.id,
+          consultation_type: consultationType,
         }),
       });
       if (res.status === 409) {
@@ -500,7 +502,7 @@ export default function DoctorPublicPage() {
               const multiClinic = (doctor.clinics ?? []).filter(c => c.hasSchedule).length > 1;
               const wizardSteps: [string, string][] = [
                 ...(multiClinic ? [['select-clinic', 'Clinic'] as [string, string]] : []),
-                ['select-date', 'Date'], ['select-time', 'Time'], ['details', 'Your Info'],
+                ['select-type', 'Type'], ['select-date', 'Date'], ['select-time', 'Time'], ['details', 'Your Info'],
                 ...(advanceDue ? [['payment', 'Payment'] as [string, string]] : []),
               ];
               const idx = wizardSteps.findIndex(([s]) => s === step);
@@ -539,7 +541,7 @@ export default function DoctorPublicPage() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     {(doctor.clinics ?? []).filter(c => c.hasSchedule).map(c => (
                       <button key={c.id}
-                        onClick={() => { setSelectedClinic(c); setSelectedDate(''); setSelectedTime(''); setStep('select-date'); fetchSlots(c.id); }}
+                        onClick={() => { setSelectedClinic(c); setSelectedDate(''); setSelectedTime(''); setStep('select-type'); fetchSlots(c.id); }}
                         style={{ textAlign: 'left', padding: '14px 16px', borderRadius: 14, border: '1.5px solid', borderColor: selectedClinic?.id === c.id ? TEAL : '#e2e8f0', background: selectedClinic?.id === c.id ? '#f0fdfa' : 'white', cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                           <span style={{ fontSize: 14, fontWeight: 700, color: '#0f2040' }}>{c.name}</span>
@@ -566,6 +568,48 @@ export default function DoctorPublicPage() {
                         ) : null}
                       </button>
                     ))}
+                  </div>
+                </>
+              )}
+
+              {/* STEP: Consultation Type */}
+              {step === 'select-type' && (
+                <>
+                  <div style={{ marginBottom: 16 }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 800, color: '#1e293b', margin: '0 0 4px' }}>How would you like to consult?</h3>
+                    <p style={{ fontSize: 12, color: '#94a3b8', margin: 0 }}>Choose in-clinic or video consultation</p>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+                    {/* In-clinic */}
+                    <button type="button"
+                      onClick={() => { setConsultationType('offline'); setStep('select-date'); }}
+                      style={{ textAlign: 'left', padding: '16px 18px', borderRadius: 16, border: `2px solid ${consultationType === 'offline' ? TEAL : '#e2e8f0'}`, background: consultationType === 'offline' ? '#f0fdfa' : 'white', cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 14 }}>
+                      <div style={{ width: 44, height: 44, borderRadius: 12, background: 'linear-gradient(135deg,#f0fdfa,#ccfbf1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={TEAL} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 14, fontWeight: 800, color: '#0f2040', marginBottom: 2 }}>In-Clinic Consultation</div>
+                        <div style={{ fontSize: 12, color: '#64748b' }}>Visit the clinic in person{doctor.consultationFee ? ` · ₹${doctor.consultationFee}` : ''}</div>
+                      </div>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={TEAL} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                    </button>
+                    {/* Video */}
+                    <button type="button"
+                      onClick={() => { setConsultationType('video'); setStep('select-date'); }}
+                      style={{ textAlign: 'left', padding: '16px 18px', borderRadius: 16, border: `2px solid ${consultationType === 'video' ? '#6366f1' : '#e2e8f0'}`, background: consultationType === 'video' ? '#eef2ff' : 'white', cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 14 }}>
+                      <div style={{ width: 44, height: 44, borderRadius: 12, background: 'linear-gradient(135deg,#eef2ff,#c7d2fe)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 14, fontWeight: 800, color: '#0f2040', marginBottom: 2 }}>Video Consultation</div>
+                        <div style={{ fontSize: 12, color: '#64748b' }}>Google Meet · Online{doctor.consultationFee ? ` · ₹${doctor.consultationFee}` : ''}</div>
+                        <div style={{ marginTop: 5, display: 'inline-flex', alignItems: 'center', gap: 4, background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 20, padding: '2px 8px', fontSize: 10, fontWeight: 700, color: '#059669' }}>
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                          No travel needed
+                        </div>
+                      </div>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                    </button>
                   </div>
                 </>
               )}
@@ -769,18 +813,26 @@ export default function DoctorPublicPage() {
                   <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'linear-gradient(135deg, #D1FAE5, #A7F3D0)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', boxShadow: '0 4px 24px rgba(16,185,129,0.2)' }}>
                     <CheckCircle style={{ width: 40, height: 40, color: '#059669' }} />
                   </div>
-                  <h3 style={{ color: '#065F46', fontWeight: 800, fontSize: 20, margin: '0 0 8px' }}>Appointment Requested!</h3>
-                  <p style={{ color: '#047857', fontSize: 13, lineHeight: 1.8, margin: '0 0 18px' }}>
+                  <h3 style={{ color: '#065F46', fontWeight: 800, fontSize: 20, margin: '0 0 8px' }}>
+                    {consultationType === 'video' ? 'Video Consultation Requested!' : 'Appointment Requested!'}
+                  </h3>
+                  <p style={{ color: '#047857', fontSize: 13, lineHeight: 1.8, margin: '0 0 12px' }}>
                     Dr. {doctor.name}'s team will call <strong>+91 {form.phone.replace(/\D/g,'').slice(-10)}</strong> to confirm.<br />
                     <strong>{fmtFullDate(selectedDate)}</strong> at <strong>{fmtTime12(selectedTime)}</strong>
                   </p>
+                  {consultationType === 'video' && (
+                    <div style={{ background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: 12, padding: '10px 14px', marginBottom: 12, fontSize: 12, color: '#4338ca', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                      Google Meet link will be shared by the clinic on confirmation.
+                    </div>
+                  )}
                   <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
                     {doctor.clinicPhone && (
                       <a href={`tel:${doctor.clinicPhone}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#F0FDF4', color: '#065F46', border: '1.5px solid #BBF7D0', borderRadius: 12, padding: '10px 16px', fontSize: 13, fontWeight: 700, textDecoration: 'none' }}>
                         <Phone style={{ width: 14, height: 14 }} /> Call Clinic
                       </a>
                     )}
-                    <button onClick={() => { setStep('select-date'); setSelectedDate(''); setSelectedTime(''); setForm({ name: '', phone: '', email: '', age: '', gender: '', reason: '' }); fetchSlots(selectedClinic?.id); }}
+                    <button onClick={() => { setStep('select-type'); setSelectedDate(''); setSelectedTime(''); setForm({ name: '', phone: '', email: '', age: '', gender: '', reason: '' }); fetchSlots(selectedClinic?.id); }}
                       style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'white', color: '#475569', border: '1.5px solid #e2e8f0', borderRadius: 12, padding: '10px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                       Book Another Slot
                     </button>
