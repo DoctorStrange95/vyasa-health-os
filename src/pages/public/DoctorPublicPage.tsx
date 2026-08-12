@@ -345,7 +345,23 @@ export default function DoctorPublicPage() {
     finally { setSubmitting(false); }
   }
 
-  const waText = encodeURIComponent(`Book an appointment with Dr. ${doctor?.name ?? ''}: ${window.location.href}`);
+  const waText = encodeURIComponent(
+    [
+      `👨‍⚕️ *Dr. ${doctor?.name ?? ''}*`,
+      doctor?.specialty ? `🩺 ${doctor.specialty}` : '',
+      doctor?.qualification ? `🎓 ${doctor.qualification}` : '',
+      doctor?.yearsExperience ? `⭐ ${doctor.yearsExperience}+ years experience` : '',
+      doctor?.clinicName ? `🏥 ${doctor.clinicName}` : '',
+      (doctor?.clinics?.[0]?.city || doctor?.clinics?.[0]?.state)
+        ? `📍 ${[doctor.clinics[0].city, doctor.clinics[0].state].filter(Boolean).join(', ')}`
+        : '',
+      doctor?.consultationFee ? `💰 Consultation fee: ₹${doctor.consultationFee}` : '',
+      doctor?.languages ? `🗣 Speaks: ${doctor.languages}` : '',
+      '',
+      `📅 Book an appointment online:`,
+      window.location.href,
+    ].filter(Boolean).join('\n')
+  );
 
   if (loadingProfile) return (
     <div style={{ minHeight: '100svh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9' }}>
