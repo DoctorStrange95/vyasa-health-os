@@ -347,18 +347,18 @@ export default function DoctorPublicPage() {
 
   const waText = encodeURIComponent(
     [
-      `👨‍⚕️ *Dr. ${doctor?.name ?? ''}*`,
-      doctor?.specialty ? `🩺 ${doctor.specialty}` : '',
-      doctor?.qualification ? `🎓 ${doctor.qualification}` : '',
-      doctor?.yearsExperience ? `⭐ ${doctor.yearsExperience}+ years experience` : '',
-      doctor?.clinicName ? `🏥 ${doctor.clinicName}` : '',
+      `*Dr. ${doctor?.name ?? ''}*`,
+      doctor?.specialty ? `• Specialty: ${doctor.specialty}` : '',
+      doctor?.qualification ? `• Qualification: ${doctor.qualification}` : '',
+      doctor?.yearsExperience ? `• Experience: ${doctor.yearsExperience}+ years` : '',
+      doctor?.clinicName ? `• Clinic: ${doctor.clinicName}` : '',
       (doctor?.clinics?.[0]?.city || doctor?.clinics?.[0]?.state)
-        ? `📍 ${[doctor.clinics[0].city, doctor.clinics[0].state].filter(Boolean).join(', ')}`
+        ? `• Location: ${[doctor.clinics[0].city, doctor.clinics[0].state].filter(Boolean).join(', ')}`
         : '',
-      doctor?.consultationFee ? `💰 Consultation fee: ₹${doctor.consultationFee}` : '',
-      doctor?.languages ? `🗣 Speaks: ${doctor.languages}` : '',
+      doctor?.consultationFee ? `• Consultation fee: Rs. ${doctor.consultationFee}` : '',
+      doctor?.languages ? `• Languages: ${doctor.languages}` : '',
       '',
-      `📅 Book an appointment online:`,
+      `Book an appointment online:`,
       window.location.href,
     ].filter(Boolean).join('\n')
   );
