@@ -144,6 +144,7 @@ export default function ProfilePage() {
         advance_amount: pubProfile.advance_amount ?? null,
         payment_qr_url: pubProfile.payment_qr_url ?? '',
         show_reg_number: pubProfile.show_reg_number ?? true,
+        video_meet_link: (pubProfile as any).video_meet_link ?? '',
       });
       setPubProfile(updated);
       setPubSaved(true);
@@ -984,6 +985,35 @@ export default function ProfilePage() {
                     <p className="text-xs text-slate-400 mt-1">
                       Setup: business.google.com → Add website: <code className="bg-slate-100 px-1 rounded">{bookingLink}</code>
                     </p>
+                  </div>
+
+                  {/* ── Video Consultation Link ─────────────────────────────── */}
+                  <div className="rounded-xl border-2 border-indigo-100 bg-indigo-50/40 p-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                      <div>
+                        <div className="text-sm font-bold text-slate-800">Video Consultation Link</div>
+                        <div className="text-xs text-slate-500">Your Google Meet room — patients join here for video consultations</div>
+                      </div>
+                    </div>
+                    <input type="url" className="input"
+                      placeholder="https://meet.google.com/abc-defg-hij"
+                      value={(pubProfile as any)?.video_meet_link ?? ''}
+                      onChange={e => setPubProfile(p => ({...p, video_meet_link: e.target.value} as any))} />
+                    <div className="flex flex-wrap gap-2">
+                      <p className="text-xs text-slate-500 flex-1">
+                        Create a reusable room at{' '}
+                        <a href="https://meet.google.com" target="_blank" rel="noopener noreferrer" className="text-indigo-600 font-semibold hover:underline">meet.google.com</a>
+                        {' '}→ "New meeting" → "Create a meeting for later" → copy the link.
+                      </p>
+                      {(pubProfile as any)?.video_meet_link && (
+                        <a href={(pubProfile as any).video_meet_link} target="_blank" rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 bg-indigo-100 hover:bg-indigo-200 px-3 py-1.5 rounded-lg transition-colors">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+                          Test Meet Link
+                        </a>
+                      )}
+                    </div>
                   </div>
 
                   {!isApiEnabled() && (

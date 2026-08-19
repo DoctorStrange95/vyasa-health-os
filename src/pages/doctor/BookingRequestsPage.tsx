@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
-import { Phone, MessageCircle, CheckCircle, XCircle, Clock, CalendarDays, Loader2, RefreshCw, ClipboardCheck } from 'lucide-react';
+import { Phone, MessageCircle, CheckCircle, XCircle, Clock, CalendarDays, Loader2, RefreshCw, ClipboardCheck, Video } from 'lucide-react';
 import SchedulerPage from './SchedulerPage';
 
 interface BookingRequest {
@@ -17,6 +17,7 @@ interface BookingRequest {
   notes: string;
   created_at: string;
   confirmed_at: string | null;
+  consultation_type?: 'offline' | 'video';
 }
 
 type FilterTab = 'pending' | 'confirmed' | 'cancelled' | 'all';
@@ -62,6 +63,14 @@ export default function BookingRequestsPage() {
   const [updating, setUpdating] = useState<number | null>(null);
   const [notesModal, setNotesModal] = useState<{ id: number; notes: string; status: string } | null>(null);
   const [actionError, setActionError] = useState('');
+  const [myMeetLink, setMyMeetLink] = useState('');
+
+  // Fetch doctor's personal Google Meet link once
+  useEffect(() => {
+    api.get<{ video_meet_link?: string }>('/auth/me/public-profile')
+      .then(d => setMyMeetLink(d?.video_meet_link ?? ''))
+      .catch(() => {});
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -204,6 +213,11 @@ export default function BookingRequestsPage() {
                       <div className="flex items-center gap-1.5">
                         <CalendarDays className="w-3.5 h-3.5" />
                         {fmtDate(req.preferred_date)}{req.preferred_time ? ` · ${req.preferred_time}` : ''}
+                        {req.consultation_type === 'video' && (
+                          <span className="ml-1 inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 bg-indigo-100 border border-indigo-200 rounded-full px-2 py-0.5">
+                            <Video className="w-3 h-3" /> Video
+                          </span>
+                        )}
                       </div>
                     )}
                     <div className="flex items-center gap-1.5">
@@ -253,11 +267,26 @@ export default function BookingRequestsPage() {
                       </>
                     )}
                     {req.status === 'confirmed' && (
-                      <button disabled={isUpdating} onClick={() => updateStatus(req.id, 'cancelled')}
-                        className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg ml-auto"
-                        style={{ background: '#FEE2E2', color: '#991B1B' }}>
-                        <XCircle className="w-3.5 h-3.5" /> Cancel
-                      </button>
+                      <>
+                        {req.consultation_type === 'video' && myMeetLink && (
+                          <a href={myMeetLink} target="_blank" rel="noopener noreferrer"
+                            className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg no-underline"
+                            style={{ background: '#eef2ff', color: '#4338ca' }}>
+                            <Video className="w-3.5 h-3.5" /> Join Meet
+                          </a>
+                        )}
+                        {req.consultation_type === 'video' && !myMeetLink && (
+                          <a href="/app/profile" className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg no-underline"
+                            style={{ background: '#fef9c3', color: '#854d0e' }}>
+                            <Video className="w-3.5 h-3.5" /> Add Meet Link
+                          </a>
+                        )}
+                        <button disabled={isUpdating} onClick={() => updateStatus(req.id, 'cancelled')}
+                          className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg ml-auto"
+                          style={{ background: '#FEE2E2', color: '#991B1B' }}>
+                          <XCircle className="w-3.5 h-3.5" /> Cancel
+                        </button>
+                      </>
                     )}
                     {req.status === 'cancelled' && (
                       <button disabled={isUpdating} onClick={() => updateStatus(req.id, 'pending')}
