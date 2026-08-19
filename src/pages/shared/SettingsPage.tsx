@@ -4,7 +4,7 @@ import {
   Pill, Users, Building2, Save, Plus, Trash2, CheckCircle2,
   RefreshCw, Printer, Mail, Phone, Link2, Copy, Check,
   UserCheck, UserX, Settings, Edit2, MapPin, X, QrCode, PenLine, Upload, Shield, ChevronDown,
-  Stethoscope, FlaskConical, ReceiptText, ClipboardList, Wrench
+  Stethoscope, FlaskConical, ReceiptText, ClipboardList, Wrench, Loader2, Video,
 } from 'lucide-react';
 import { usePadStore } from '@/store/usePadStore';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -15,7 +15,7 @@ import { PWAInstallGuide } from '@/components/PWAInstallGuide';
 import { cn } from '@/lib/utils';
 import type { Role, Staff, Clinic, ClinicBed } from '@/types';
 
-type Tab = 'rxpad' | 'staff' | 'clinics' | 'legal';
+type Tab = 'rxpad' | 'staff' | 'clinics' | 'video' | 'legal';
 
 // ─── Rx Pad tab ───────────────────────────────────────────────────────────────
 
@@ -1287,6 +1287,137 @@ function ClinicsTab() {
   );
 }
 
+// ─── Video Consult Tab ───────────────────────────────────────────────────────
+
+function VideoTab() {
+  const { showToast } = useAppStore();
+  const [meetLink, setMeetLink] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!isApiEnabled()) { setLoading(false); return; }
+    api.get<{ video_meet_link?: string }>('/auth/me/public-profile')
+      .then(d => setMeetLink(d?.video_meet_link ?? ''))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function handleSave() {
+    if (!isApiEnabled()) { showToast('Connect to backend first', 'warning'); return; }
+    setSaving(true);
+    try {
+      await api.patch('/auth/me/public-profile', { video_meet_link: meetLink.trim() });
+      showToast('Video consultation link saved', 'success');
+    } catch {
+      showToast('Could not save. Please try again.', 'error');
+    } finally { setSaving(false); }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-bold text-slate-900">Video Consultation</h2>
+        <p className="text-sm text-slate-500 mt-0.5">Set up your Google Meet link for online patient consultations</p>
+      </div>
+
+      {/* How it works */}
+      <div className="card p-5 space-y-4">
+        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+          Your Google Meet Link
+        </h3>
+        <p className="text-sm text-slate-600 leading-relaxed">
+          Create a <strong>reusable</strong> Google Meet room and paste it here. Every patient who books a video consultation will connect with you on this link.
+        </p>
+
+        {/* Steps */}
+        <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 space-y-2.5">
+          <p className="text-xs font-bold text-indigo-700 uppercase tracking-wide">How to create your Meet link</p>
+          {[
+            { n: 1, t: 'Go to', link: 'meet.google.com', href: 'https://meet.google.com', rest: '' },
+            { n: 2, t: 'Click', link: '"New meeting"', href: null, rest: '' },
+            { n: 3, t: 'Select', link: '"Create a meeting for later"', href: null, rest: '' },
+            { n: 4, t: 'Copy the link and paste it below', link: null, href: null, rest: '' },
+          ].map(s => (
+            <div key={s.n} className="flex items-start gap-3 text-sm text-indigo-800">
+              <span className="w-5 h-5 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">{s.n}</span>
+              <span>
+                {s.t}{' '}
+                {s.link && s.href && <a href={s.href} target="_blank" rel="noopener noreferrer" className="font-semibold underline">{s.link}</a>}
+                {s.link && !s.href && <strong>{s.link}</strong>}
+                {s.rest}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {/* Input */}
+        {loading ? (
+          <div className="flex items-center gap-2 text-slate-400 text-sm"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</div>
+        ) : (
+          <div className="space-y-2">
+            <label className="label">Google Meet Link</label>
+            <div className="flex gap-2">
+              <input
+                type="url"
+                className="input flex-1"
+                placeholder="https://meet.google.com/abc-defg-hij"
+                value={meetLink}
+                onChange={e => setMeetLink(e.target.value)}
+              />
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="btn-primary flex-shrink-0 gap-2"
+              >
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                {saving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+            {meetLink && (
+              <div className="flex items-center gap-3 mt-2">
+                <a href={meetLink} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-3 py-1.5 rounded-lg transition-colors no-underline">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+                  Test Meet Link
+                </a>
+                <span className="text-xs text-emerald-600 font-semibold flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Link saved
+                </span>
+              </div>
+            )}
+            <p className="text-xs text-slate-400 mt-1">
+              This link is used automatically when a patient books a video consultation with you.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* How video bookings work */}
+      <div className="card p-5 space-y-3">
+        <h3 className="text-sm font-bold text-slate-800">How Video Consultations Work</h3>
+        <div className="space-y-3">
+          {[
+            { step: 'Patient books', desc: 'Patient selects "Video Consultation" on your public booking page and picks a time slot.' },
+            { step: 'You confirm', desc: 'The booking appears in your Booking Requests. Click Confirm — the Meet link is attached automatically.' },
+            { step: 'Join the call', desc: 'At the appointment time, click "Join Meet" on your Dashboard or Booking Requests page to open Google Meet.' },
+            { step: 'Consult', desc: 'Patient joins the same Meet link. Discuss, prescribe, and write the visit note in the Consult page as normal.' },
+          ].map((item, i) => (
+            <div key={i} className="flex gap-3">
+              <div className="w-6 h-6 rounded-full bg-teal-100 text-teal-700 text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">{i + 1}</div>
+              <div>
+                <div className="text-sm font-semibold text-slate-800">{item.step}</div>
+                <div className="text-xs text-slate-500 mt-0.5">{item.desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Legal Tab ────────────────────────────────────────────────────────────────
 
 function LegalSection({ title, children }: { title: string; children: React.ReactNode }) {
@@ -1419,6 +1550,7 @@ const TABS: { id: Tab; label: string; icon: typeof Settings; desc: string }[] = 
   { id: 'rxpad',   label: 'Rx Pad',     icon: Pill,      desc: 'Letterhead & prescription format' },
   { id: 'staff',   label: 'My Staff',   icon: Users,     desc: 'Add & manage clinic team' },
   { id: 'clinics', label: 'My Clinics', icon: Building2, desc: 'Locations · schedule · patient caps' },
+  { id: 'video',   label: 'Video',      icon: Video,     desc: 'Google Meet · video consultations' },
   { id: 'legal',   label: 'Legal',      icon: Shield,    desc: 'Privacy · Cookies · Terms of Service' },
 ];
 
@@ -1477,6 +1609,7 @@ export default function SettingsPage() {
         {activeTab === 'rxpad'   && <RxPadTab />}
         {activeTab === 'staff'   && isClinicAdmin && <StaffTab />}
         {activeTab === 'clinics' && <ClinicsTab />}
+        {activeTab === 'video'   && <VideoTab />}
         {activeTab === 'legal'   && <LegalTab />}
       </div>
 
