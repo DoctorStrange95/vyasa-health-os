@@ -59,6 +59,7 @@ interface ConsultDraft {
   vitals: { bp: string; hr: string; temp: string; spo2: string; weight: string; height: string; rr: string; };
   comorbidities: string[];
   specialtyExam: Record<string, string>;
+  consultationType?: 'offline' | 'video';
 }
 
 const COMORBIDITY_OPTIONS = ['Diabetes (DM)', 'Hypertension (HTN)', 'Thyroid disorder', 'Asthma / COPD', 'Cardiac disease', 'CKD', 'Cancer', 'Epilepsy', 'Tuberculosis', 'Hepatitis B/C', 'HIV'];
@@ -279,6 +280,18 @@ export default function ConsultPage() {
     return () => { leavePatientRoom(patientId); };
   }, [patientId]);
 
+  // Re-sync visits for this patient when the doctor focuses the tab (cross-device sync).
+  // This ensures that if a visit was saved on phone, the computer shows it on next focus.
+  useEffect(() => {
+    if (!patientId || !isApiEnabled()) return;
+    const { syncFromBackend } = useAppStore.getState();
+    const handleFocus = () => {
+      syncFromBackend().catch(() => {});
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [patientId]);
+
   const patient = patients.find(p => p.id === patientId);
 
   // For booking-derived (apt-) or walk-in (WI) patients, the patient record may not exist yet.
@@ -421,13 +434,26 @@ export default function ConsultPage() {
     }
   }
 
-  // Pre-fill from patient data
+  // Pre-fill from patient data + auto-populate currentMeds from previous active Rx
   useEffect(() => {
     if (patient) {
+      const prevActiveMeds = prevRx
+        .filter(r => r.status === 'active')
+        .map(r => `${r.drug}${r.dose ? ' ' + r.dose : ''}${r.frequency ? ' ' + r.frequency : ''}`)
+        .join(', ');
+
+      // Derive consultation type from any appointment for this patient today
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const todayApt = appointments.find(a => a.patientId === patientId && a.date === todayStr);
+      const consultationType = todayApt?.consultationType ?? undefined;
+
       setDraft(d => ({
         ...d,
         allergiesNote: patient.allergies?.join(', ') ?? '',
         diagnosis: patient.diagnosis ?? '',
+        // Only auto-fill currentMeds if it's still empty (don't overwrite what doctor typed)
+        currentMeds: d.currentMeds.trim() ? d.currentMeds : (prevActiveMeds || d.currentMeds),
+        consultationType: d.consultationType ?? consultationType,
         vitals: prevVitals ? {
           bp: prevVitals.bp ?? '', hr: String(prevVitals.pulse ?? ''),
           temp: String(prevVitals.temp ?? ''), spo2: String(prevVitals.spo2 ?? ''),
@@ -483,6 +509,7 @@ export default function ConsultPage() {
       privateNote: todayVisit.privateNote ?? '',
       comorbidities: todayVisit.comorbidities ?? [],
       specialtyExam: todayVisit.specialtyExam ?? {},
+      consultationType: todayVisit.consultationType ?? d.consultationType,
       vitals: todayVisit.vitalsSnapshot ? {
         bp: todayVisit.vitalsSnapshot.bp ?? '',
         hr: todayVisit.vitalsSnapshot.hr ?? '',
@@ -656,6 +683,7 @@ export default function ConsultPage() {
       referral: referForm.specialty || referForm.reason ? referForm : undefined,
       privateNote: draft.privateNote,
       specialtyExam: Object.keys(draft.specialtyExam).length ? draft.specialtyExam : undefined,
+      consultationType: draft.consultationType,
     };
 
     if (editVisitId) {
@@ -1288,7 +1316,6 @@ export default function ConsultPage() {
               { key: 'familyHistory', label: 'Family History',       placeholder: 'DM, IHD, Cancer in family…' },
               { key: 'socialHistory', label: 'Social History',       placeholder: 'Smoker, alcohol, occupation, travel…' },
               { key: 'allergiesNote', label: 'Known Allergies',      placeholder: 'Penicillin, Sulpha, NSAIDs, food…' },
-              { key: 'currentMeds',   label: 'Current Medications',  placeholder: 'Medications patient is already on…' },
             ] as const).map(f => (
               <div key={f.key}>
                 <div className="flex items-center justify-between mb-1">
@@ -1303,6 +1330,46 @@ export default function ConsultPage() {
                   rows={2} className="input resize-none text-sm w-full" placeholder={f.placeholder} />
               </div>
             ))}
+
+            {/* Current / Ongoing Medications — shown here for OPD with quick-add pills */}
+            <div className="sm:col-span-2">
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-medium text-slate-600 block">Current / Ongoing Medications</label>
+                <button type="button" onClick={() => set('currentMeds', 'None')}
+                  className="text-[10px] font-semibold text-teal-600 hover:text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded px-1.5 py-0.5">
+                  None
+                </button>
+              </div>
+              {/* Quick-add pills from previous active Rx */}
+              {prevRx.filter(r => r.status === 'active').length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {prevRx.filter(r => r.status === 'active').map(r => {
+                    const label = `${r.drug}${r.dose ? ' ' + r.dose : ''}${r.frequency ? ' ' + r.frequency : ''}`;
+                    const alreadyAdded = draft.currentMeds.includes(r.drug);
+                    return (
+                      <button key={r.id} type="button"
+                        onClick={() => {
+                          if (alreadyAdded) return;
+                          const existing = draft.currentMeds.trim();
+                          set('currentMeds', existing ? `${existing}, ${label}` : label);
+                        }}
+                        className={cn(
+                          'text-[11px] font-medium rounded-full px-2.5 py-1 border transition-all',
+                          alreadyAdded
+                            ? 'bg-teal-100 border-teal-300 text-teal-700 cursor-default'
+                            : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-teal-50 hover:border-teal-300 hover:text-teal-700'
+                        )}>
+                        {alreadyAdded ? '✓ ' : '+ '}{label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              <textarea value={draft.currentMeds}
+                onChange={e => set('currentMeds', e.target.value)}
+                rows={2} className="input resize-none text-sm w-full"
+                placeholder="Medications patient is already on (e.g. Tab. Metformin 500mg BD)…" />
+            </div>
           </div>
         </Section>}
 
@@ -1461,6 +1528,58 @@ export default function ConsultPage() {
         {/* 8. Prescription */}
         <Section id="s-rx" title="Prescription" icon={Pill} filled={filled.rx}>
           <div className="pt-4 space-y-3">
+            {/* Ongoing / current medications — quick summary at top of Rx for all patients */}
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs font-semibold text-amber-800">Ongoing Medications</span>
+                <div className="flex gap-1">
+                  <button type="button" onClick={() => set('currentMeds', 'None')}
+                    className="text-[10px] font-semibold text-amber-700 hover:text-amber-900 bg-amber-100 hover:bg-amber-200 border border-amber-300 rounded px-1.5 py-0.5">None</button>
+                  {prevRx.filter(r => r.status === 'active').length > 0 && (
+                    <button type="button"
+                      onClick={() => {
+                        const active = prevRx.filter(r => r.status === 'active');
+                        const labels = active.map(r => `${r.drug}${r.dose ? ' ' + r.dose : ''}${r.frequency ? ' ' + r.frequency : ''}`).join(', ');
+                        set('currentMeds', labels);
+                      }}
+                      className="text-[10px] font-semibold text-teal-700 hover:text-teal-900 bg-teal-50 hover:bg-teal-100 border border-teal-300 rounded px-1.5 py-0.5">
+                      Import from previous Rx
+                    </button>
+                  )}
+                </div>
+              </div>
+              {/* Quick-add pills from active prescriptions */}
+              {prevRx.filter(r => r.status === 'active').length > 0 && (
+                <div className="flex flex-wrap gap-1 mb-2">
+                  {prevRx.filter(r => r.status === 'active').slice(0, 8).map(r => {
+                    const label = `${r.drug}${r.dose ? ' ' + r.dose : ''}${r.frequency ? ' ' + r.frequency : ''}`;
+                    const added = draft.currentMeds.includes(r.drug);
+                    return (
+                      <button key={r.id} type="button"
+                        onClick={() => {
+                          if (added) return;
+                          const existing = draft.currentMeds.trim();
+                          set('currentMeds', existing && existing !== 'None' ? `${existing}, ${label}` : label);
+                        }}
+                        className={cn(
+                          'text-[11px] rounded-full px-2.5 py-0.5 border transition-all',
+                          added ? 'bg-teal-100 border-teal-300 text-teal-700 cursor-default font-semibold'
+                               : 'bg-white border-amber-200 text-amber-800 hover:bg-teal-50 hover:border-teal-300 hover:text-teal-700'
+                        )}>
+                        {added ? '✓ ' : '+ '}{label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              <input
+                type="text"
+                value={draft.currentMeds}
+                onChange={e => set('currentMeds', e.target.value)}
+                className="input text-sm w-full"
+                placeholder="Type medications patient is already taking…"
+              />
+            </div>
             <ReadyMixPanel
               onAddDrug={(drug) => {
                 set('rxRows', [...draft.rxRows.filter(r => r.drug.trim()), { ...BLANK_RX_ROW(), drug: drug.drug ?? '', dose: drug.dose ?? '', route: drug.route ?? 'Oral', frequency: drug.frequency ?? 'OD', duration: drug.duration ?? '5 days', instructions: drug.instructions ?? '' }]);
@@ -1501,13 +1620,33 @@ export default function ConsultPage() {
 
             {prevRx.length > 0 && (
               <div className="mt-2">
-                <div className="text-xs font-medium text-slate-500 mb-2">Active from previous visits</div>
+                <div className="text-xs font-medium text-slate-500 mb-2 flex items-center gap-2">
+                  Active from previous visits
+                  <span className="text-slate-400 font-normal">(tap + to carry forward)</span>
+                </div>
                 <div className="flex flex-wrap gap-2">
-                  {prevRx.filter(r => r.status === 'active').map(r => (
-                    <span key={r.id} className="text-xs bg-teal-50 text-teal-700 border border-teal-200 px-2.5 py-1 rounded-full">
-                      {r.drug} {r.dose} {r.frequency}
-                    </span>
-                  ))}
+                  {prevRx.filter(r => r.status === 'active').map(r => {
+                    const alreadyAdded = draft.rxRows.some(row => row.drug.trim().toLowerCase() === r.drug.trim().toLowerCase());
+                    return (
+                      <button key={r.id} type="button"
+                        disabled={alreadyAdded}
+                        onClick={() => {
+                          if (!alreadyAdded) {
+                            set('rxRows', [...draft.rxRows, { ...BLANK_RX_ROW(), drug: r.drug, dose: r.dose ?? '', route: r.route ?? 'Oral', frequency: r.frequency ?? 'OD', duration: r.duration ?? '5 days', instructions: r.instructions ?? '' }]);
+                          }
+                        }}
+                        className={cn(
+                          'text-xs px-2.5 py-1 rounded-full border transition-all flex items-center gap-1.5',
+                          alreadyAdded
+                            ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-default'
+                            : 'bg-teal-50 text-teal-700 border-teal-200 hover:bg-teal-100 cursor-pointer'
+                        )}>
+                        {!alreadyAdded && <Plus className="w-3 h-3" />}
+                        {r.drug} {r.dose} {r.frequency}
+                        {alreadyAdded && <span className="text-slate-400">✓</span>}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}

@@ -398,14 +398,25 @@ export const useAppStore = create<AppState>()(
       }
     });
   },
-  updateVisit: (id, patch) => set(s => ({
-    visits: Object.fromEntries(
-      Object.entries(s.visits).map(([pid, list]) => [
-        pid,
-        list.map(v => v.id === id ? { ...v, ...patch } : v),
-      ])
-    ),
-  })),
+  updateVisit: (id, patch) => {
+    set(s => ({
+      visits: Object.fromEntries(
+        Object.entries(s.visits).map(([pid, list]) => [
+          pid,
+          list.map(v => v.id === id ? { ...v, ...patch } : v),
+        ])
+      ),
+    }));
+    // Push update to backend so other devices get the latest version
+    import('@/lib/api').then(({ isApiEnabled, api }) => {
+      if (isApiEnabled()) {
+        api.patch(`/visits/${id}`, patch).catch((e) => {
+          const err = e instanceof Error ? e.message : String(e);
+          console.warn('Visit update sync error:', err);
+        });
+      }
+    });
+  },
   setTodayAvailability: (a) => set({ todayAvailability: a }),
   assignNurse: (patientId, nurseId, nurseName) => {
     set(s => ({

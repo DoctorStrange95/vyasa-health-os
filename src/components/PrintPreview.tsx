@@ -2,7 +2,7 @@ import { useRef, useState, useEffect } from 'react';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePadStore } from '@/store/usePadStore';
 import { api, trackEvent } from '@/lib/api';
-import { Printer, Send, X, ChevronDown, Settings2 } from 'lucide-react';
+import { Printer, Send, X, ChevronDown, Settings2, Share2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { VaccineEntry, ProcedureEntry } from '@/types';
 
@@ -23,6 +23,7 @@ interface PrintSections {
   vaccines: boolean;
   procedures: boolean;
   referral: boolean;
+  examSection: boolean;
 }
 
 interface ConsultDraft {
@@ -40,6 +41,7 @@ interface ConsultDraft {
   // Optional — present from the live consult; may be absent when printing an old visit.
   generalExam?: string;
   systemicExam?: string;
+  specialtyExam?: Record<string, string>;
   bodyNotes?: Record<string, string>;
   bodySigns?: string[];
   comorbidities?: string[];
@@ -49,6 +51,7 @@ interface ConsultDraft {
   socialHistory?: string;
   allergiesNote?: string;
   currentMeds?: string;
+  consultationType?: 'offline' | 'video';
 }
 
 interface PrintPreviewProps {
@@ -75,7 +78,7 @@ const cleanDrug = (name: string) =>
 const CONC_RE = /\s*\d+(?:\.\d+)?\s*(?:mg|mcg|IU|g)\s*\/\s*\d+(?:\.\d+)?\s*(?:mL|ml|L|g)\b/gi;
 const stripConc = (name: string) => name.replace(CONC_RE, '').replace(/\s+/g, ' ').trim();
 
-export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, clinicPhone, onClose, onWhatsApp, onEndConsult, specialtyExam: _specialtyExam, vaccines: _vaccines = [], procedures: _procedures = [] }: PrintPreviewProps) {
+export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, clinicPhone, onClose, onWhatsApp, onEndConsult, specialtyExam: _specialtyExam, vaccines = [], procedures = [] }: PrintPreviewProps) {
   const printRef = useRef<HTMLDivElement>(null);
   const { eSignUrl } = usePadStore();
   const theme = THEME_COLORS[pad.theme] ?? THEME_COLORS.teal;
@@ -90,6 +93,7 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
     hopi: false,
     vitalsRow: true,
     specialtyExam: true,
+    examSection: true,
     diagnosis: true,
     rx: true,
     investigation: true,
@@ -109,7 +113,8 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
     { key: 'complaint', label: 'Chief Complaint' },
     { key: 'hopi', label: 'History (HOPI)' },
     { key: 'vitalsRow', label: 'Vitals Row' },
-    { key: 'specialtyExam', label: 'Examination' },
+    { key: 'examSection', label: 'Examination' },
+    { key: 'specialtyExam', label: 'Specialty Exam' },
     { key: 'diagnosis', label: 'Diagnosis' },
     { key: 'rx', label: 'Prescription (Rx)' },
     { key: 'investigation', label: 'Investigations' },
@@ -169,12 +174,14 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
     const ptAgeGender = [patientAge ? `${patientAge} Yrs` : '', patient.gender === 'M' ? 'Male' : patient.gender === 'F' ? 'Female' : patient.gender || ''].filter(Boolean).join(', ');
     const allergies = esc(draft.allergiesNote || patient.allergies?.join(', ') || 'None');
     const currentMeds = esc(draft.currentMeds || 'None');
+    const consultTypeLabel = draft.consultationType === 'video' ? 'Video Consultation' : draft.consultationType === 'offline' ? 'In-Person Visit' : '';
 
     const patientHtml = `
       <div style="padding:12px 20px 8px;display:flex;justify-content:space-between;align-items:flex-start;">
         <div>
           <div style="font-size:14px;font-weight:700;color:#0f172a;">${ptName}</div>
           <div style="font-size:12px;color:#64748b;margin-top:1px;">${esc(ptAgeGender)}</div>
+          ${consultTypeLabel ? `<div style="font-size:11px;color:#0d9488;margin-top:3px;font-weight:600;">◉ ${esc(consultTypeLabel)}</div>` : ''}
           <div style="font-size:12px;color:#475569;margin-top:8px;"><strong>Drug Allergies</strong> • ${allergies}</div>
           <div style="font-size:12px;color:#475569;margin-top:2px;"><strong>Ongoing Medication</strong> • ${currentMeds}</div>
         </div>
@@ -278,6 +285,78 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
     }
     if (extraBody) extraBody += `<div style="border-top:1px solid #e2e8f0;margin:12px 20px 0;"></div>`;
 
+    // ── EXAMINATION ─────────────────────────────────────────────────────────
+    let examHtml = '';
+    const hasGenExam = ps.examSection && draft.generalExam;
+    const hasSysExam = ps.examSection && draft.systemicExam;
+    const hasSpecExam = ps.specialtyExam && draft.specialtyExam && Object.keys(draft.specialtyExam).length > 0;
+    if (hasGenExam || hasSysExam || hasSpecExam) {
+      examHtml += `<div style="padding:10px 20px 0;"><div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:6px;">Examination Findings</div>`;
+      if (hasGenExam) examHtml += `<div style="margin-bottom:4px;"><span style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.04em;">General Examination</span><div style="font-size:12px;color:#374151;margin-top:2px;">${esc(draft.generalExam)}</div></div>`;
+      if (hasSysExam) examHtml += `<div style="margin-bottom:4px;"><span style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.04em;">Systemic Examination</span><div style="font-size:12px;color:#374151;margin-top:2px;">${esc(draft.systemicExam)}</div></div>`;
+      if (hasSpecExam) {
+        const specRows = Object.entries(draft.specialtyExam!).filter(([, v]) => v?.trim()).map(([k, v]) =>
+          `<div style="margin-bottom:3px;font-size:12px;color:#374151;"><strong style="color:#475569;">${esc(k)}:</strong> ${esc(v)}</div>`
+        ).join('');
+        if (specRows) examHtml += `<div><span style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.04em;">Specialty Findings</span><div style="margin-top:2px;">${specRows}</div></div>`;
+      }
+      examHtml += `</div><div style="border-top:1px solid #e2e8f0;margin:10px 20px 0;"></div>`;
+    }
+
+    // ── VACCINES ─────────────────────────────────────────────────────────────
+    let vaccinesHtml = '';
+    if (ps.vaccines && vaccines.length > 0) {
+      const vaxRows = vaccines.map((v, i) => `
+        <tr style="border-bottom:1px solid #f1f5f9;">
+          <td style="padding:6px 8px 6px 0;font-size:12px;color:#64748b;width:32px;">${i + 1}</td>
+          <td style="padding:6px 8px 6px 0;font-size:12px;font-weight:600;color:#0f172a;">${esc(v.name)}</td>
+          <td style="padding:6px 8px 6px 0;font-size:12px;color:#374151;">${esc(v.batchNo || '—')}</td>
+          <td style="padding:6px 0 6px 0;font-size:12px;color:#374151;">${esc(v.site || '')}</td>
+        </tr>`).join('');
+      vaccinesHtml = `
+        <div style="padding:10px 20px 0;">
+          <div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:6px;">Vaccines Given</div>
+          <table style="width:100%;border-collapse:collapse;">
+            <thead>
+              <tr style="border-bottom:1.5px solid #e2e8f0;background:#f8fafc;">
+                <th style="text-align:left;padding:5px 8px 5px 0;font-size:11px;font-weight:600;color:#64748b;width:32px;">#</th>
+                <th style="text-align:left;padding:5px 8px 5px 0;font-size:11px;font-weight:600;color:#64748b;">Vaccine</th>
+                <th style="text-align:left;padding:5px 8px 5px 0;font-size:11px;font-weight:600;color:#64748b;">Batch No.</th>
+                <th style="text-align:left;padding:5px 0 5px 0;font-size:11px;font-weight:600;color:#64748b;">Site</th>
+              </tr>
+            </thead>
+            <tbody>${vaxRows}</tbody>
+          </table>
+        </div>
+        <div style="border-top:1px solid #e2e8f0;margin:10px 20px 0;"></div>`;
+    }
+
+    // ── PROCEDURES ───────────────────────────────────────────────────────────
+    let proceduresHtml = '';
+    if (ps.procedures && procedures.length > 0) {
+      const procRows = procedures.map((p, i) => `
+        <tr style="border-bottom:1px solid #f1f5f9;">
+          <td style="padding:6px 8px 6px 0;font-size:12px;color:#64748b;width:32px;">${i + 1}</td>
+          <td style="padding:6px 8px 6px 0;font-size:12px;font-weight:600;color:#0f172a;">${esc(p.name)}</td>
+          <td style="padding:6px 0 6px 0;font-size:12px;color:#374151;">${esc(p.notes || '')}</td>
+        </tr>`).join('');
+      proceduresHtml = `
+        <div style="padding:10px 20px 0;">
+          <div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:6px;">Procedures Performed</div>
+          <table style="width:100%;border-collapse:collapse;">
+            <thead>
+              <tr style="border-bottom:1.5px solid #e2e8f0;background:#f8fafc;">
+                <th style="text-align:left;padding:5px 8px 5px 0;font-size:11px;font-weight:600;color:#64748b;width:32px;">#</th>
+                <th style="text-align:left;padding:5px 8px 5px 0;font-size:11px;font-weight:600;color:#64748b;">Procedure</th>
+                <th style="text-align:left;padding:5px 0 5px 0;font-size:11px;font-weight:600;color:#64748b;">Notes</th>
+              </tr>
+            </thead>
+            <tbody>${procRows}</tbody>
+          </table>
+        </div>
+        <div style="border-top:1px solid #e2e8f0;margin:10px 20px 0;"></div>`;
+    }
+
     // ── SIGNATURE BLOCK ─────────────────────────────────────────────────────
     const signatureHtml = `
       <div style="padding:16px 20px 8px;">
@@ -328,7 +407,10 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
         ${patientHtml}
         ${vitalsHtml}
         ${complaintHtml}
+        ${examHtml}
         ${rxHtml}
+        ${vaccinesHtml}
+        ${proceduresHtml}
         ${extraBody}
         ${signatureHtml}
         ${noteHtml}
@@ -354,12 +436,89 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
     doc.write(html);
     doc.close();
     const win = iframe.contentWindow!;
-    const cleanup = () => { setTimeout(() => { try { document.body.removeChild(iframe); } catch {} }, 1000); };
-    setTimeout(() => {
+    // Use onload instead of a fixed timeout — works on slow mobile connections
+    const cleanup = () => { setTimeout(() => { try { document.body.removeChild(iframe); } catch {} }, 2000); };
+    win.onload = () => {
       win.focus();
       win.print();
       cleanup();
-    }, 350);
+    };
+    // Fallback: if onload doesn't fire within 1.5s, trigger print anyway
+    setTimeout(() => {
+      if (document.body.contains(iframe)) {
+        win.focus();
+        win.print();
+        cleanup();
+      }
+    }, 1500);
+  }
+
+  // Generate a PDF blob from the prescription HTML and share via Web Share API
+  // (native share sheet on mobile → WhatsApp, email, etc.).
+  // Falls back to opening the print dialog if Web Share API is not supported.
+  async function doSharePdf() {
+    trackEvent('rx_shared_pdf', { rx_count: draft.rxRows.filter(r => r.drug.trim()).length });
+    const html = buildPrintHtml();
+
+    try {
+      // Render into a hidden iframe to get a DOM element we can canvas-ify
+      const iframe = document.createElement('iframe');
+      iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;height:1123px;border:0;';
+      document.body.appendChild(iframe);
+      const idoc = iframe.contentWindow?.document;
+      if (!idoc) { document.body.removeChild(iframe); doPrint(); return; }
+      idoc.open(); idoc.write(html); idoc.close();
+
+      // Wait for iframe content (images) to load
+      await new Promise<void>(resolve => {
+        if (iframe.contentWindow?.document.readyState === 'complete') { resolve(); return; }
+        iframe.contentWindow!.onload = () => resolve();
+        setTimeout(resolve, 2000);
+      });
+
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+        import('html2canvas'),
+        import('jspdf'),
+      ]);
+
+      const canvas = await html2canvas(idoc.body, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff',
+        width: 794,
+        windowWidth: 794,
+      });
+      document.body.removeChild(iframe);
+
+      const imgData = canvas.toDataURL('image/jpeg', 0.92);
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'px', format: [794, canvas.height / 2] });
+      pdf.addImage(imgData, 'JPEG', 0, 0, 794, canvas.height / 2);
+      const pdfBlob = pdf.output('blob');
+
+      const fileName = `Prescription_${(patient.name || 'Patient').replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`;
+      const file = new File([pdfBlob], fileName, { type: 'application/pdf' });
+
+      // Web Share API — native share sheet (Android/iOS Chrome, Safari 15.1+)
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: `Prescription – ${patient.name || 'Patient'}` });
+      } else if (navigator.share) {
+        // Web Share v1 — share URL only (no file support)
+        const url = URL.createObjectURL(pdfBlob);
+        await navigator.share({ title: `Prescription – ${patient.name || 'Patient'}`, url });
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+      } else {
+        // Desktop fallback — trigger download
+        const url = URL.createObjectURL(pdfBlob);
+        const a = document.createElement('a');
+        a.href = url; a.download = fileName; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+      }
+    } catch (err) {
+      console.warn('[vyasa] PDF share failed, falling back to print:', err);
+      // If something goes wrong, fall back to the regular print dialog
+      doPrint();
+    }
   }
 
   const doctorDisplayName = pad.doctorName || 'Dr. ';
@@ -391,6 +550,9 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
           <div className="flex items-center gap-2">
             <button onClick={doPrint} className="btn-primary btn-sm">
               <Printer className="w-3.5 h-3.5" /> Print / PDF
+            </button>
+            <button onClick={doSharePdf} className="btn-secondary btn-sm text-indigo-700 border-indigo-300 hover:bg-indigo-50">
+              <Share2 className="w-3.5 h-3.5" /> Share PDF
             </button>
             {onWhatsApp && (
               <button onClick={() => { onClose(); onWhatsApp(); }} className="btn-secondary btn-sm text-emerald-700 border-emerald-300 hover:bg-emerald-50">
@@ -495,6 +657,11 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
                 <div style={{ fontSize: 12, color: '#64748b', marginTop: 1 }}>
                   {[patientAge ? `${patientAge} Yrs` : '', patient.gender === 'M' ? 'Male' : patient.gender === 'F' ? 'Female' : patient.gender || ''].filter(Boolean).join(', ')}
                 </div>
+                {draft.consultationType && (
+                  <div style={{ fontSize: 11, color: '#0d9488', marginTop: 3, fontWeight: 600 }}>
+                    ◉ {draft.consultationType === 'video' ? 'Video Consultation' : 'In-Person Visit'}
+                  </div>
+                )}
                 <div style={{ fontSize: 12, color: '#475569', marginTop: 8 }}>
                   <strong>Drug Allergies</strong> • {draft.allergiesNote || (patient.allergies?.join(', ')) || 'None'}
                 </div>
@@ -610,6 +777,95 @@ export function PrintPreview({ patient, draft, pad, clinicName, clinicAddress, c
             )}
 
             <hr style={{ margin: '14px 20px 0', border: 'none', borderTop: '1px solid #e2e8f0' }} />
+
+            {/* ── Examination ── */}
+            {ps.examSection && (draft.generalExam || draft.systemicExam) && (
+              <>
+                <div style={{ padding: '10px 20px 0' }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>Examination Findings</div>
+                  {draft.generalExam && (
+                    <div style={{ marginBottom: 4 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>General Examination</div>
+                      <div style={{ fontSize: 12, color: '#374151', marginTop: 2 }}>{draft.generalExam}</div>
+                    </div>
+                  )}
+                  {draft.systemicExam && (
+                    <div style={{ marginBottom: 4 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Systemic Examination</div>
+                      <div style={{ fontSize: 12, color: '#374151', marginTop: 2 }}>{draft.systemicExam}</div>
+                    </div>
+                  )}
+                  {ps.specialtyExam && draft.specialtyExam && Object.entries(draft.specialtyExam).filter(([, v]) => v?.trim()).length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Specialty Findings</div>
+                      <div style={{ marginTop: 2 }}>
+                        {Object.entries(draft.specialtyExam).filter(([, v]) => v?.trim()).map(([k, v]) => (
+                          <div key={k} style={{ fontSize: 12, color: '#374151', marginBottom: 2 }}><strong style={{ color: '#475569' }}>{k}:</strong> {v}</div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <hr style={{ margin: '10px 20px 0', border: 'none', borderTop: '1px solid #e2e8f0' }} />
+              </>
+            )}
+
+            {/* ── Vaccines ── */}
+            {ps.vaccines && vaccines.length > 0 && (
+              <>
+                <div style={{ padding: '10px 20px 0' }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>Vaccines Given</div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' as const }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1.5px solid #e2e8f0', background: '#f8fafc' }}>
+                        {['#', 'Vaccine', 'Batch No.', 'Site'].map(h => (
+                          <th key={h} style={{ textAlign: 'left', padding: '5px 8px 5px 0', fontSize: 11, fontWeight: 600, color: '#64748b' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {vaccines.map((v, i) => (
+                        <tr key={v.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '6px 8px 6px 0', fontSize: 12, color: '#64748b', width: 32 }}>{i + 1}</td>
+                          <td style={{ padding: '6px 8px 6px 0', fontSize: 12, fontWeight: 600, color: '#0f172a' }}>{v.name}</td>
+                          <td style={{ padding: '6px 8px 6px 0', fontSize: 12, color: '#374151' }}>{v.batchNo || '—'}</td>
+                          <td style={{ padding: '6px 0', fontSize: 12, color: '#374151' }}>{v.site || ''}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <hr style={{ margin: '10px 20px 0', border: 'none', borderTop: '1px solid #e2e8f0' }} />
+              </>
+            )}
+
+            {/* ── Procedures ── */}
+            {ps.procedures && procedures.length > 0 && (
+              <>
+                <div style={{ padding: '10px 20px 0' }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>Procedures Performed</div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' as const }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1.5px solid #e2e8f0', background: '#f8fafc' }}>
+                        {['#', 'Procedure', 'Notes'].map(h => (
+                          <th key={h} style={{ textAlign: 'left', padding: '5px 8px 5px 0', fontSize: 11, fontWeight: 600, color: '#64748b' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {procedures.map((p, i) => (
+                        <tr key={p.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '6px 8px 6px 0', fontSize: 12, color: '#64748b', width: 32 }}>{i + 1}</td>
+                          <td style={{ padding: '6px 8px 6px 0', fontSize: 12, fontWeight: 600, color: '#0f172a' }}>{p.name}</td>
+                          <td style={{ padding: '6px 0', fontSize: 12, color: '#374151' }}>{p.notes || ''}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <hr style={{ margin: '10px 20px 0', border: 'none', borderTop: '1px solid #e2e8f0' }} />
+              </>
+            )}
 
             {/* ── Signature ── */}
             <div style={{ padding: '16px 20px 8px' }}>

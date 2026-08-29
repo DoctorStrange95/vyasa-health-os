@@ -121,6 +121,11 @@ export const useAuthStore = create<AuthState>()(
         import('./useAppStore').then(({ useAppStore }) =>
           useAppStore.getState().syncFromBackend()
         );
+        // Always sync pad settings on login so degrees/specialty are up-to-date across devices
+        import('./usePadStore').then(({ usePadStore }) => {
+          usePadStore.getState().syncPadFromApi();
+          usePadStore.getState().syncClinicsFromApi();
+        });
       },
 
       // ─── Real backend register ─────────────────────────────────────────────
@@ -137,6 +142,9 @@ export const useAuthStore = create<AuthState>()(
         import('./useAppStore').then(({ useAppStore }) =>
           useAppStore.getState().syncFromBackend()
         );
+        import('./usePadStore').then(({ usePadStore }) => {
+          usePadStore.getState().syncPadFromApi();
+        });
       },
 
       // ─── Google OAuth ──────────────────────────────────────────────────────
@@ -165,6 +173,10 @@ export const useAuthStore = create<AuthState>()(
         import('./useAppStore').then(({ useAppStore }) =>
           useAppStore.getState().syncFromBackend()
         );
+        import('./usePadStore').then(({ usePadStore }) => {
+          usePadStore.getState().syncPadFromApi();
+          usePadStore.getState().syncClinicsFromApi();
+        });
         return { isNewUser: false };
       },
 

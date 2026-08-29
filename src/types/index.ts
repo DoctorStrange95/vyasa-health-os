@@ -257,6 +257,7 @@ export interface VisitRecord {
   admitted?: boolean;
   privateNote?: string;
   specialtyExam?: Record<string, string>;
+  consultationType?: 'offline' | 'video';
 }
 
 // ─── MAR ─────────────────────────────────────────────────────────────────────
