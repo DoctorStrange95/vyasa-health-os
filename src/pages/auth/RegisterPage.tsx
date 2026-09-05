@@ -292,6 +292,7 @@ function DoctorForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =
     name: '', email: '', phone: '', specialty: '', degrees: '',
     mciNumber: '', medicalCouncil: '', otherCouncil: '', regState: '', hospital: '', city: '', state: '',
     password: '', confirm: '',
+    consultationFee: '', onlineFee: '', videoMeetLink: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -345,6 +346,7 @@ function DoctorForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =
         regState: form.regState,
         state: form.state,
         city: form.city?.trim(),
+        clinicName: form.hospital?.trim(),
         role: 'clinic_admin',
       });
       setDone(true);
@@ -443,6 +445,33 @@ function DoctorForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =
           <Field label="Primary Hospital / Clinic">
             <input className="input" placeholder="e.g. Apollo, Fortis, or your own clinic name" value={form.hospital} onChange={e => set('hospital', e.target.value)} />
           </Field>
+        </div>
+
+        {/* Consultation Fees + Video */}
+        <div className="card p-4 space-y-4">
+          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Consultation Fees</h3>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="In-Clinic Fee (₹)">
+              <input type="number" className="input" placeholder="e.g. 500" min={0}
+                value={form.consultationFee} onChange={e => set('consultationFee', e.target.value)} />
+            </Field>
+            <Field label="Online / Video Fee (₹)">
+              <input type="number" className="input" placeholder="e.g. 300" min={0}
+                value={form.onlineFee} onChange={e => set('onlineFee', e.target.value)} />
+            </Field>
+          </div>
+          <div>
+            <label className="label flex items-center gap-2">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+              Google Meet Link <span className="text-slate-400 font-normal normal-case tracking-normal">(for video consultations)</span>
+            </label>
+            <input type="url" className="input"
+              placeholder="https://meet.google.com/abc-defg-hij  (optional — add later in Settings too)"
+              value={form.videoMeetLink} onChange={e => set('videoMeetLink', e.target.value)} />
+            <p className="text-xs text-slate-400 mt-1">
+              Create a reusable room at <a href="https://meet.google.com" target="_blank" rel="noopener noreferrer" className="text-teal-600 font-medium">meet.google.com</a> → "Create a meeting for later". You can skip this and add it later in Settings.
+            </p>
+          </div>
         </div>
 
         {/* Password */}

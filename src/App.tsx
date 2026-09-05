@@ -96,11 +96,11 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
     const resync = () => {
       if (document.visibilityState !== 'visible') return;
       if (Date.now() - last < 20000) return;
-      // Protect unsaved work: never refresh while the user is typing in a field,
-      // or while on a data-entry screen (consult / round / patient registration).
+      // Protect unsaved work: never refresh while the user is typing in a field.
+      // NOTE: We intentionally DO sync on consult/round/register paths now —
+      // blocking sync on those pages caused mobile→desktop data to never appear.
       const ae = document.activeElement as HTMLElement | null;
       if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return;
-      if (/\/(consult|round|register)/.test(window.location.pathname)) return;
       last = Date.now();
       useAppStore.getState().syncFromBackend();
     };
