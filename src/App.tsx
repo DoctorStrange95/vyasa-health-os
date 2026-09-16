@@ -82,7 +82,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
     const hasDemoData =
       state.patients.some(p => /^P\d{3}$/.test(p.id)) ||
       state.alerts.some(a => /^A\d$/.test(a.id)) ||
-      state.queue.some(q => /^Q\d/.test(q.id ?? ''));
+      state.queue.some(q => /^Q[1-9]$/.test(q.id ?? ''));  // demo IDs are Q1–Q9, real ones are Q+timestamp
     if (hasDemoData) state.resetStore();
     state.syncFromBackend();
   }, [isDemo, patients.length, loadDemo, user?.id, user?.name, user]);

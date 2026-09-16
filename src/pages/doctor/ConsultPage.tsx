@@ -27,7 +27,7 @@ import { FavDrugsPanel } from '@/components/prescription/FavDrugsPanel';
 import { ReadyMixPanel } from '@/components/prescription/ReadyMixPanel';
 import { SpecialtyExamSection, detectSpecialty, specialtyLabel, ALL_SPECIALTY_MODULES, MODULE_META, SPECIALTY_COLORS } from '@/components/prescription/SpecialtyExamSection';
 import type { SpecialtyKey } from '@/components/prescription/SpecialtyExamSection';
-import { cn, formatDateTime } from '@/lib/utils';
+import { cn, formatDateTime, localDate } from '@/lib/utils';
 import { api, isApiEnabled, trackEvent } from '@/lib/api';
 import { connectSocket, joinPatientRoom, leavePatientRoom } from '@/lib/socket';
 import type { VaccineEntry, ProcedureEntry, AttachmentEntry, VisitRecord, LabOrder, Vitals } from '@/types';
@@ -268,7 +268,7 @@ export default function ConsultPage() {
   useEffect(() => {
     if (!patientId || !isApiEnabled()) return;
     api.get<Vitals[]>(`/vitals/patient/${patientId}`).then(rows => { if (rows.length) setVitals(patientId, rows); }).catch(() => {});
-  }, [patientId]);
+  }, [patientId, setVitals]);
 
   // Join the patient's socket room so live vitals from nurses appear automatically
   // while the doctor has the consult open. Also re-fetches vitals if the doctor
@@ -466,7 +466,7 @@ export default function ConsultPage() {
 
   // Detect and load today's existing visit (edit mode)
   useEffect(() => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localDate();
     const todayVisit = (visits[patientId ?? ''] ?? []).find(v => v.date.startsWith(today));
     if (!todayVisit) { setEditVisitId(null); return; }
     const p = useAppStore.getState().patients.find(p => p.id === patientId);
@@ -547,17 +547,20 @@ export default function ConsultPage() {
   }, []);
 
   // Keyboard shortcuts: Shift+A = add drug row, Shift+S = save/finalise, Shift+P = print
+  // Use a ref so the handler always calls the latest handleFinalize without stale closure.
+  const handleFinalizeRef = useRef<() => void>(() => {});
+  useEffect(() => { handleFinalizeRef.current = handleFinalize; });
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (!e.shiftKey) return;
       if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') return;
       if (e.key === 'A') { e.preventDefault(); addRxRow(); }
-      if (e.key === 'S') { e.preventDefault(); handleFinalize(); }
+      if (e.key === 'S') { e.preventDefault(); handleFinalizeRef.current(); }
       if (e.key === 'P') { e.preventDefault(); setShowPrint(true); }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [draft]);
+  }, []);
 
   function addRxRow() {
     set('rxRows', [...draft.rxRows, BLANK_RX_ROW()]);
@@ -634,18 +637,21 @@ export default function ConsultPage() {
       });
     }
 
-    // Save prescriptions
+    // Save prescriptions — only on NEW visits to avoid duplicates in edit mode.
+    // In edit mode the full visit record (drugs array) is already updated via updateVisit.
     const activeDrugs = draft.rxRows.filter(r => r.drug.trim());
-    activeDrugs.forEach(r => {
-      addPrescription({
-        id: `rx-${Date.now()}-${Math.random()}`, patientId: patient.id,
-        drug: r.drug, dose: r.dose, route: r.route,
-        frequency: r.frequency, duration: r.duration,
-        instructions: r.instructions,
-        prescribedBy: user?.name ?? 'Doctor',
-        time: new Date().toISOString(), status: 'active',
+    if (!editVisitId) {
+      activeDrugs.forEach(r => {
+        addPrescription({
+          id: `rx-${Date.now()}-${Math.random()}`, patientId: patient.id,
+          drug: r.drug, dose: r.dose, route: r.route,
+          frequency: r.frequency, duration: r.duration,
+          instructions: r.instructions,
+          prescribedBy: user?.name ?? 'Doctor',
+          time: new Date().toISOString(), status: 'active',
+        });
       });
-    });
+    }
     if (activeDrugs.length > 0) {
       recordPrescriptionUsage(activeDrugs.map(r => ({ drug: r.drug, dose: r.dose, route: r.route, frequency: r.frequency, duration: r.duration, instructions: r.instructions })), draft.diagnosis);
     }

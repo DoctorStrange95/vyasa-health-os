@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { UserPlus, ClipboardList, Activity, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
+import { useAuthStore } from '@/store/useAuthStore';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import type { Patient } from '@/types';
@@ -15,6 +16,7 @@ type Step = 'personal' | 'clinical' | 'confirm';
 
 export default function AdmitPage() {
   const { upsertPatient, beds, showToast } = useAppStore();
+  const { user } = useAuthStore();
   const navigate = useNavigate();
   const [step, setStep] = useState<Step>('personal');
   const [saving, setSaving] = useState(false);
@@ -46,15 +48,20 @@ export default function AdmitPage() {
       id: `p-${Date.now()}`,
       mrn: `REG-${Date.now().toString().slice(-6)}`,
       name: form.name,
-      age: 0,
+      age: form.dob ? Math.floor((Date.now() - new Date(form.dob).getTime()) / (365.25 * 24 * 3600 * 1000)) : 0,
       gender: form.gender,
       phone: form.phone,
       bloodGroup: form.bloodGroup,
       allergies: form.allergies ? form.allergies.split(',').map(a => a.trim()) : [],
       diagnosis: form.diagnosis,
-      status: 'OPD',
+      status: 'IPD',
+      ward: form.ward || 'General Ward',
+      bed: form.bedId || undefined,
+      admitDate: new Date().toISOString().slice(0, 10),
       priority: form.priority,
-      attendingDoctor: '',
+      attendingDoctor: user?.name ?? '',
+      attendingDoctorId: typeof user?.id === 'number' ? user.id : undefined,
+      insurance: form.insuranceProvider || undefined,
     };
 
     upsertPatient(newPatient);

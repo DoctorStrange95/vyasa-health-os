@@ -65,7 +65,7 @@ function makeSchedule(
   }));
 }
 
-const DEMO_CLINICS: Clinic[] = [
+export const DEMO_CLINICS: Clinic[] = [
   {
     id: 'C1', name: 'Roy Clinic', address: '12 Baguiati Rd, Kolkata – 700059',
     phone: '+91 98765 43210', fee: 500, maxPatients: 25, color: '#0d9488',
@@ -79,6 +79,7 @@ const DEMO_CLINICS: Clinic[] = [
     schedule: makeSchedule([1, 3, 5], { start: '16:00', end: '19:00' }, undefined, 15),
   },
 ];
+// Note: DEMO_CLINICS are only used when seeding demo mode (see useAuthStore loginAsDemo)
 
 interface PadStore {
   settings: PadSettings;
@@ -104,7 +105,7 @@ export const usePadStore = create<PadStore>()(
     (set, get) => ({
       settings: DEFAULT,
       eSignUrl: '',
-      clinics: DEMO_CLINICS,
+      clinics: [],        // real users start empty; demo data set via loginAsDemo
       favDrugs: [],
       favPrescriptions: [],
       setESign: (url) => {

@@ -204,8 +204,9 @@ export default function DashboardPage() {
 
     const alreadyInQueue = queue.some(q => q.patientId === stablePatientId);
     if (!alreadyInQueue) {
-      const token = queue.length + 1;
-      setQueue([...queue, {
+      const liveQueue = useAppStore.getState().queue;
+      const token = liveQueue.length + 1;  // live state avoids duplicate tokens
+      setQueue([...liveQueue, {
         id: `Q${Date.now()}`,
         patientId: stablePatientId,
         patientName: apt.patientName,
@@ -225,11 +226,10 @@ export default function DashboardPage() {
   const myPatients = patients
     .filter(p => p.attendingDoctorId === user?.id)
     .sort((a, b) => {
-      const aDate = (visits[a.id] ?? [])[0]?.date ?? '';
-      const bDate = (visits[b.id] ?? [])[0]?.date ?? '';
-      if (bDate && !aDate) return 1;
-      if (aDate && !bDate) return -1;
-      return bDate.localeCompare(aDate);
+      // Use max date across all visits — safe regardless of array insertion order
+      const aDate = Math.max(0, ...(visits[a.id] ?? []).map(v => new Date(v.date).getTime()));
+      const bDate = Math.max(0, ...(visits[b.id] ?? []).map(v => new Date(v.date).getTime()));
+      return bDate - aDate;
     });
   const ipd = myPatients.filter(p => p.status === 'IPD');
   const critical = myPatients.filter(p => p.priority === 'Critical');
@@ -275,10 +275,10 @@ export default function DashboardPage() {
   if (user?.role === 'billing')    return <Navigate to="/app/billing" replace />;
   if (user?.role === 'admin')      return <Navigate to="/app/staff" replace />;
 
-  // Stats
+  // Stats — scoped to this doctor's patients only
   const totalPatients = myPatients.length;
-  const totalVisits = Object.values(visits).flat().length;
-  const totalRx = Object.values(useAppStore.getState().prescriptions).flat().length;
+  const totalVisits = myPatients.reduce((sum, p) => sum + (visits[p.id]?.length ?? 0), 0);
+  const totalRx = myPatients.reduce((sum, p) => sum + (useAppStore.getState().prescriptions[p.id]?.length ?? 0), 0);
   const followUpsDue = appointments.filter(a => a.date >= todayStr && a.status === 'scheduled').length;
 
   // Recent activity feed

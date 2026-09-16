@@ -225,8 +225,16 @@ export default function LoginPage() {
   });
 
   function afterLogin() {
-    const status = useAuthStore.getState().approvalStatus;
-    navigate(status === 'pending' ? '/pending-approval' : '/app/dashboard');
+    const { approvalStatus, user: u } = useAuthStore.getState();
+    if (approvalStatus === 'pending') { navigate('/pending-approval'); return; }
+    const role = u?.role;
+    const dest = role === 'receptionist' ? '/app/reception'
+      : role === 'pharmacist'  ? '/app/pharmacy'
+      : role === 'billing'     ? '/app/billing'
+      : role === 'labtech'     ? '/app/lab'
+      : role === 'nurse'       ? '/app/dashboard'
+      : '/app/dashboard';
+    navigate(dest);
   }
 
   async function handleSubmit(e: React.FormEvent) {

@@ -103,6 +103,7 @@ export interface Patient {
   referralReason?: string;
   referralUrgency?: string;
   locality?: string;
+  createdAt?: string;   // ISO timestamp — set by backend on patient creation
 }
 
 // ─── Vitals ──────────────────────────────────────────────────────────────────

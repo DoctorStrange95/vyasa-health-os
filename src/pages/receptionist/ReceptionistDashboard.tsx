@@ -45,8 +45,13 @@ export default function ReceptionistDashboard() {
     [appointments, today]);
 
   const registeredToday = patients.filter(p => {
-    const d = (p as any).createdAt ? (p as any).createdAt.slice(0, 10) : '';
-    return d === today;
+    // Use patient.createdAt if available; fall back to checking if an appointment for this patient was created today
+    const createdDate = p.createdAt
+      ? p.createdAt.slice(0, 10)
+      : appointments.find(a => a.patientId === p.id && a.createdAt?.slice(0, 10) === today)
+        ? today
+        : '';
+    return createdDate === today;
   }).length;
 
   const seenToday = todayAppts.filter(a => a.status === 'completed').length;

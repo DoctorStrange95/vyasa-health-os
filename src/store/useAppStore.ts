@@ -225,7 +225,10 @@ export const useAppStore = create<AppState>()(
       // Retry up to 3 times with exponential backoff — handles Render cold starts
       const attempt = (n: number) =>
         api.post('/patients', p).catch((e) => {
-          if (n < 3) {
+          const msg = e instanceof Error ? e.message : String(e);
+          // Don't retry on 4xx client errors (e.g. 409 Conflict / duplicate MRN)
+          const is4xx = msg.includes('40') || msg.includes('Conflict') || msg.includes('duplicate');
+          if (!is4xx && n < 3) {
             setTimeout(() => attempt(n + 1), 1000 * Math.pow(2, n)); // 1s, 2s, 4s
           } else {
             const err = e instanceof Error ? e.message : String(e);
@@ -253,8 +256,10 @@ export const useAppStore = create<AppState>()(
   },
   setPrescriptions: (pid, rx) => set(s => ({ prescriptions: { ...s.prescriptions, [pid]: rx } })),
   addPrescription: (rx) => {
+    // Silently drop prescriptions with no patientId — they can never be displayed
+    if (!rx.patientId) { console.warn('[addPrescription] missing patientId, skipping'); return; }
     set(s => ({
-      prescriptions: { ...s.prescriptions, [rx.patientId ?? '']: [rx, ...(s.prescriptions[rx.patientId ?? ''] || [])] }
+      prescriptions: { ...s.prescriptions, [rx.patientId!]: [rx, ...(s.prescriptions[rx.patientId!] || [])] }
     }));
     import('@/lib/api').then(({ isApiEnabled, api }) => {
       if (isApiEnabled()) {
@@ -291,9 +296,14 @@ export const useAppStore = create<AppState>()(
     });
   },
   setNursingNotes: (pid, notes) => set(s => ({ nursingNotes: { ...s.nursingNotes, [pid]: notes } })),
-  addNursingNote: (note) => set(s => ({
-    nursingNotes: { ...s.nursingNotes, [note.patientId]: [note, ...(s.nursingNotes[note.patientId] || [])] }
-  })),
+  addNursingNote: (note) => {
+    set(s => ({
+      nursingNotes: { ...s.nursingNotes, [note.patientId]: [note, ...(s.nursingNotes[note.patientId] || [])] }
+    }));
+    import('@/lib/api').then(({ isApiEnabled, api }) => {
+      if (isApiEnabled()) api.post('/nursing-notes', note).catch((e: unknown) => console.warn('[nursing-notes sync]', e instanceof Error ? e.message : e));
+    });
+  },
   setChatMessages: (pid, msgs) => set(s => ({ chatMessages: { ...s.chatMessages, [pid]: msgs } })),
   addChatMessage: (msg) => set(s => ({
     chatMessages: { ...s.chatMessages, [msg.patientId]: [...(s.chatMessages[msg.patientId] || []), msg] }
@@ -347,9 +357,8 @@ export const useAppStore = create<AppState>()(
     const { isApiEnabled, api } = await import('@/lib/api');
     if (!isApiEnabled()) return;
     try {
-      // IST today (UTC+5:30) — matches what the backend istDateStr() returns
-      const istNow = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
-      const today = istNow.toISOString().slice(0, 10);
+      const { localDate } = await import('@/lib/utils');
+      const today = localDate();
 
       const [apts, rawBookings] = await Promise.all([
         api.get<AppointmentEntry[]>('/appointments'),

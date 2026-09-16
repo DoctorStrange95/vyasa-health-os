@@ -45,6 +45,7 @@ export type GoogleResult =
 export interface GoogleRegisterPayload {
   name: string;
   email: string;
+  role?: string;
   specialty?: string;
   degrees?: string;
   phone?: string;
@@ -186,7 +187,7 @@ export const useAuthStore = create<AuthState>()(
         const data = await api.post<BackendAuthResponse>('/auth/register', {
           ...payload,
           password: `google_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-          role: 'clinic_admin',
+          role: payload.role ?? 'clinic_admin',
           googleId: payload.googleId,
         });
         setTokens(data.accessToken, data.refreshToken);
@@ -205,6 +206,14 @@ export const useAuthStore = create<AuthState>()(
       loginAsDemo: (role) => {
         clearTokens();
         set({ user: DEMO_STAFF[role], token: 'demo', isDemo: true, approvalStatus: 'approved' });
+        // Restore demo clinics so the pad/prescription system works in demo mode
+        import('./usePadStore').then(({ usePadStore, DEMO_CLINICS }) => {
+          const s = usePadStore.getState();
+          if (s.clinics.length === 0) {
+            s.setSettings({ doctorName: DEMO_STAFF[role].name, specialty: DEMO_STAFF[role].specialty ?? '' });
+            usePadStore.setState({ clinics: DEMO_CLINICS });
+          }
+        }).catch(() => {});
       },
 
       logout: () => {

@@ -156,7 +156,7 @@ export default function OPDQueuePage() {
       setQueue(queue.map(q => q.id === item.queueId ? { ...q, status: 'waiting' } : q));
       return;
     }
-    const token = queue.length + 1;
+    const token = useAppStore.getState().queue.length + 1;  // read live state, not stale closure
     const qEntry: QueueEntry = {
       id: `Q${Date.now()}`,
       patientId: item.patientId,
@@ -192,7 +192,7 @@ export default function OPDQueuePage() {
 
   function addWalkin(info: { name: string; age?: number; gender?: 'M' | 'F' | 'Other'; phone?: string; email?: string; reason: string }) {
     if (atLimit) { showToast(`Queue full — max ${avail!.maxPatients} patients`, 'warning'); return; }
-    const token = queue.length + 1;
+    const token = useAppStore.getState().queue.length + 1;  // live state, not stale closure
     const wiId = `WI${Date.now()}`;
 
     // Create a proper patient record so "Consult" works from anywhere
@@ -227,7 +227,7 @@ export default function OPDQueuePage() {
     setQueue([...queue, qEntry]);
 
     addAppointment({
-      id: wiId,
+      id: `APT-WI-${Date.now()}`,   // distinct from patientId so queue filter doesn't exclude the walk-in
       patientId: wiId,
       patientName: info.name,
       patientAge: info.age,

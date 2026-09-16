@@ -73,8 +73,14 @@ export function Topbar({ title, subtitle }: TopbarProps) {
   }, [searchOpen]);
 
   const unack = alerts.filter(a => !a.acknowledged).length;
+  const [clockTick, setClockTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setClockTick(n => n + 1), 60000);
+    return () => clearInterval(t);
+  }, []);
   const now = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
   const date = new Date().toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  void clockTick; // consumed only to trigger re-render
 
   const loadRequests = useCallback(async () => {
     if (isDemo) return;

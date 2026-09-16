@@ -13,7 +13,7 @@ const DISCHARGE_TYPES = ['Improved', 'Cured', 'Referred', 'LAMA (Left Against Me
 const FOLLOW_UP = ['1 week', '2 weeks', '1 month', '3 months', '6 months', 'As needed', 'No follow-up'];
 
 export default function DischargePage() {
-  const { patients, prescriptions, labOrders, vitals, visits, upsertPatient, showToast } = useAppStore();
+  const { patients, prescriptions, labOrders, vitals, visits, beds, setBeds, upsertPatient, showToast } = useAppStore();
   const { user } = useAuthStore();
   const navigate = useNavigate();
   // Nurses cannot discharge (vitals-only) — bounce deep-links out.
@@ -87,11 +87,26 @@ export default function DischargePage() {
       });
 
       upsertPatient({ ...selected, status: 'Discharged' });
+      // Free the bed so it becomes available for new admissions
+      const occupiedBed = beds.find(b => b.patientId === selected.id);
+      if (occupiedBed) {
+        setBeds(beds.map(b => b.id === occupiedBed.id
+          ? { ...b, status: 'available' as const, patientId: undefined, patientName: undefined }
+          : b
+        ));
+      }
       setDischarged(d => [...d, selected.id]);
       showToast(`${selected.name} discharged successfully`, 'success');
     } catch {
       showToast('Discharge saved locally (sync pending)', 'info');
       upsertPatient({ ...selected, status: 'Discharged' });
+      const occupiedBed = beds.find(b => b.patientId === selected!.id);
+      if (occupiedBed) {
+        setBeds(beds.map(b => b.id === occupiedBed.id
+          ? { ...b, status: 'available' as const, patientId: undefined, patientName: undefined }
+          : b
+        ));
+      }
       setDischarged(d => [...d, selected.id]);
     } finally {
       setSaving(false);
@@ -217,7 +232,7 @@ export default function DischargePage() {
                         {[
                           { label: 'BP', val: lastVitals.bp },
                           { label: 'Pulse', val: lastVitals.pulse ? `${lastVitals.pulse} bpm` : null },
-                          { label: 'Temp', val: lastVitals.temp ? `${lastVitals.temp}°F` : null },
+                          { label: 'Temp', val: lastVitals.temp ? `${lastVitals.temp}°C` : null },
                           { label: 'SpO₂', val: lastVitals.spo2 ? `${lastVitals.spo2}%` : null },
                           { label: 'Sugar', val: lastVitals.sugar !== undefined ? `${lastVitals.sugar} mg/dL` : null },
                         ].filter(x => x.val).map(x => (
