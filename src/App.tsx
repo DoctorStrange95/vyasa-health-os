@@ -89,16 +89,13 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 
   // Re-pull backend data when the user returns to the tab, so work done by staff
   // (receptionist-registered patients, new appointments) shows up without re-login.
-  // Throttled to once per 20s; real logins only.
+  // Throttled to once per 5s; real logins only. Also polls every 30s actively.
   useEffect(() => {
     if (!user || isDemo) return;
-    let last = Date.now();
+    let last = 0;
     const resync = () => {
       if (document.visibilityState !== 'visible') return;
-      if (Date.now() - last < 20000) return;
-      // Protect unsaved work: never refresh while the user is typing in a field.
-      // NOTE: We intentionally DO sync on consult/round/register paths now —
-      // blocking sync on those pages caused mobile→desktop data to never appear.
+      if (Date.now() - last < 5000) return;
       const ae = document.activeElement as HTMLElement | null;
       if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return;
       last = Date.now();
@@ -106,9 +103,18 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
     };
     document.addEventListener('visibilitychange', resync);
     window.addEventListener('focus', resync);
+    // Active poll every 30s — catches new patients/appointments even when the
+    // user never switches tabs (e.g. doctor has the app open on desktop all day)
+    const poll = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        last = Date.now();
+        useAppStore.getState().syncFromBackend();
+      }
+    }, 30000);
     return () => {
       document.removeEventListener('visibilitychange', resync);
       window.removeEventListener('focus', resync);
+      clearInterval(poll);
     };
   }, [user, isDemo]);
 

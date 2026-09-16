@@ -221,13 +221,19 @@ export const useAppStore = create<AppState>()(
         : [...s.patients, p]
     }));
     import('@/lib/api').then(({ isApiEnabled, api }) => {
-      if (isApiEnabled()) {
+      if (!isApiEnabled()) return;
+      // Retry up to 3 times with exponential backoff — handles Render cold starts
+      const attempt = (n: number) =>
         api.post('/patients', p).catch((e) => {
-          const err = e instanceof Error ? e.message : String(e);
-          console.warn('Patient save error:', err);
-          get().showToast(`Patient sync failed: ${err}`, 'error');
+          if (n < 3) {
+            setTimeout(() => attempt(n + 1), 1000 * Math.pow(2, n)); // 1s, 2s, 4s
+          } else {
+            const err = e instanceof Error ? e.message : String(e);
+            console.warn('Patient save error (all retries exhausted):', err);
+            get().showToast(`Patient sync failed — check connection`, 'error');
+          }
         });
-      }
+      attempt(0);
     });
   },
   setAlerts: (a) => set({ alerts: a }),
@@ -498,7 +504,12 @@ export const useAppStore = create<AppState>()(
     const update: Partial<typeof EMPTY_STATE> = {};
 
     if (patientsResult.status === 'fulfilled') {
-      update.patients = patientsResult.value;
+      const backendIds = new Set(patientsResult.value.map(p => p.id));
+      const local = get().patients;
+      // Keep any locally-created patients whose POST hasn't landed on the backend
+      // yet (cold-start race, network blip). Backend patients always win on conflict.
+      const localOnly = local.filter(p => !backendIds.has(p.id));
+      update.patients = [...patientsResult.value, ...localOnly];
     } else {
       console.warn('[vyasa] patients sync failed:', patientsResult.reason);
     }
@@ -509,13 +520,23 @@ export const useAppStore = create<AppState>()(
         if (!visitsMap[v.patientId]) visitsMap[v.patientId] = [];
         visitsMap[v.patientId].push(v);
       }
+      // Merge: keep local visits not yet on backend (same race-condition protection)
+      const localVisits = get().visits;
+      for (const [pid, list] of Object.entries(localVisits)) {
+        const backendVisitIds = new Set((visitsMap[pid] ?? []).map(v => v.id));
+        const localOnly = list.filter(v => !backendVisitIds.has(v.id));
+        if (localOnly.length) visitsMap[pid] = [...(visitsMap[pid] ?? []), ...localOnly];
+      }
       update.visits = visitsMap;
     } else {
       console.warn('[vyasa] visits sync failed:', visitsResult.reason);
     }
 
     if (appointmentsResult.status === 'fulfilled') {
-      update.appointments = appointmentsResult.value;
+      const backendAptIds = new Set(appointmentsResult.value.map(a => a.id));
+      const localApts = get().appointments;
+      const localOnly = localApts.filter(a => !backendAptIds.has(a.id));
+      update.appointments = [...appointmentsResult.value, ...localOnly];
     } else {
       console.warn('[vyasa] appointments sync failed:', appointmentsResult.reason);
     }
