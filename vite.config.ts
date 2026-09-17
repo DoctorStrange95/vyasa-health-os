@@ -50,7 +50,7 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/api\//, /^\/auth\//],
         globPatterns: ['**/*.{js,css,html,svg,woff2}'],
         cleanupOutdatedCaches: true,
-        cacheId: 'vyasa-v1.7',        // bump this to force all clients to drop old caches
+        cacheId: 'vyasa-v1.8',        // bump this to force all clients to drop old caches
         runtimeCaching: [
           {
             // Backend API — NEVER cached. Every call goes straight to the
