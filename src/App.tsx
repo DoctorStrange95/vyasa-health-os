@@ -69,10 +69,17 @@ function Spinner() {
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, isDemo, subscriptionPaidAt } = useAuthStore();
   const { patients, loadDemo } = useAppStore();
-  // Show paywall if: real user, logged in, subscription not paid yet.
-  // "remind later" just hides it for this session — it comes back on next login.
   const [paywallDismissed, setPaywallDismissed] = useState(false);
-  const needsPaywall = !isDemo && !!user && !subscriptionPaidAt && !paywallDismissed;
+
+  // Subscription valid if paid within the last 31 days
+  const subscriptionActive = (() => {
+    if (!subscriptionPaidAt) return false;
+    const paidMs = new Date(subscriptionPaidAt).getTime();
+    return Date.now() - paidMs < 31 * 24 * 60 * 60 * 1000;
+  })();
+
+  // Show paywall for ALL logged-in users (demo + real) who haven't subscribed
+  const needsPaywall = !!user && !subscriptionActive && !paywallDismissed;
 
   useEffect(() => {
     if (!user) return;
