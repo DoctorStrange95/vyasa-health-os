@@ -18,6 +18,8 @@ interface AuthState {
   approvalStatus: 'pending' | 'approved' | 'rejected' | 'suspended' | null;
   consentGivenAt: string | null;
   recentAccount: RecentAccount | null;
+  subscriptionPaidAt: string | null;   // ISO timestamp of last successful payment
+  subscriptionPaymentId: string | null; // Razorpay payment ID
   login: (email: string, password: string, geo?: { lat: number; lng: number; locationLabel?: string }) => Promise<void>;
   register: (data: RegisterPayload) => Promise<void>;
   loginWithGoogle: (credential: string, geo?: { lat: number; lng: number }) => Promise<GoogleResult>;
@@ -25,6 +27,7 @@ interface AuthState {
   loginAsDemo: (role: Role) => void;
   logout: () => void;
   recordConsent: () => Promise<void>;
+  setSubscriptionPaid: (paymentId: string) => void;
 }
 
 export interface RegisterPayload {
@@ -103,6 +106,8 @@ export const useAuthStore = create<AuthState>()(
       approvalStatus: null,
       consentGivenAt: null,
       recentAccount: null,
+      subscriptionPaidAt: null,
+      subscriptionPaymentId: null,
 
       // ─── Real backend login ────────────────────────────────────────────────
       login: async (email, password, geo) => {
@@ -222,7 +227,7 @@ export const useAuthStore = create<AuthState>()(
         clearTokens();
         import('./useAppStore').then(({ useAppStore }) => useAppStore.getState().resetStore());
         // recentAccount intentionally kept — used for quick re-login on the login page
-        set(s => ({ user: null, token: null, isDemo: false, approvalStatus: null, recentAccount: s.recentAccount }));
+        set(s => ({ user: null, token: null, isDemo: false, approvalStatus: null, recentAccount: s.recentAccount, subscriptionPaidAt: null, subscriptionPaymentId: null }));
       },
 
       // ─── Record consent (Privacy Policy + Terms) ─────────────────────────
@@ -235,10 +240,17 @@ export const useAuthStore = create<AuthState>()(
           set({ consentGivenAt: new Date().toISOString() });
         }
       },
+
+      // ─── Mark subscription as paid ────────────────────────────────────────
+      setSubscriptionPaid: (paymentId: string) => {
+        set({ subscriptionPaidAt: new Date().toISOString(), subscriptionPaymentId: paymentId });
+        // Best-effort: tell backend about the payment
+        api.post('/subscriptions/record', { paymentId, plan: 'monthly_999' }).catch(() => {});
+      },
     }),
     {
       name: 'vyasa-auth',
-      partialize: (s) => ({ user: s.user, token: s.token, isDemo: s.isDemo, approvalStatus: s.approvalStatus, consentGivenAt: s.consentGivenAt, recentAccount: s.recentAccount }),
+      partialize: (s) => ({ user: s.user, token: s.token, isDemo: s.isDemo, approvalStatus: s.approvalStatus, consentGivenAt: s.consentGivenAt, recentAccount: s.recentAccount, subscriptionPaidAt: s.subscriptionPaidAt, subscriptionPaymentId: s.subscriptionPaymentId }),
     }
   )
 );

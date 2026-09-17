@@ -1,9 +1,10 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useAppStore } from '@/store/useAppStore';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { PWAUpdateBanner } from '@/components/PWAUpdateBanner';
+import { PaywallModal } from '@/components/PaywallModal';
 import { installAnalytics, trackPageView } from '@/lib/analytics';
 import { Loader2 } from 'lucide-react';
 
@@ -66,8 +67,12 @@ function Spinner() {
 }
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
-  const { user, isDemo } = useAuthStore();
+  const { user, isDemo, subscriptionPaidAt } = useAuthStore();
   const { patients, loadDemo } = useAppStore();
+  // Show paywall if: real user, logged in, subscription not paid yet.
+  // "remind later" just hides it for this session — it comes back on next login.
+  const [paywallDismissed, setPaywallDismissed] = useState(false);
+  const needsPaywall = !isDemo && !!user && !subscriptionPaidAt && !paywallDismissed;
 
   useEffect(() => {
     if (!user) return;
@@ -119,7 +124,14 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   }, [user, isDemo]);
 
   if (!user) return <Navigate to="/login" replace />;
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      {needsPaywall && (
+        <PaywallModal onClose={() => setPaywallDismissed(true)} />
+      )}
+    </>
+  );
 }
 
 // Redirect to the correct home page based on role
