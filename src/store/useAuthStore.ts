@@ -250,6 +250,15 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'vyasa-auth',
+      version: 2,  // bump forces migration for existing sessions
+      migrate: (persisted: unknown) => {
+        // Existing sessions won't have subscriptionPaidAt — explicitly set null
+        // so the paywall fires for everyone who hasn't paid yet
+        const s = (persisted ?? {}) as Record<string, unknown>;
+        if (!('subscriptionPaidAt' in s)) s.subscriptionPaidAt = null;
+        if (!('subscriptionPaymentId' in s)) s.subscriptionPaymentId = null;
+        return s;
+      },
       partialize: (s) => ({ user: s.user, token: s.token, isDemo: s.isDemo, approvalStatus: s.approvalStatus, consentGivenAt: s.consentGivenAt, recentAccount: s.recentAccount, subscriptionPaidAt: s.subscriptionPaidAt, subscriptionPaymentId: s.subscriptionPaymentId }),
     }
   )
