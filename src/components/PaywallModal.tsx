@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  CheckCircle2, X, Zap, Shield, Smartphone, Users, FileText,
-  Activity, FlaskConical, MessageCircle, Star, Lock,
+  X, CheckCircle2, Zap, Shield, Smartphone, Users, FileText,
+  Activity, FlaskConical, MessageCircle, Lock, Star,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/useAuthStore';
 
@@ -13,33 +13,31 @@ declare global {
 }
 interface RazorpayOptions {
   key: string;
-  amount: number;         // paise
+  amount: number;
   currency: string;
   name: string;
   description: string;
   image?: string;
-  order_id?: string;
-  prefill?: { name?: string; email?: string; contact?: string };
+  prefill?: { name?: string; email?: string };
   theme?: { color?: string };
-  handler: (response: { razorpay_payment_id: string; razorpay_order_id?: string; razorpay_signature?: string }) => void;
+  handler: (response: { razorpay_payment_id: string }) => void;
   modal?: { ondismiss?: () => void };
 }
 interface RazorpayInstance { open(): void; }
 
-// ─── Features list ────────────────────────────────────────────────────────────
 const FEATURES = [
-  { icon: FileText,      label: 'Smart prescription builder',    sub: 'Drug autocomplete, favourites, ready-mix bundles' },
-  { icon: Users,         label: 'Unlimited patients & staff',    sub: 'OPD, IPD, nurses, receptionists — all in one place' },
-  { icon: Activity,      label: 'Live vitals & IPD rounds',      sub: 'Nurse-recorded vitals appear on doctor\'s screen in real time' },
-  { icon: Smartphone,    label: 'Works on any device',           sub: 'Phone, tablet, desktop — fully synced across all' },
-  { icon: FlaskConical,  label: 'Lab orders & results',          sub: 'Order tests, track results, flag criticals automatically' },
-  { icon: MessageCircle, label: 'WhatsApp prescription sharing', sub: 'Send PDF prescriptions directly to patients' },
-  { icon: Shield,        label: 'HIPAA-style data security',     sub: 'End-to-end encrypted, hosted on enterprise cloud' },
-  { icon: Zap,           label: 'OPD queue & appointments',      sub: 'Token management, online bookings, slot scheduling' },
+  { icon: FileText,      label: 'Smart prescription builder',   sub: 'Drug autocomplete, favourites, ready-mix' },
+  { icon: Users,         label: 'Unlimited patients & staff',   sub: 'OPD, IPD, nurses, receptionists — all roles' },
+  { icon: Activity,      label: 'Live vitals & IPD rounds',     sub: 'Nurse-recorded vitals sync in real time' },
+  { icon: Smartphone,    label: 'Works on any device',          sub: 'Phone, tablet, desktop — fully synced' },
+  { icon: FlaskConical,  label: 'Lab orders & results',         sub: 'Order tests, track results, flag criticals' },
+  { icon: MessageCircle, label: 'WhatsApp PDF sharing',         sub: 'Send prescriptions directly to patients' },
+  { icon: Shield,        label: 'HIPAA-style security',         sub: 'End-to-end encrypted, enterprise cloud' },
+  { icon: Zap,           label: 'OPD queue & appointments',     sub: 'Token mgmt, online bookings, scheduling' },
 ];
 
 interface Props {
-  onClose?: () => void; // optional — modal is blocking but can be dismissed to "remind later"
+  onClose?: () => void;
 }
 
 export function PaywallModal({ onClose }: Props) {
@@ -48,7 +46,6 @@ export function PaywallModal({ onClose }: Props) {
   const [error, setError] = useState('');
   const scriptLoaded = useRef(false);
 
-  // Load Razorpay script once
   useEffect(() => {
     if (scriptLoaded.current || document.getElementById('razorpay-sdk')) return;
     scriptLoaded.current = true;
@@ -61,183 +58,112 @@ export function PaywallModal({ onClose }: Props) {
 
   function openRazorpay() {
     if (!window.Razorpay) {
-      setError('Payment gateway not loaded yet. Please wait a moment and try again.');
+      setError('Payment gateway is loading, please try again in a moment.');
       return;
     }
     setLoading(true);
     setError('');
-
-    const options: RazorpayOptions = {
+    const rzp = new window.Razorpay({
       key: 'rzp_test_Td6PjTDt1lP7Pd',
-      amount: 99900,          // ₹999 in paise
+      amount: 99900,
       currency: 'INR',
       name: 'Vyasa Health OS',
       description: 'Monthly Subscription — ₹999/month',
       image: `${window.location.origin}/logos/vyasa-logo.svg`,
-      prefill: {
-        name: user?.name ?? '',
-        email: user?.email ?? '',
-      },
+      prefill: { name: user?.name ?? '', email: user?.email ?? '' },
       theme: { color: '#0d9488' },
       handler: (response) => {
-        // Payment successful — store payment ID and timestamp
         setSubscriptionPaid(response.razorpay_payment_id);
         setLoading(false);
       },
-      modal: {
-        ondismiss: () => setLoading(false),
-      },
-    };
-
-    const rzp = new window.Razorpay(options);
+      modal: { ondismiss: () => setLoading(false) },
+    });
     rzp.open();
   }
 
   return (
-    <div
-      style={{
-        position: 'fixed', inset: 0, zIndex: 9999,
-        background: 'rgba(2, 6, 23, 0.72)',
-        backdropFilter: 'blur(4px)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: '16px',
-        overflowY: 'auto',
-      }}
-    >
+    <div className="fixed inset-0 z-[99999] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm">
       <div
-        style={{
-          background: '#fff', borderRadius: 24, width: '100%', maxWidth: 560,
-          boxShadow: '0 32px 80px rgba(2,6,23,0.32)',
-          overflow: 'hidden', position: 'relative',
-          fontFamily: "'Inter', -apple-system, sans-serif",
-        }}
+        className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
         onClick={e => e.stopPropagation()}
       >
 
-        {/* Dismiss link (non-blocking — just reminds later) */}
-        {onClose && (
-          <button
-            onClick={onClose}
-            style={{
-              position: 'absolute', top: 14, right: 14, zIndex: 2,
-              background: 'rgba(255,255,255,0.9)', border: '1px solid #e2e8f0',
-              borderRadius: 8, cursor: 'pointer', padding: '4px 6px',
-              display: 'flex', alignItems: 'center', gap: 4,
-              fontSize: 11, color: '#94a3b8', fontWeight: 600,
-            }}
-            title="Remind me later"
-          >
-            <X size={13} />
-            Later
-          </button>
-        )}
-
-        {/* ── Hero gradient header ── */}
-        <div style={{
-          background: 'linear-gradient(135deg, #0a1628 0%, #0d4f47 50%, #0a1628 100%)',
-          padding: '32px 28px 28px',
-          textAlign: 'center',
-          position: 'relative', overflow: 'hidden',
-        }}>
-          {/* decorative circles */}
-          <div style={{ position:'absolute', top:-40, right:-40, width:160, height:160, borderRadius:'50%', background:'rgba(13,148,136,0.12)' }} />
-          <div style={{ position:'absolute', bottom:-30, left:-30, width:120, height:120, borderRadius:'50%', background:'rgba(13,148,136,0.08)' }} />
-
-          <div style={{ position:'relative', zIndex:1 }}>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:10, marginBottom:12 }}>
-              <img src="/logos/vyasa-logo.svg" alt="Vyasa" style={{ width:36, height:36, borderRadius:10 }} />
-              <span style={{ fontSize:20, fontWeight:800, color:'#fff', letterSpacing:-0.5 }}>Vyasa Health OS</span>
+        {/* ── Header ── */}
+        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-slate-100 flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-teal-50 flex items-center justify-center flex-shrink-0">
+              <img src="/logos/vyasa-logo.svg" alt="Vyasa" className="w-5 h-5" />
             </div>
-            <div style={{
-              display:'inline-flex', alignItems:'center', gap:6,
-              background:'rgba(13,148,136,0.3)', border:'1px solid rgba(13,148,136,0.5)',
-              borderRadius:20, padding:'4px 14px', marginBottom:16,
-            }}>
-              <Star size={12} fill="#fbbf24" color="#fbbf24" />
-              <span style={{ fontSize:12, fontWeight:700, color:'#6ee7e7', letterSpacing:0.5 }}>FULL ACCESS</span>
+            <div>
+              <div className="font-bold text-slate-900 text-base leading-tight">Vyasa Pro</div>
+              <div className="text-xs text-slate-400">Full access to all features</div>
             </div>
-            <div style={{ fontSize:38, fontWeight:900, color:'#fff', lineHeight:1 }}>
-              ₹999<span style={{ fontSize:16, fontWeight:500, color:'#94d9d9' }}>/month</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-1">
+              <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+              <span className="text-xs font-bold text-amber-700">₹999<span className="font-medium text-amber-600">/mo</span></span>
             </div>
-            <div style={{ fontSize:13, color:'#94d9d9', marginTop:6 }}>
-              Everything you need to run your practice — on any device
-            </div>
+            {onClose && (
+              <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
 
-        {/* ── Benefits grid ── */}
-        <div style={{ padding:'24px 28px 0' }}>
-          <div style={{ fontSize:13, fontWeight:700, color:'#0f172a', marginBottom:14, textTransform:'uppercase', letterSpacing:0.6, opacity:0.5 }}>
-            What's included
-          </div>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+        {/* ── Body (scrollable) ── */}
+        <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+
+          {/* What's included label */}
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">What's included</p>
+
+          {/* Feature grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {FEATURES.map(({ icon: Icon, label, sub }) => (
-              <div key={label} style={{
-                display:'flex', alignItems:'flex-start', gap:10,
-                background:'#f8fafc', borderRadius:12, padding:'10px 12px',
-                border:'1px solid #e2e8f0',
-              }}>
-                <div style={{
-                  width:30, height:30, borderRadius:8,
-                  background:'linear-gradient(135deg,#0d9488,#0a766e)',
-                  display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0,
-                }}>
-                  <Icon size={14} color="#fff" />
+              <div key={label} className="flex items-start gap-3 bg-slate-50 rounded-xl px-3 py-2.5 border border-slate-100">
+                <div className="w-7 h-7 rounded-lg bg-teal-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <Icon className="w-3.5 h-3.5 text-teal-600" />
                 </div>
-                <div>
-                  <div style={{ fontSize:12, fontWeight:700, color:'#0f172a', lineHeight:1.3 }}>{label}</div>
-                  <div style={{ fontSize:11, color:'#64748b', marginTop:2, lineHeight:1.35 }}>{sub}</div>
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-slate-800 leading-tight">{label}</div>
+                  <div className="text-xs text-slate-500 mt-0.5 leading-snug">{sub}</div>
                 </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Trust badges */}
+          <div className="flex flex-wrap gap-2 pt-1">
+            {['Cancel anytime', 'Instant activation', 'Secure payment', 'No setup fees'].map(b => (
+              <div key={b} className="flex items-center gap-1.5 text-xs font-medium text-teal-700 bg-teal-50 rounded-full px-3 py-1 border border-teal-100">
+                <CheckCircle2 className="w-3 h-3 text-teal-500" />
+                {b}
               </div>
             ))}
           </div>
         </div>
 
-        {/* ── Trust badges ── */}
-        <div style={{ padding:'16px 28px 0', display:'flex', gap:8, flexWrap:'wrap' as const }}>
-          {['Cancel anytime', 'Instant activation', 'Secure payment', 'No setup fees'].map(badge => (
-            <div key={badge} style={{
-              display:'flex', alignItems:'center', gap:5,
-              fontSize:11, fontWeight:600, color:'#059669',
-              background:'#ecfdf5', borderRadius:20, padding:'3px 10px',
-              border:'1px solid #a7f3d0',
-            }}>
-              <CheckCircle2 size={11} />
-              {badge}
-            </div>
-          ))}
-        </div>
-
-        {/* ── CTA ── */}
-        <div style={{ padding:'20px 28px 28px' }}>
+        {/* ── Footer CTA ── */}
+        <div className="px-5 pb-6 pt-3 border-t border-slate-100 flex-shrink-0 space-y-2">
           {error && (
-            <div style={{
-              background:'#fef2f2', border:'1px solid #fecaca', borderRadius:10,
-              padding:'10px 14px', marginBottom:12, fontSize:12, color:'#b91c1c',
-            }}>
+            <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-2.5 text-xs text-red-600 font-medium">
               {error}
             </div>
           )}
           <button
             onClick={openRazorpay}
             disabled={loading}
-            style={{
-              width:'100%', padding:'15px 24px',
-              background: loading ? '#94a3b8' : 'linear-gradient(135deg, #0d9488, #0a766e)',
-              color:'#fff', border:'none', borderRadius:14, cursor: loading ? 'not-allowed' : 'pointer',
-              fontSize:16, fontWeight:800, letterSpacing:-0.3,
-              boxShadow: loading ? 'none' : '0 4px 20px rgba(13,148,136,0.45)',
-              transition:'all 0.15s',
-              display:'flex', alignItems:'center', justifyContent:'center', gap:8,
-            }}
+            className="btn-primary w-full py-3 text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            <Lock size={16} />
+            <Lock className="w-4 h-4" />
             {loading ? 'Opening payment…' : 'Subscribe for ₹999/month'}
           </button>
-          <div style={{ textAlign:'center', marginTop:10, fontSize:11, color:'#94a3b8' }}>
-            Powered by <strong>Razorpay</strong> · 256-bit SSL · Auto-renews monthly
-          </div>
+          <p className="text-center text-xs text-slate-400">
+            Powered by <strong className="text-slate-500">Razorpay</strong> · 256-bit SSL · Auto-renews monthly
+          </p>
         </div>
+
       </div>
     </div>
   );
