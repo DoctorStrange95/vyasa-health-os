@@ -44,14 +44,13 @@ export default defineConfig({
         ],
       },
       workbox: {
-        skipWaiting: true,            // activate new SW immediately on install
-        clientsClaim: true,           // take control of existing tabs immediately
-        // SPA fallback: any navigation request not matching a precached file
-        // gets served index.html so React Router handles it client-side
+        skipWaiting: true,
+        clientsClaim: true,
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//, /^\/auth\//],
         globPatterns: ['**/*.{js,css,html,svg,woff2}'],
-        cleanupOutdatedCaches: true,   // drop caches from previous SW versions
+        cleanupOutdatedCaches: true,
+        cacheId: 'vyasa-v1.7',        // bump this to force all clients to drop old caches
         runtimeCaching: [
           {
             // Backend API — NEVER cached. Every call goes straight to the
