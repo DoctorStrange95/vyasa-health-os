@@ -5,9 +5,10 @@ import ClinicAdminDashboard from '@/pages/admin/ClinicAdminDashboard';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePadStore } from '@/store/usePadStore';
 import { Link, useNavigate, Navigate } from 'react-router-dom';
+import { PaywallModal } from '@/components/PaywallModal';
 import {
   Users, BedDouble, Bell, Clock, Activity,
-  CheckCircle2, Pencil, X, UserPlus,
+  CheckCircle2, Pencil, X, UserPlus, Zap,
   Building2, ChevronDown, Edit2, Calendar, CalendarDays, BarChart3, ChevronRight, PlayCircle, FileText
 } from 'lucide-react';
 import React from 'react';
@@ -169,6 +170,7 @@ export default function DashboardPage() {
   const { user } = useAuthStore();
   const { patients, alerts, queue, setQueue, visits, appointments, openQuickRxModal, updateAppointment, showToast, refreshAppointments, upsertPatient } = useAppStore();
   const navigate = useNavigate();
+  const [showPaywall, setShowPaywall] = useState(false);
 
   // One-click: confirm (if pending booking) + check in + open consult
   const startConsult = useCallback((apt: AppointmentEntry) => {
@@ -315,12 +317,24 @@ export default function DashboardPage() {
             className="flex items-center gap-2 bg-white border border-slate-200 text-slate-700 rounded-xl px-4 py-2.5 text-sm font-semibold hover:border-teal-300 transition-all">
             <Users className="w-4 h-4 text-teal-500" /> OPD Queue
           </button>
-          <button onClick={openQuickRxModal}
-            className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl px-4 py-2.5 text-sm font-bold shadow-sm shadow-teal-200 transition-all">
-            <Pencil className="w-4 h-4" /> Write Prescription
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button onClick={openQuickRxModal}
+              className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl px-4 py-2.5 text-sm font-bold shadow-sm shadow-teal-200 transition-all">
+              <Pencil className="w-4 h-4" /> Write Prescription
+            </button>
+            <button
+              onClick={() => setShowPaywall(true)}
+              title="Upgrade to Vyasa Pro"
+              className="flex items-center gap-1.5 bg-gradient-to-r from-amber-400 to-orange-400 hover:from-amber-500 hover:to-orange-500 text-white rounded-xl px-3 py-2.5 text-xs font-bold shadow-sm transition-all whitespace-nowrap"
+            >
+              <Zap className="w-3.5 h-3.5" fill="white" />
+              UPGRADE
+            </button>
+          </div>
         </div>
       </div>
+
+      {showPaywall && <PaywallModal onClose={() => setShowPaywall(false)} />}
 
       {/* Clinic widget */}
       {user?.role === 'clinic_admin' && <TodayClinicWidget />}
