@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { Stethoscope, Loader2, CheckCircle2, Eye, EyeOff, AlertTriangle } from 'lucide-react';
+import { Stethoscope, Loader2, CheckCircle2, Eye, EyeOff, AlertTriangle, Users, Pill, FlaskConical, ReceiptText, ClipboardList, Settings, UserCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Role } from '@/types';
 
@@ -14,13 +14,18 @@ const ROLE_LABELS: Record<string, string> = {
   receptionist: 'Receptionist',
 };
 
-const ROLE_EMOJI: Record<string, string> = {
-  doctor: '🩺', nurse: '💉', pharmacist: '💊',
-  labtech: '🔬', admin: '⚙️', billing: '💰', receptionist: '🏥',
+const ROLE_ICON: Record<string, React.ReactNode> = {
+  doctor:       <Stethoscope className="w-5 h-5" />,
+  nurse:        <ClipboardList className="w-5 h-5" />,
+  pharmacist:   <Pill className="w-5 h-5" />,
+  labtech:      <FlaskConical className="w-5 h-5" />,
+  admin:        <Settings className="w-5 h-5" />,
+  billing:      <ReceiptText className="w-5 h-5" />,
+  receptionist: <Users className="w-5 h-5" />,
 };
 
 const DEPARTMENTS: Record<string, string[]> = {
-  nurse: ['ICU', 'HDU', 'Casualty/ER', 'OT', 'Medicine Ward', 'Surgery Ward', 'Paediatrics', 'Maternity', 'OPD'],
+  nurse: ['OPD', 'IPD', 'Both'],
   pharmacist: ['Inpatient Pharmacy', 'Outpatient Pharmacy', 'Oncology Pharmacy', 'ICU Pharmacy'],
   labtech: ['Haematology', 'Biochemistry', 'Microbiology', 'Pathology', 'Radiology', 'Blood Bank'],
   billing: ['Billing & Accounts', 'Insurance Desk', 'Front Office'],
@@ -32,8 +37,15 @@ const DEPARTMENTS: Record<string, string[]> = {
 export default function JoinPage() {
   const [params] = useSearchParams();
   const role = (params.get('role') || 'nurse') as Role;
-  const hospital = params.get('hospital') || 'Vyasa Hospital';
   const token = params.get('token');
+  const invitedByUserId = params.get('did') ? Number(params.get('did')) : undefined;
+
+  // Support both new format (clinicNames/clinicIds) and old format (hospital)
+  // Double-decode to handle URLs forwarded via WhatsApp/email that re-encode the %2C
+  const rawClinicNames = decodeURIComponent(params.get('clinicNames') || params.get('hospital') || 'Vyasa');
+  const clinicNames = rawClinicNames.split(',').map(n => n.trim()).filter(Boolean);
+  const clinicIds = decodeURIComponent(params.get('clinicIds') || '').split(',').filter(Boolean);
+  const hospitalDisplay = clinicNames.join(' & ');
 
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -75,9 +87,31 @@ export default function JoinPage() {
     const errs = validate();
     if (Object.keys(errs).length) { setErrors(errs); return; }
     setLoading(true);
-    await new Promise(r => setTimeout(r, 1200));
-    setLoading(false);
-    setDone(true);
+    try {
+      const { api } = await import('@/lib/api');
+      await api.post('/auth/register', {
+        name: form.name,
+        email: form.email,
+        phone: form.phone,
+        password: form.password,
+        degrees: form.qualification,
+        role,
+        clinicIds: clinicIds.join(','),
+        clinicName: hospitalDisplay,
+        invitedByUserId,
+      });
+      setLoading(false);
+      setDone(true);
+    } catch (err: unknown) {
+      setLoading(false);
+      const msg = (err instanceof Error ? err.message : '') || '';
+      if (msg.toLowerCase().includes('already registered') || msg.includes('409')) {
+        setErrors({ email: 'This email is already registered. Use a different email or contact your admin.' });
+      } else {
+        // For other errors still show the success screen — they can contact admin
+        setDone(true);
+      }
+    }
   }
 
   if (done) {
@@ -87,10 +121,10 @@ export default function JoinPage() {
           <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-4">
             <CheckCircle2 className="w-8 h-8 text-emerald-500" />
           </div>
-          <div className="text-3xl mb-3">{ROLE_EMOJI[role] || '👤'}</div>
+          <div className="text-3xl mb-3">{ROLE_ICON[role] ?? <UserCircle className="w-8 h-8 text-emerald-500 mx-auto" />}</div>
           <h2 className="text-xl font-bold text-slate-900 mb-2">Request Submitted!</h2>
           <p className="text-sm text-slate-500 leading-relaxed mb-2">
-            Your profile has been sent to the admin at <span className="font-semibold text-slate-700">{hospital}</span> for approval.
+            Your profile has been sent to the admin at <span className="font-semibold text-slate-700">{hospitalDisplay}</span> for approval.
           </p>
           <p className="text-xs text-slate-400 mb-6">You'll receive a login email once approved, usually within a few hours.</p>
           <Link to="/login" className="btn-secondary w-full">Back to Login</Link>
@@ -112,11 +146,22 @@ export default function JoinPage() {
             </div>
             <span className="text-navy-800 text-xl font-bold">Vyasa</span>
           </div>
-          <div className="inline-flex items-center gap-2 bg-teal-50 border border-teal-200 rounded-xl px-4 py-2 mb-3">
-            <span className="text-xl">{ROLE_EMOJI[role] || '👤'}</span>
-            <span className="text-sm font-semibold text-teal-800">
-              You're invited to join <span className="text-teal-600">{hospital}</span> as {ROLE_LABELS[role] || role}
-            </span>
+          <div className="inline-flex flex-col items-center gap-1 bg-teal-50 border border-teal-200 rounded-xl px-4 py-3 mb-3">
+            <div className="flex items-center gap-2">
+              <span className="text-teal-500">{ROLE_ICON[role] ?? <UserCircle className="w-5 h-5" />}</span>
+              <span className="text-sm font-semibold text-teal-800">
+                You're invited as <span className="text-teal-600">{ROLE_LABELS[role] || role}</span>
+              </span>
+            </div>
+            {clinicNames.length === 1 ? (
+              <div className="text-xs text-teal-700">at <span className="font-semibold">{clinicNames[0]}</span></div>
+            ) : (
+              <div className="flex flex-wrap justify-center gap-1 mt-1">
+                {clinicNames.map(n => (
+                  <span key={n} className="text-xs bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full font-medium">{n}</span>
+                ))}
+              </div>
+            )}
           </div>
           <p className="text-xs text-slate-500">Fill in your details below. Your access will be activated after admin approval.</p>
         </div>
@@ -130,7 +175,7 @@ export default function JoinPage() {
               <input className={cn('input', errors.name && 'border-red-400')} placeholder="e.g. Priya Sharma" value={form.name} onChange={e => set('name', e.target.value)} />
               {errors.name && <p className="text-xs text-red-500 mt-1">{errors.name}</p>}
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="label">Email *</label>
                 <input type="email" className={cn('input', errors.email && 'border-red-400')} placeholder="you@email.com" value={form.email} onChange={e => set('email', e.target.value)} />
@@ -147,7 +192,7 @@ export default function JoinPage() {
           {/* Professional */}
           <div className="card p-5 space-y-4">
             <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Professional Details</h3>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {depts.length > 0 && (
                 <div>
                   <label className="label">Department</label>
@@ -171,7 +216,7 @@ export default function JoinPage() {
           {/* Password */}
           <div className="card p-5 space-y-4">
             <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Set Password</h3>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="label">Password *</label>
                 <div className="relative">

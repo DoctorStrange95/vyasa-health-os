@@ -7,10 +7,20 @@ export interface DaySchedule {
   maxPatients: number;
 }
 
+export interface ClinicBed {
+  id: string;
+  number: string;          // e.g. "1", "A-2", "ICU-1"
+  ward: string;            // e.g. "General", "ICU", "Private"
+  type?: string;           // General / ICU / Private / Semi-Private
+}
+
 export interface Clinic {
   id: string;
   name: string;
   address: string;
+  state?: string;
+  city?: string;
+  pincode?: string;
   lat?: number;
   lng?: number;
   phone?: string;
@@ -19,6 +29,7 @@ export interface Clinic {
   timings: string;       // auto-generated display string
   schedule: DaySchedule[];
   color?: string;
+  beds?: ClinicBed[];    // IPD beds configured for this clinic
 }
 
 export interface DoctorAvailability {
@@ -36,13 +47,15 @@ export interface DoctorAvailability {
 export type Role =
   | 'doctor'
   | 'clinic_admin'   // solo-practice doctor who is also their own admin
+  | 'clinic_manager' // clinic/hospital owner or manager — NOT a doctor
   | 'nurse'
   | 'pharmacist'
   | 'labtech'
   | 'admin'          // hospital/facility administrator
   | 'billing'
   | 'receptionist'
-  | 'patient';
+  | 'patient'
+  | 'superadmin';
 
 export interface StaffUser {
   id: number;
@@ -89,6 +102,8 @@ export interface Patient {
   referredDoctor?: string;
   referralReason?: string;
   referralUrgency?: string;
+  locality?: string;
+  createdAt?: string;   // ISO timestamp — set by backend on patient creation
 }
 
 // ─── Vitals ──────────────────────────────────────────────────────────────────
@@ -107,6 +122,8 @@ export interface Vitals {
   height?: number;
   gcs?: number;
   sugar?: number;
+  urineOutput?: number;
+  drainOutput?: number;
   notes?: string;
   alert?: boolean;
 }
@@ -147,6 +164,7 @@ export interface LabOrder {
   refRange?: string;
   critical?: boolean;
   resultTime?: string;
+  reportDataUrl?: string;
 }
 
 // ─── Notes ───────────────────────────────────────────────────────────────────
@@ -221,6 +239,7 @@ export interface VisitRecord {
   systemicExam?: string;
   bodyNotes?: Record<string, string>;
   bodySigns?: string[];
+  comorbidities?: string[];
   investigation?: string;
 
   // Assessment
@@ -238,6 +257,8 @@ export interface VisitRecord {
   referral?: { specialty: string; doctorName: string; reason: string; urgency: string };
   admitted?: boolean;
   privateNote?: string;
+  specialtyExam?: Record<string, string>;
+  consultationType?: 'offline' | 'video';
 }
 
 // ─── MAR ─────────────────────────────────────────────────────────────────────
@@ -285,13 +306,17 @@ export interface Alert {
 
 // ─── Appointment ─────────────────────────────────────────────────────────────
 
-export type AppointmentStatus = 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no-show';
+export type AppointmentStatus = 'scheduled' | 'confirmed' | 'checked-in' | 'completed' | 'cancelled' | 'no-show';
+
+export type PaymentMode = 'cash' | 'upi' | 'card' | 'insurance';
 
 export interface AppointmentEntry {
   id: string;
   patientId: string;
   patientName: string;
   patientAge?: number;
+  patientGender?: string;
+  patientPhone?: string;
   clinicId?: string;
   clinicName?: string;
   date: string;          // 'YYYY-MM-DD'
@@ -302,6 +327,15 @@ export interface AppointmentEntry {
   status: AppointmentStatus;
   notes?: string;
   createdAt: string;
+  // Registration payment
+  consultationFee?: number;
+  amountPaid?: number;
+  paymentMode?: PaymentMode;
+  token?: number;
+  // Video consultation
+  consultationType?: 'offline' | 'video';
+  googleMeetLink?: string;
+  durationMins?: number;
 }
 
 // ─── OPD Queue ───────────────────────────────────────────────────────────────

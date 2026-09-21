@@ -1,18 +1,21 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Pill, Users, Building2, Save, Plus, Trash2, CheckCircle2,
   RefreshCw, Printer, Mail, Phone, Link2, Copy, Check,
-  UserCheck, UserX, Settings, Edit2, MapPin, X
+  UserCheck, UserX, Settings, Edit2, MapPin, X, QrCode, PenLine, Upload, Shield, ChevronDown,
+  Stethoscope, FlaskConical, ReceiptText, ClipboardList, Wrench, Loader2, Video,
 } from 'lucide-react';
 import { usePadStore } from '@/store/usePadStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useAppStore } from '@/store/useAppStore';
+import { api, isApiEnabled } from '@/lib/api';
 import { Modal } from '@/components/ui/Modal';
+import { PWAInstallGuide } from '@/components/PWAInstallGuide';
 import { cn } from '@/lib/utils';
-import type { Role, Staff, Clinic } from '@/types';
+import type { Role, Staff, Clinic, ClinicBed } from '@/types';
 
-type Tab = 'rxpad' | 'staff' | 'clinics';
+type Tab = 'rxpad' | 'staff' | 'clinics' | 'video' | 'legal';
 
 // ─── Rx Pad tab ───────────────────────────────────────────────────────────────
 
@@ -24,15 +27,58 @@ const THEMES = [
 ] as const;
 
 function RxPadTab() {
-  const { settings: S, setSettings, resetSettings } = usePadStore();
+  const { settings: S, setSettings, resetSettings, eSignUrl, setESign } = usePadStore();
   const { user } = useAuthStore();
+  const { showToast } = useAppStore();
   const [saved, setSaved] = useState(false);
+  const [eSignUploading, setESignUploading] = useState(false);
   const set = (k: string, v: unknown) => setSettings({ [k]: v } as never);
   const theme = THEMES.find(t => t.id === S.theme)?.color ?? '#0d9488';
+
+  // Autofill from backend if pad is still at defaults (never configured)
+  useEffect(() => {
+    if (S.doctorName) return; // Already configured by user — don't overwrite
+    const fromUser = () => {
+      if (user?.name) setSettings({ doctorName: user.name, specialty: user.specialty || S.specialty });
+    };
+    if (isApiEnabled()) {
+      api.get<Record<string, unknown>>('/auth/me').then(data => {
+        setSettings({
+          doctorName: (data.doctor_name as string) || (data.name as string) || user?.name || '',
+          degrees: (data.pad_degrees as string) || (data.degrees as string) || '',
+          specialty: (data.pad_specialty as string) || (data.specialty as string) || user?.specialty || '',
+          regNumber: (data.pad_reg as string) || (data.reg_number as string) || '',
+          clinicName: (data.clinic_name as string) || '',
+          phone: (data.pad_phone as string) || (data.phone as string) || '',
+          address: (data.address as string) || '',
+          timings: (data.timings as string) || S.timings,
+        });
+      }).catch(fromUser);
+    } else {
+      fromUser();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const displayName = S.doctorName || user?.name || 'Dr. Your Name';
   const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 
-  function handleSave() { setSaved(true); setTimeout(() => setSaved(false), 2500); }
+  async function handleSave() {
+    // Explicit save — push all current settings + esign to backend right now
+    if (isApiEnabled()) {
+      try {
+        await api.put('/clinics/pad', {
+          doctorName: S.doctorName, degrees: S.degrees, specialty: S.specialty,
+          regNumber: S.regNumber, address: S.address, phone: S.phone,
+          email: S.email, timings: S.timings, clinicName: S.clinicName,
+          footerNote: S.footerNote, quote: S.quote, showQuote: S.showQuote,
+          showTimings: S.showTimings, theme: S.theme,
+          customFields: JSON.stringify(S.customFields),
+          eSignUrl,
+        });
+      } catch (e) { console.warn('Save failed:', e); }
+    }
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
+  }
 
   return (
     <div className="space-y-5">
@@ -92,6 +138,41 @@ function RxPadTab() {
             </div>
           </div>
 
+          <div className="card p-5 space-y-3">
+            <h3 className="text-xs font-bold uppercase tracking-widest text-teal-600">Payment Collection</h3>
+            <p className="text-xs text-slate-500">Your receptionist uses this QR to collect payments on your behalf at the front desk.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
+              <div>
+                <label className="label">Consultation Fee (₹)</label>
+                <input type="number" className="input" value={S.fee ?? ''} onChange={e => set('fee', e.target.value ? Number(e.target.value) : undefined)} placeholder="e.g. 500" />
+              </div>
+              <div>
+                <label className="label">UPI / Payment QR Code</label>
+                {S.qrCodeUrl ? (
+                  <div className="flex items-center gap-3">
+                    <img src={S.qrCodeUrl} alt="QR" className="w-16 h-16 rounded-xl border border-slate-200 object-contain" />
+                    <div className="space-y-1.5">
+                      <p className="text-xs text-emerald-600 font-medium">✓ QR uploaded</p>
+                      <button type="button" onClick={() => set('qrCodeUrl', '')} className="text-xs text-red-500 hover:underline">Remove</button>
+                    </div>
+                  </div>
+                ) : (
+                  <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-300 rounded-xl p-4 cursor-pointer hover:border-teal-400 hover:bg-teal-50/50 transition-colors">
+                    <QrCode className="w-8 h-8 text-slate-300 mb-1.5" />
+                    <span className="text-xs text-slate-500 font-medium">Upload QR Image</span>
+                    <span className="text-xs text-slate-400 mt-0.5">PNG, JPG — max 2MB</span>
+                    <input type="file" accept="image/*" className="hidden" onChange={e => {
+                      const file = e.target.files?.[0]; if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = ev => set('qrCodeUrl', ev.target?.result as string);
+                      reader.readAsDataURL(file);
+                    }} />
+                  </label>
+                )}
+              </div>
+            </div>
+          </div>
+
           <div className="card p-5 space-y-4">
             <h3 className="text-xs font-bold uppercase tracking-widest text-teal-600">Theme & Display</h3>
             <div className="flex gap-2 flex-wrap">
@@ -124,6 +205,98 @@ function RxPadTab() {
             <div>
               <label className="label">Footer Note</label>
               <input value={S.footerNote} onChange={e => set('footerNote', e.target.value)} placeholder="Prescription valid for 30 days…" className="input" />
+            </div>
+            <div>
+              <label className="label flex items-center gap-1.5"><PenLine className="w-3.5 h-3.5 text-teal-500" /> E-Signature</label>
+              <p className="text-xs text-slate-400 mb-2">Upload your signature image (PNG/JPG with transparent background works best). It will appear above your name when printing.</p>
+              {eSignUrl && (
+                <div className="mb-2 flex items-center gap-3">
+                  <img src={eSignUrl} alt="E-Signature" className="h-12 object-contain border border-slate-200 rounded-lg px-3 bg-white" />
+                  <button type="button" onClick={() => setESign('')} className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1"><Trash2 className="w-3 h-3" /> Remove</button>
+                </div>
+              )}
+              <label className={cn('flex items-center gap-2 cursor-pointer btn-secondary btn-sm w-fit', eSignUploading && 'opacity-60 pointer-events-none')}>
+                {eSignUploading
+                  ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Processing…</>
+                  : <><Upload className="w-3.5 h-3.5" />{eSignUrl ? 'Change Signature' : 'Upload Signature'}</>
+                }
+                <input type="file" accept="image/*" className="hidden" disabled={eSignUploading} onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  setESignUploading(true);
+                  const reader = new FileReader();
+                  reader.onload = ev => {
+                    const src = ev.target?.result as string;
+                    const img = new Image();
+                    img.onload = () => {
+                      const MAX_W = 400, MAX_H = 150;
+                      const scale = Math.min(MAX_W / img.width, MAX_H / img.height, 1);
+                      const canvas = document.createElement('canvas');
+                      canvas.width = Math.round(img.width * scale);
+                      canvas.height = Math.round(img.height * scale);
+                      const ctx = canvas.getContext('2d')!;
+                      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                      const compressed = canvas.toDataURL('image/png', 0.9);
+                      setESign(compressed);
+                      setESignUploading(false);
+                    };
+                    img.onerror = () => setESignUploading(false);
+                    img.src = src;
+                  };
+                  reader.onerror = () => setESignUploading(false);
+                  reader.readAsDataURL(file);
+                  e.target.value = '';
+                }} />
+              </label>
+            </div>
+
+            {/* ── Clinic Logo & Stamp ── */}
+            <div>
+              <label className="label flex items-center gap-1.5"><QrCode className="w-3.5 h-3.5 text-teal-500" /> Clinic Logo <span className="text-slate-400 font-normal normal-case">(shows top-left of prescription header)</span></label>
+              <p className="text-xs text-slate-400 mb-2">PNG/JPG, max 2 MB. Replaces the ℞ badge at the top of the prescription.</p>
+              {S.logoUrl && (
+                <div className="mb-2 flex items-center gap-3">
+                  <img src={S.logoUrl} alt="Logo" className="h-12 max-w-[100px] object-contain border border-slate-200 rounded-lg px-2 bg-white" />
+                  <button type="button" onClick={() => set('logoUrl', '')} className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1"><Trash2 className="w-3 h-3" /> Remove</button>
+                </div>
+              )}
+              <label className="flex items-center gap-2 cursor-pointer btn-secondary btn-sm w-fit">
+                <Upload className="w-3.5 h-3.5" />
+                {S.logoUrl ? 'Change Logo' : 'Upload Logo'}
+                <input type="file" accept="image/*" className="hidden" onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  if (file.size > 2 * 1024 * 1024) { showToast('Logo must be under 2 MB', 'error'); return; }
+                  const reader = new FileReader();
+                  reader.onload = ev => set('logoUrl', ev.target?.result as string);
+                  reader.readAsDataURL(file);
+                  e.target.value = '';
+                }} />
+              </label>
+            </div>
+
+            <div>
+              <label className="label flex items-center gap-1.5"><PenLine className="w-3.5 h-3.5 text-teal-500" /> Doctor's Stamp / Seal</label>
+              <p className="text-xs text-slate-400 mb-2">Appears below the signature. PNG with transparent background recommended.</p>
+              {(S as { stampUrl?: string }).stampUrl && (
+                <div className="mb-2 flex items-center gap-3">
+                  <img src={(S as { stampUrl?: string }).stampUrl} alt="Stamp" className="h-12 max-w-[100px] object-contain border border-slate-200 rounded-lg px-2 bg-white" />
+                  <button type="button" onClick={() => set('stampUrl', '')} className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1"><Trash2 className="w-3 h-3" /> Remove</button>
+                </div>
+              )}
+              <label className="flex items-center gap-2 cursor-pointer btn-secondary btn-sm w-fit">
+                <Upload className="w-3.5 h-3.5" />
+                {(S as { stampUrl?: string }).stampUrl ? 'Change Stamp' : 'Upload Stamp'}
+                <input type="file" accept="image/*" className="hidden" onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  if (file.size > 2 * 1024 * 1024) { showToast('Stamp must be under 2 MB', 'error'); return; }
+                  const reader = new FileReader();
+                  reader.onload = ev => set('stampUrl', ev.target?.result as string);
+                  reader.readAsDataURL(file);
+                  e.target.value = '';
+                }} />
+              </label>
             </div>
           </div>
 
@@ -199,12 +372,19 @@ function RxPadTab() {
                   <div key={i} className="text-xs mt-1"><span className="text-slate-400">{cf.label}: </span>{cf.value}</div>
                 ))}
                 <div className="mt-5 flex justify-end">
-                  <div className="text-center">
-                    <div className="w-28 border-t border-slate-400 pt-1 text-xs text-slate-500">{displayName}</div>
+                  <div className="text-center min-w-[112px]">
+                    {eSignUrl && (
+                      <img src={eSignUrl} alt="Signature" className="max-h-10 max-w-[112px] object-contain mx-auto mb-1" />
+                    )}
+                    <div className="border-t border-slate-400 pt-1 text-xs text-slate-500">{displayName}</div>
                   </div>
                 </div>
-                {S.footerNote && (
-                  <div className="mt-3 pt-2 border-t border-slate-200 text-xs text-slate-400 text-center">{S.footerNote}</div>
+                {(S.footerNote || true) && (
+                  <div className="mt-3 pt-2 border-t border-slate-200 flex items-center justify-between gap-1 text-[9px] text-slate-400">
+                    <span>QR</span>
+                    <span className="flex-1 text-center">{S.footerNote}</span>
+                    <span>Vyasa</span>
+                  </div>
                 )}
               </div>
             </div>
@@ -224,9 +404,14 @@ const ROLE_COLOR: Record<string, string> = {
   receptionist: 'bg-pink-100 text-pink-700',
 };
 const CLINIC_ROLES: Role[] = ['nurse', 'receptionist', 'doctor', 'labtech', 'pharmacist'];
-const ROLE_EMOJI: Record<string, string> = {
-  doctor: '🩺', nurse: '💉', pharmacist: '💊', labtech: '🔬',
-  admin: '⚙️', billing: '💰', receptionist: '🏥',
+const ROLE_ICON: Record<string, React.ReactNode> = {
+  doctor:       <Stethoscope className="w-4 h-4" />,
+  nurse:        <ClipboardList className="w-4 h-4" />,
+  pharmacist:   <Pill className="w-4 h-4" />,
+  labtech:      <FlaskConical className="w-4 h-4" />,
+  admin:        <Wrench className="w-4 h-4" />,
+  billing:      <ReceiptText className="w-4 h-4" />,
+  receptionist: <Users className="w-4 h-4" />,
 };
 const ROLE_DESC: Record<string, string> = {
   nurse: 'Assists with vitals, medication admin', receptionist: 'Manages appointments & queue',
@@ -234,24 +419,80 @@ const ROLE_DESC: Record<string, string> = {
 };
 
 interface PendingStaff {
-  id: string; name: string; email: string; phone: string; role: Role; department?: string; qualification?: string; requestedAt: string;
+  id: string; name: string; email: string; phone: string; role: Role; department?: string; qualification?: string; degrees?: string; requestedAt: string; invited_clinic_name?: string; created_at?: string;
 }
-const DEMO_PENDING: PendingStaff[] = [
-  { id: 'PS1', name: 'Meera Singh', email: 'meera@gmail.com', phone: '9812345670', role: 'nurse', department: 'OPD', qualification: 'BSc Nursing', requestedAt: '2026-06-05T10:30:00' },
-  { id: 'PS2', name: 'Kartik Rao', email: 'kartik@gmail.com', phone: '9823456781', role: 'receptionist', requestedAt: '2026-06-05T14:00:00' },
-];
 
 function StaffTab() {
-  const { staff, setStaff, showToast } = useAppStore();
+  const { showToast } = useAppStore();
+  const { user: currentUser } = useAuthStore();
+  const canManageStaff = currentUser?.role === 'clinic_admin';
   const [addOpen, setAddOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [pending, setPending] = useState<PendingStaff[]>(DEMO_PENDING);
+  const [pending, setPending] = useState<PendingStaff[]>([]);
+  const [loadingPending, setLoadingPending] = useState(false);
+  const [activeStaff, setActiveStaff] = useState<Staff[]>([]);
+  const [confirmRemoveId, setConfirmRemoveId] = useState<number | null>(null);
 
-  function approveStaff(ps: PendingStaff) {
-    const newStaff: Staff = { id: Date.now(), name: ps.name, role: ps.role, email: ps.email, phone: ps.phone, department: ps.department, shift: 'Day', status: 'active' };
-    setStaff([...staff, newStaff]);
-    setPending(p => p.filter(x => x.id !== ps.id));
-    showToast(`${ps.name} approved`, 'success');
+  // Fetch approved staff from backend
+  useEffect(() => {
+    if (!isApiEnabled()) return;
+    api.get<Staff[]>('/staff/active')
+      .then(data => setActiveStaff(data.map(u => ({ ...u, id: Number((u as never as {id: unknown}).id), status: 'active' }))))
+      .catch(() => {});
+  }, []);
+
+  // Fetch pending staff from backend
+  useEffect(() => {
+    if (!isApiEnabled()) return;
+    setLoadingPending(true);
+    api.get<PendingStaff[]>('/staff/pending')
+      .then(data => setPending(data.map(u => ({
+        ...u,
+        requestedAt: u.created_at ?? new Date().toISOString(),
+        qualification: u.degrees ?? u.qualification,
+      }))))
+      .catch(() => { showToast('Could not load pending staff — please refresh', 'error'); })
+      .finally(() => setLoadingPending(false));
+  }, []);
+
+  async function approveStaff(ps: PendingStaff) {
+    try {
+      if (isApiEnabled()) {
+        await api.post(`/staff/${ps.id}/approve`, {});
+      }
+      const newStaff: Staff = { id: Number(ps.id), name: ps.name, role: ps.role, email: ps.email, phone: ps.phone, department: ps.department, shift: 'Day', status: 'active' };
+      setActiveStaff(prev => [...prev, newStaff]);
+      setPending(p => p.filter(x => x.id !== ps.id));
+      showToast(`${ps.name} approved`, 'success');
+    } catch {
+      showToast('Failed to approve — try again', 'error');
+    }
+  }
+
+  async function rejectStaff(ps: PendingStaff) {
+    try {
+      if (isApiEnabled()) {
+        await api.post(`/staff/${ps.id}/reject`, {});
+      }
+      setPending(p => p.filter(x => x.id !== ps.id));
+      showToast(`${ps.name} rejected`, 'info');
+    } catch {
+      showToast('Failed to reject — try again', 'error');
+    }
+  }
+
+  async function removeStaff(id: number) {
+    const member = activeStaff.find(s => s.id === id);
+    try {
+      if (isApiEnabled()) {
+        await api.del(`/staff/${id}`);
+      }
+      setActiveStaff(prev => prev.filter(s => s.id !== id));
+      setConfirmRemoveId(null);
+      showToast(`${member?.name ?? 'Staff'} removed from team`, 'info');
+    } catch {
+      showToast('Failed to remove — try again', 'error');
+    }
   }
 
   return (
@@ -259,19 +500,21 @@ function StaffTab() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-lg font-bold text-slate-900">My Clinic Staff</h2>
-          <p className="text-sm text-slate-500">{staff.length} staff · {pending.length} pending approval</p>
+          <p className="text-sm text-slate-500">{activeStaff.length} staff · {pending.length} pending approval</p>
         </div>
-        <div className="flex gap-2">
-          <button onClick={() => setInviteOpen(true)} className="btn-secondary"><Link2 className="w-4 h-4" /> Invite Link</button>
-          <button onClick={() => setAddOpen(true)} className="btn-primary"><Plus className="w-4 h-4" /> Add Staff</button>
-        </div>
+        {canManageStaff && (
+          <div className="flex gap-2">
+            <button onClick={() => setInviteOpen(true)} className="btn-secondary"><Link2 className="w-4 h-4" /> Invite Link</button>
+            <button onClick={() => setAddOpen(true)} className="btn-primary"><Plus className="w-4 h-4" /> Add Staff</button>
+          </div>
+        )}
       </div>
 
-      {/* Role guide */}
+      {/* Role guide — hide "doctor" for solo practitioners */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-        {CLINIC_ROLES.map(r => (
+        {CLINIC_ROLES.filter(r => !(r === 'doctor' && currentUser?.role === 'clinic_admin')).map(r => (
           <div key={r} className="card p-3 text-center hover:border-teal-200 transition-colors cursor-pointer" onClick={() => setAddOpen(true)}>
-            <div className="text-2xl mb-1">{ROLE_EMOJI[r]}</div>
+            <div className="mb-1 text-teal-500">{ROLE_ICON[r]}</div>
             <div className="text-xs font-bold text-slate-800 capitalize">{r}</div>
             <div className="text-[10px] text-slate-400 mt-0.5">{ROLE_DESC[r]}</div>
           </div>
@@ -279,19 +522,22 @@ function StaffTab() {
       </div>
 
       {/* Pending approvals */}
-      {pending.length > 0 && (
+      {(pending.length > 0 || loadingPending) && (
         <div>
           <div className="flex items-center gap-2 mb-3">
             <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
             <span className="font-bold text-slate-900 text-sm">Pending Approvals</span>
-            <span className="badge bg-amber-100 text-amber-700">{pending.length}</span>
+            {loadingPending
+              ? <span className="text-xs text-slate-400">Loading…</span>
+              : <span className="badge bg-amber-100 text-amber-700">{pending.length}</span>
+            }
           </div>
           <div className="space-y-2">
             {pending.map(ps => (
               <div key={ps.id} className="card p-4 border-l-4 border-l-amber-400">
                 <div className="flex items-start gap-4 flex-wrap">
                   <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center text-xl flex-shrink-0">
-                    {ROLE_EMOJI[ps.role]}
+                    <span className="text-slate-500">{ROLE_ICON[ps.role]}</span>
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -300,14 +546,16 @@ function StaffTab() {
                     </div>
                     <div className="text-xs text-slate-500 mt-0.5">{ps.email} · {ps.phone}{ps.qualification ? ` · ${ps.qualification}` : ''}</div>
                   </div>
-                  <div className="flex gap-2 flex-shrink-0">
-                    <button onClick={() => setPending(p => p.filter(x => x.id !== ps.id))} className="btn-secondary btn-sm text-red-600 border-red-200 hover:bg-red-50">
-                      <UserX className="w-3.5 h-3.5" /> Reject
-                    </button>
-                    <button onClick={() => approveStaff(ps)} className="btn-primary btn-sm">
-                      <UserCheck className="w-3.5 h-3.5" /> Approve
-                    </button>
-                  </div>
+                  {canManageStaff && (
+                    <div className="flex gap-2 flex-shrink-0">
+                      <button onClick={() => rejectStaff(ps)} className="btn-secondary btn-sm text-red-600 border-red-200 hover:bg-red-50">
+                        <UserX className="w-3.5 h-3.5" /> Reject
+                      </button>
+                      <button onClick={() => void approveStaff(ps)} className="btn-primary btn-sm">
+                        <UserCheck className="w-3.5 h-3.5" /> Approve
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -316,10 +564,10 @@ function StaffTab() {
       )}
 
       {/* Staff grid */}
-      {staff.length > 0 ? (
+      {activeStaff.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {staff.map(s => (
-            <div key={s.id} className="card p-4 hover:shadow-md transition-shadow">
+          {activeStaff.map(s => (
+            <div key={s.id} className={cn('card p-4 transition-shadow', confirmRemoveId === s.id ? 'border-red-300' : 'hover:shadow-md')}>
               <div className="flex items-start gap-3">
                 <div className="w-10 h-10 rounded-full bg-teal-500/10 flex items-center justify-center font-bold text-teal-700 flex-shrink-0">
                   {s.name.split(' ').map(w => w[0]).join('').slice(0, 2)}
@@ -328,7 +576,7 @@ function StaffTab() {
                   <div className="font-bold text-slate-900 text-sm">{s.name}</div>
                   <div className="flex flex-wrap gap-1.5 mt-1">
                     <span className={cn('badge', ROLE_COLOR[s.role] || 'bg-slate-100 text-slate-600')}>
-                      {ROLE_EMOJI[s.role]} {s.role}
+                      <span className="inline-flex items-center gap-1">{ROLE_ICON[s.role]} {s.role}</span>
                     </span>
                     <span className={cn('badge', s.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500')}>
                       {s.status}
@@ -338,7 +586,27 @@ function StaffTab() {
                   {s.email && <a href={`mailto:${s.email}`} className="text-xs text-teal-600 flex items-center gap-1 hover:underline mt-1"><Mail className="w-3 h-3" />{s.email}</a>}
                   {s.phone && <div className="flex items-center gap-1 text-xs text-slate-400 mt-0.5"><Phone className="w-3 h-3" />{s.phone}</div>}
                 </div>
+                {canManageStaff && confirmRemoveId !== s.id && (
+                  <button
+                    onClick={() => setConfirmRemoveId(s.id)}
+                    className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0"
+                    title="Remove from team"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
               </div>
+              {canManageStaff && confirmRemoveId === s.id && (
+                <div className="mt-3 pt-3 border-t border-red-100 flex items-center justify-between gap-3">
+                  <p className="text-xs text-red-600 font-medium">Remove {s.name}?</p>
+                  <div className="flex gap-2 flex-shrink-0">
+                    <button onClick={() => setConfirmRemoveId(null)} className="btn-secondary btn-sm">Cancel</button>
+                    <button onClick={() => removeStaff(s.id)} className="btn-sm bg-red-500 hover:bg-red-600 text-white rounded-lg px-3 py-1.5 text-xs font-semibold">
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -347,36 +615,62 @@ function StaffTab() {
           <Users className="w-12 h-12 text-slate-200 mx-auto mb-3" />
           <p className="font-semibold text-slate-600">No staff added yet</p>
           <p className="text-sm text-slate-400 mt-1">Add your receptionist, nurse, or assistant to get started</p>
-          <div className="flex gap-3 justify-center mt-4">
-            <button onClick={() => setInviteOpen(true)} className="btn-secondary"><Link2 className="w-4 h-4" /> Send Invite Link</button>
-            <button onClick={() => setAddOpen(true)} className="btn-primary"><Plus className="w-4 h-4" /> Add Manually</button>
-          </div>
+          {canManageStaff && (
+            <div className="flex gap-3 justify-center mt-4">
+              <button onClick={() => setInviteOpen(true)} className="btn-secondary"><Link2 className="w-4 h-4" /> Send Invite Link</button>
+              <button onClick={() => setAddOpen(true)} className="btn-primary"><Plus className="w-4 h-4" /> Add Manually</button>
+            </div>
+          )}
         </div>
       )}
 
-      <AddStaffModal open={addOpen} onClose={() => setAddOpen(false)} />
+      <AddStaffModal open={addOpen} onClose={() => setAddOpen(false)} onAdded={s => setActiveStaff(prev => [...prev, s])} />
       <InviteLinkModal open={inviteOpen} onClose={() => setInviteOpen(false)} />
     </div>
   );
 }
 
-function AddStaffModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { staff, setStaff, showToast } = useAppStore();
+function AddStaffModal({ open, onClose, onAdded }: { open: boolean; onClose: () => void; onAdded: (s: Staff) => void }) {
+  const { showToast } = useAppStore();
+  const { user: currentUser } = useAuthStore();
+  const isSoloPractice = currentUser?.role === 'clinic_admin';
   const [form, setFormState] = useState({ name: '', role: 'nurse' as Role, email: '', phone: '', department: '', specialty: '', shift: 'Day' });
+  const [saving, setSaving] = useState(false);
   const set = (k: string, v: string) => setFormState(f => ({ ...f, [k]: v }));
 
-  function submit() {
+  async function submit() {
     if (!form.name.trim() || !form.email) { showToast('Name and email are required', 'error'); return; }
-    const newStaff: Staff = { id: Date.now(), name: form.name, role: form.role, email: form.email, phone: form.phone, department: form.department, specialty: form.specialty || undefined, shift: form.shift, status: 'active' };
-    setStaff([...staff, newStaff]);
-    showToast(`${form.name} added as ${form.role}`, 'success');
-    onClose();
-    setFormState({ name: '', role: 'nurse', email: '', phone: '', department: '', specialty: '', shift: 'Day' });
+    setSaving(true);
+    try {
+      if (isApiEnabled()) {
+        const created = await api.post<Staff>('/staff/create', {
+          name: form.name, role: form.role, email: form.email,
+          phone: form.phone, department: form.department,
+          specialty: form.specialty || undefined,
+        });
+        onAdded({ ...created, id: Number((created as never as {id: unknown}).id), status: 'active' });
+      } else {
+        const newStaff: Staff = { id: Date.now(), name: form.name, role: form.role, email: form.email, phone: form.phone, department: form.department, specialty: form.specialty || undefined, shift: form.shift, status: 'active' };
+        onAdded(newStaff);
+      }
+      showToast(`${form.name} added as ${form.role}`, 'success');
+      onClose();
+      setFormState({ name: '', role: 'nurse', email: '', phone: '', department: '', specialty: '', shift: 'Day' });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '';
+      if (msg.includes('409') || msg.toLowerCase().includes('already exists')) {
+        showToast('A user with this email already exists', 'error');
+      } else {
+        showToast('Failed to add staff — try again', 'error');
+      }
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
     <Modal open={open} onClose={onClose} title="Add Staff Member" size="md"
-      footer={<><button onClick={onClose} className="btn-secondary">Cancel</button><button onClick={submit} className="btn-primary">Add Staff</button></>}>
+      footer={<><button onClick={onClose} className="btn-secondary" disabled={saving}>Cancel</button><button onClick={() => void submit()} disabled={saving} className="btn-primary">{saving ? 'Adding…' : 'Add Staff'}</button></>}>
       <div className="space-y-4">
         <div>
           <label className="label">Full Name *</label>
@@ -385,11 +679,11 @@ function AddStaffModal({ open, onClose }: { open: boolean; onClose: () => void }
         <div>
           <label className="label">Role *</label>
           <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-            {CLINIC_ROLES.map(r => (
+            {CLINIC_ROLES.filter(r => !(r === 'doctor' && isSoloPractice)).map(r => (
               <button key={r} onClick={() => set('role', r)}
                 className={cn('flex flex-col items-center gap-1 p-2.5 rounded-xl border-2 text-xs font-semibold transition-all',
                   form.role === r ? 'border-teal-400 bg-teal-50 text-teal-700' : 'border-slate-200 text-slate-500 hover:border-slate-300')}>
-                <span className="text-lg">{ROLE_EMOJI[r]}</span>
+                <span className="text-teal-500">{ROLE_ICON[r]}</span>
                 <span className="capitalize">{r}</span>
               </button>
             ))}
@@ -401,8 +695,17 @@ function AddStaffModal({ open, onClose }: { open: boolean; onClose: () => void }
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="label">Department</label>
-            <input className="input" placeholder="e.g. OPD, ICU" value={form.department} onChange={e => set('department', e.target.value)} />
+            <label className="label">{form.role === 'nurse' ? 'Posting' : 'Department'}</label>
+            {form.role === 'nurse' ? (
+              <select className="input" value={form.department} onChange={e => set('department', e.target.value)}>
+                <option value="">Select…</option>
+                <option value="OPD">OPD</option>
+                <option value="IPD">IPD</option>
+                <option value="Both">Both</option>
+              </select>
+            ) : (
+              <input className="input" placeholder="e.g. OPD, ICU" value={form.department} onChange={e => set('department', e.target.value)} />
+            )}
           </div>
           <div>
             <label className="label">Shift</label>
@@ -420,19 +723,52 @@ function AddStaffModal({ open, onClose }: { open: boolean; onClose: () => void }
 }
 
 function InviteLinkModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { clinics } = usePadStore();
   const { user } = useAuthStore();
   const [selectedRole, setSelectedRole] = useState<Role>('nurse');
+  const [selectedClinicIds, setSelectedClinicIds] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
-  const clinic = user?.hospital ?? 'My Clinic';
-  const TOKEN = btoa(`${selectedRole}-${clinic}-${Date.now()}`).slice(0, 16);
-  const link = `${window.location.origin}/join?role=${selectedRole}&hospital=${encodeURIComponent(clinic)}&token=${TOKEN}`;
-  function copy() { navigator.clipboard.writeText(link).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2500); }); }
+
+  // Default-select all clinics when modal opens
+  useState(() => { if (clinics.length > 0 && selectedClinicIds.length === 0) setSelectedClinicIds(clinics.map(c => c.id)); });
+
+  function toggleClinic(id: string) {
+    setSelectedClinicIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    setCopied(false);
+  }
+
+  const selectedClinics = clinics.filter(c => selectedClinicIds.includes(c.id));
+  const clinicIdsParam = selectedClinics.map(c => c.id).join(',');
+  const clinicNamesParam = selectedClinics.map(c => c.name).join(',');
+  // Token generated once per role+clinics selection (useMemo avoids Date.now() in render)
+  const TOKEN = useMemo(
+    () => btoa(`${selectedRole}-${clinicIdsParam}-${Date.now()}`).slice(0, 16),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selectedRole, clinicIdsParam],
+  );
+  // did = doctor's user ID — saved on registration so pending filter matches by who invited
+  const link = selectedClinics.length > 0
+    ? `${window.location.origin}/join?role=${selectedRole}&clinicIds=${encodeURIComponent(clinicIdsParam)}&clinicNames=${encodeURIComponent(clinicNamesParam)}&token=${TOKEN}&did=${user?.id ?? ''}`
+    : '';
+
+  async function copy() {
+    if (!link) return;
+    // Ensure selected clinics exist in backend DB so the pending-staff fallback
+    // filter (for staff registered before invited_by_user_id was added) can match.
+    // Safe here because this is user-triggered and syncClinicsFromApi has already
+    // completed by the time the user opens this modal.
+    if (isApiEnabled()) {
+      await Promise.all(selectedClinics.map(c => api.post('/clinics', c).catch(() => {})));
+    }
+    navigator.clipboard.writeText(link).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2500); });
+  }
 
   return (
     <Modal open={open} onClose={onClose} title="Invite Staff via Link" size="md"
       footer={<button onClick={onClose} className="btn-secondary">Close</button>}>
       <div className="space-y-4">
         <p className="text-sm text-slate-600">Share this link with your staff member. They fill in their details, and you approve their access.</p>
+
         <div>
           <label className="label">Role for this invite</label>
           <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
@@ -440,25 +776,57 @@ function InviteLinkModal({ open, onClose }: { open: boolean; onClose: () => void
               <button key={r} onClick={() => { setSelectedRole(r); setCopied(false); }}
                 className={cn('flex flex-col items-center gap-1 p-2.5 rounded-xl border-2 text-xs font-semibold transition-all',
                   selectedRole === r ? 'border-teal-400 bg-teal-50 text-teal-700' : 'border-slate-200 text-slate-500 hover:border-slate-300')}>
-                <span className="text-xl">{ROLE_EMOJI[r]}</span>
+                <span className="text-teal-500">{ROLE_ICON[r]}</span>
                 <span className="capitalize">{r}</span>
               </button>
             ))}
           </div>
         </div>
-        <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-          <div className="flex items-center gap-2">
-            <code className="flex-1 text-xs text-slate-700 bg-white border border-slate-200 rounded-lg px-3 py-2 font-mono truncate">{link}</code>
-            <button onClick={copy} className={cn('btn btn-sm flex-shrink-0', copied ? 'btn-primary' : 'btn-secondary')}>
-              {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-              {copied ? 'Copied!' : 'Copy'}
-            </button>
+
+        {clinics.length > 0 && (
+          <div>
+            <label className="label">Clinic(s) this staff will work at</label>
+            <p className="text-xs text-slate-400 mb-2">Select all that apply — a nurse can work across multiple locations.</p>
+            <div className="space-y-2">
+              {clinics.map(c => (
+                <label key={c.id} className={cn(
+                  'flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all',
+                  selectedClinicIds.includes(c.id) ? 'border-teal-400 bg-teal-50' : 'border-slate-200 hover:border-slate-300'
+                )}>
+                  <input type="checkbox" className="w-4 h-4 accent-teal-500"
+                    checked={selectedClinicIds.includes(c.id)}
+                    onChange={() => toggleClinic(c.id)} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold text-slate-800">{c.name}</div>
+                    {c.address && <div className="text-xs text-slate-500 truncate">{c.address}</div>}
+                  </div>
+                </label>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
+
+        {selectedClinics.length === 0 ? (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
+            Select at least one clinic to generate the invite link.
+          </div>
+        ) : (
+          <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+            <div className="text-xs text-slate-500 mb-2 font-medium">Invite link for {selectedClinics.map(c => c.name).join(' + ')}</div>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 text-xs text-slate-700 bg-white border border-slate-200 rounded-lg px-3 py-2 font-mono truncate">{link}</code>
+              <button onClick={copy} className={cn('btn btn-sm flex-shrink-0', copied ? 'btn-primary' : 'btn-secondary')}>
+                {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                {copied ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="bg-teal-50 border border-teal-200 rounded-xl p-3 text-xs text-teal-700 space-y-1">
           <p className="font-semibold">How it works:</p>
           <ol className="list-decimal list-inside space-y-0.5">
-            <li>Share this link with your staff via WhatsApp or email</li>
+            <li>Share this link via WhatsApp or email</li>
             <li>They open it, enter their name & create a password</li>
             <li>You see their request in Pending Approvals → click Approve</li>
           </ol>
@@ -472,8 +840,8 @@ function InviteLinkModal({ open, onClose }: { open: boolean; onClose: () => void
 
 const CLINIC_COLORS = ['#0d9488', '#0a3d62', '#7f1d1d', '#1e293b', '#7c3aed', '#b45309'];
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const TIME_SLOTS = Array.from({ length: 33 }, (_, i) => {
-  const h = Math.floor(i / 2) + 6;
+const TIME_SLOTS = Array.from({ length: 48 }, (_, i) => {
+  const h = Math.floor(i / 2);
   const m = i % 2 === 0 ? '00' : '30';
   return `${String(h).padStart(2, '0')}:${m}`;
 });
@@ -540,9 +908,14 @@ function ClinicModal({ clinic: init, onSave, onClose }: {
         const data = await res.json();
         const a = data.address ?? {};
         const parts = [a.road, a.suburb ?? a.neighbourhood, a.city ?? a.town ?? a.village, a.postcode].filter(Boolean);
-        set('address', parts.join(', '));
-        set('lat', lat);
-        set('lng', lon);
+        setC(prev => ({
+          ...prev,
+          address: parts.join(', '),
+          lat, lng: lon,
+          state: a.state ?? prev.state ?? '',
+          city: a.city ?? a.town ?? a.village ?? prev.city ?? '',
+          pincode: a.postcode ?? prev.pincode ?? '',
+        }));
       } finally {
         setLocLoading(false);
       }
@@ -558,8 +931,10 @@ function ClinicModal({ clinic: init, onSave, onClose }: {
 
   function addSession(day: number) {
     const d = c.schedule.find(x => x.day === day)!;
-    if (d.sessions.length >= 2) return;
-    updateDay(day, { sessions: [...d.sessions, { start: '17:00', end: '20:00' }] });
+    if (d.sessions.length >= 3) return;
+    const defaults = [{ start: '17:00', end: '20:00' }, { start: '21:00', end: '23:30' }];
+    const def = defaults[d.sessions.length - 1] ?? { start: '17:00', end: '20:00' };
+    updateDay(day, { sessions: [...d.sessions, def] });
   }
 
   function removeSession(day: number, idx: number) {
@@ -626,6 +1001,22 @@ function ClinicModal({ clinic: init, onSave, onClose }: {
             {c.lat && <p className="text-[11px] text-teal-600 mt-1">📍 {c.lat.toFixed(5)}, {c.lng?.toFixed(5)}</p>}
           </div>
 
+          {/* State / City / Pincode — patients search & pick chambers by location */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="label">State</label>
+              <input className="input" value={c.state ?? ''} onChange={e => set('state', e.target.value)} placeholder="West Bengal" />
+            </div>
+            <div>
+              <label className="label">City</label>
+              <input className="input" value={c.city ?? ''} onChange={e => set('city', e.target.value)} placeholder="Kolkata" />
+            </div>
+            <div>
+              <label className="label">Pincode</label>
+              <input className="input" value={c.pincode ?? ''} onChange={e => set('pincode', e.target.value)} placeholder="700059" inputMode="numeric" maxLength={6} />
+            </div>
+          </div>
+
           {/* Phone + fee */}
           <div className="grid grid-cols-2 gap-3">
             <div><label className="label">Phone / WhatsApp</label><input className="input" value={c.phone ?? ''} onChange={e => set('phone', e.target.value)} placeholder="+91 98765 43210" /></div>
@@ -636,7 +1027,7 @@ function ClinicModal({ clinic: init, onSave, onClose }: {
           <div>
             <label className="label mb-2">Weekly Schedule & Patient Caps</label>
             <div className="border border-slate-200 rounded-xl overflow-hidden">
-              {c.schedule.map((d, _i) => (
+              {c.schedule.map((d) => (
                 <div key={d.day} className={cn('px-4 py-3 border-b border-slate-100 last:border-0', d.open ? 'bg-white' : 'bg-slate-50')}>
                   <div className="flex items-start gap-3">
                     {/* Day toggle */}
@@ -651,7 +1042,9 @@ function ClinicModal({ clinic: init, onSave, onClose }: {
                       <div className="flex-1 space-y-2">
                         {d.sessions.map((s, si) => (
                           <div key={si} className="flex items-center gap-2 flex-wrap">
-                            <span className="text-[10px] text-slate-400 w-12 text-right flex-shrink-0">{si === 0 ? 'Morning' : 'Evening'}</span>
+                            <span className="text-[10px] text-slate-400 w-14 text-right flex-shrink-0">
+                              {['Morning', 'Evening', 'Night'][si] ?? `Slot ${si + 1}`}
+                            </span>
                             <select value={s.start} onChange={e => updateSession(d.day, si, 'start', e.target.value)}
                               className="input py-1.5 text-sm w-24 flex-shrink-0">
                               {TIME_SLOTS.map(t => <option key={t}>{t}</option>)}
@@ -666,24 +1059,36 @@ function ClinicModal({ clinic: init, onSave, onClose }: {
                             </button>
                           </div>
                         ))}
-                        {d.sessions.length < 2 && (
-                          <button type="button" onClick={() => addSession(d.day)}
-                            className="text-xs text-teal-600 hover:text-teal-700 flex items-center gap-1">
-                            <Plus className="w-3 h-3" /> Add evening session
-                          </button>
-                        )}
+                        <div className="flex items-center gap-4">
+                          {d.sessions.length < 3 && !(d.sessions.length === 1 && d.sessions[0].start === '00:00' && d.sessions[0].end === '23:30') && (
+                            <button type="button" onClick={() => addSession(d.day)}
+                              className="text-xs text-teal-600 hover:text-teal-700 flex items-center gap-1">
+                              <Plus className="w-3 h-3" /> Add {['evening', 'night'][d.sessions.length - 1] ?? 'another'} session
+                            </button>
+                          )}
+                          <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                            <input type="checkbox"
+                              checked={d.sessions.length === 1 && d.sessions[0].start === '00:00' && d.sessions[0].end === '23:30'}
+                              onChange={e => {
+                                updateDay(d.day, { sessions: e.target.checked ? [{ start: '00:00', end: '23:30' }] : [{ start: '09:00', end: '13:00' }] });
+                              }}
+                              className="w-3.5 h-3.5 accent-teal-600 cursor-pointer"
+                            />
+                            <span className="text-xs text-slate-500 font-medium">24 hrs</span>
+                          </label>
+                        </div>
                       </div>
                     ) : (
-                      <span className="text-xs text-slate-400 mt-1.5">Closed</span>
+                      <span className="text-xs text-slate-400 mt-1.5 italic">Closed · tap day to open</span>
                     )}
 
                     {/* Cap */}
                     {d.open && (
                       <div className="flex items-center gap-1.5 flex-shrink-0 ml-auto">
                         <span className="text-[10px] text-slate-400">Max</span>
-                        <input type="number" min={1} max={100} value={d.maxPatients}
+                        <input type="number" min={1} max={999} value={d.maxPatients}
                           onChange={e => updateDay(d.day, { maxPatients: Number(e.target.value) })}
-                          className="w-14 text-center input py-1.5 text-sm font-semibold" />
+                          className="w-20 text-center input py-1.5 text-sm font-semibold" />
                         <span className="text-[10px] text-slate-400">pts</span>
                       </div>
                     )}
@@ -691,6 +1096,59 @@ function ClinicModal({ clinic: init, onSave, onClose }: {
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* IPD Beds */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="label mb-0">IPD Beds (optional)</label>
+              <button type="button"
+                onClick={() => {
+                  const newBed: ClinicBed = { id: `bed-${Date.now()}`, number: String((c.beds?.length ?? 0) + 1), ward: 'General' };
+                  set('beds', [...(c.beds ?? []), newBed]);
+                }}
+                className="btn-secondary btn-sm text-xs">
+                <Plus className="w-3 h-3" /> Add Bed
+              </button>
+            </div>
+            {(!c.beds || c.beds.length === 0) ? (
+              <p className="text-xs text-slate-400">No beds configured. Add beds if this clinic has an IPD setup.</p>
+            ) : (
+              <div className="space-y-2">
+                {c.beds.map((bed, bi) => (
+                  <div key={bed.id} className="flex items-center gap-2">
+                    <span className="text-xs text-slate-400 w-6 text-right flex-shrink-0">#{bi + 1}</span>
+                    <input
+                      value={bed.number}
+                      onChange={e => set('beds', c.beds!.map((b, i) => i === bi ? { ...b, number: e.target.value } : b))}
+                      placeholder="Bed No."
+                      className="input text-sm py-1.5 w-20 flex-shrink-0"
+                    />
+                    <input
+                      value={bed.ward}
+                      onChange={e => set('beds', c.beds!.map((b, i) => i === bi ? { ...b, ward: e.target.value } : b))}
+                      placeholder="Ward"
+                      className="input text-sm py-1.5 flex-1"
+                    />
+                    <select
+                      value={bed.type ?? 'General'}
+                      onChange={e => set('beds', c.beds!.map((b, i) => i === bi ? { ...b, type: e.target.value } : b))}
+                      className="input text-sm py-1.5 w-32 flex-shrink-0"
+                    >
+                      <option>General</option>
+                      <option>ICU</option>
+                      <option>Private</option>
+                      <option>Semi-Private</option>
+                    </select>
+                    <button type="button"
+                      onClick={() => set('beds', c.beds!.filter((_, i) => i !== bi))}
+                      className="text-slate-300 hover:text-red-400 transition-colors flex-shrink-0">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -776,7 +1234,7 @@ function ClinicsTab() {
                     })}
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="grid grid-cols-4 gap-2 text-center">
                     <div className="bg-slate-50 rounded-xl px-2 py-2">
                       <div className="text-sm font-bold text-slate-900">₹{c.fee}</div>
                       <div className="text-[10px] text-slate-400">Fee</div>
@@ -788,6 +1246,10 @@ function ClinicsTab() {
                     <div className="bg-slate-50 rounded-xl px-2 py-2">
                       <div className="text-sm font-bold text-slate-900">{openDays.length > 0 ? Math.max(...openDays.map(d => d.maxPatients)) : '—'}</div>
                       <div className="text-[10px] text-slate-400">Max cap</div>
+                    </div>
+                    <div className="bg-slate-50 rounded-xl px-2 py-2">
+                      <div className="text-sm font-bold text-slate-900">{c.beds?.length ?? 0}</div>
+                      <div className="text-[10px] text-slate-400">Beds</div>
                     </div>
                   </div>
                 </div>
@@ -806,12 +1268,278 @@ function ClinicsTab() {
             <p className="text-sm text-slate-500">This won't delete any patient data.</p>
             <div className="flex gap-2">
               <button onClick={() => setConfirmDelete(null)} className="btn-secondary flex-1">Cancel</button>
-              <button onClick={() => { removeClinic(confirmDelete); showToast('Clinic removed', 'info'); setConfirmDelete(null); }}
+              <button onClick={async () => {
+                const id = confirmDelete;
+                setConfirmDelete(null);
+                try {
+                  await removeClinic(id);
+                  showToast('Clinic removed', 'info');
+                } catch {
+                  showToast('Could not remove clinic — server error. Please try again.', 'error');
+                }
+              }}
                 className="flex-1 bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-4 rounded-xl">Remove</button>
             </div>
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Video Consult Tab ───────────────────────────────────────────────────────
+
+function VideoTab() {
+  const { showToast } = useAppStore();
+  const [meetLink, setMeetLink] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!isApiEnabled()) { setLoading(false); return; }
+    api.get<{ video_meet_link?: string }>('/auth/me/public-profile')
+      .then(d => setMeetLink(d?.video_meet_link ?? ''))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function handleSave() {
+    if (!isApiEnabled()) { showToast('Connect to backend first', 'warning'); return; }
+    setSaving(true);
+    try {
+      await api.patch('/auth/me/public-profile', { video_meet_link: meetLink.trim() });
+      showToast('Video consultation link saved', 'success');
+    } catch {
+      showToast('Could not save. Please try again.', 'error');
+    } finally { setSaving(false); }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-bold text-slate-900">Video Consultation</h2>
+        <p className="text-sm text-slate-500 mt-0.5">Set up your Google Meet link for online patient consultations</p>
+      </div>
+
+      {/* How it works */}
+      <div className="card p-5 space-y-4">
+        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+          Your Google Meet Link
+        </h3>
+        <p className="text-sm text-slate-600 leading-relaxed">
+          Create a <strong>reusable</strong> Google Meet room and paste it here. Every patient who books a video consultation will connect with you on this link.
+        </p>
+
+        {/* Steps */}
+        <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 space-y-2.5">
+          <p className="text-xs font-bold text-indigo-700 uppercase tracking-wide">How to create your Meet link</p>
+          {[
+            { n: 1, t: 'Go to', link: 'meet.google.com', href: 'https://meet.google.com', rest: '' },
+            { n: 2, t: 'Click', link: '"New meeting"', href: null, rest: '' },
+            { n: 3, t: 'Select', link: '"Create a meeting for later"', href: null, rest: '' },
+            { n: 4, t: 'Copy the link and paste it below', link: null, href: null, rest: '' },
+          ].map(s => (
+            <div key={s.n} className="flex items-start gap-3 text-sm text-indigo-800">
+              <span className="w-5 h-5 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">{s.n}</span>
+              <span>
+                {s.t}{' '}
+                {s.link && s.href && <a href={s.href} target="_blank" rel="noopener noreferrer" className="font-semibold underline">{s.link}</a>}
+                {s.link && !s.href && <strong>{s.link}</strong>}
+                {s.rest}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {/* Input */}
+        {loading ? (
+          <div className="flex items-center gap-2 text-slate-400 text-sm"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</div>
+        ) : (
+          <div className="space-y-2">
+            <label className="label">Google Meet Link</label>
+            <div className="flex gap-2">
+              <input
+                type="url"
+                className="input flex-1"
+                placeholder="https://meet.google.com/abc-defg-hij"
+                value={meetLink}
+                onChange={e => setMeetLink(e.target.value)}
+              />
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="btn-primary flex-shrink-0 gap-2"
+              >
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                {saving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+            {meetLink && (
+              <div className="flex items-center gap-3 mt-2">
+                <a href={meetLink} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-3 py-1.5 rounded-lg transition-colors no-underline">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+                  Test Meet Link
+                </a>
+                <span className="text-xs text-emerald-600 font-semibold flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Link saved
+                </span>
+              </div>
+            )}
+            <p className="text-xs text-slate-400 mt-1">
+              This link is used automatically when a patient books a video consultation with you.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* How video bookings work */}
+      <div className="card p-5 space-y-3">
+        <h3 className="text-sm font-bold text-slate-800">How Video Consultations Work</h3>
+        <div className="space-y-3">
+          {[
+            { step: 'Patient books', desc: 'Patient selects "Video Consultation" on your public booking page and picks a time slot.' },
+            { step: 'You confirm', desc: 'The booking appears in your Booking Requests. Click Confirm — the Meet link is attached automatically.' },
+            { step: 'Join the call', desc: 'At the appointment time, click "Join Meet" on your Dashboard or Booking Requests page to open Google Meet.' },
+            { step: 'Consult', desc: 'Patient joins the same Meet link. Discuss, prescribe, and write the visit note in the Consult page as normal.' },
+          ].map((item, i) => (
+            <div key={i} className="flex gap-3">
+              <div className="w-6 h-6 rounded-full bg-teal-100 text-teal-700 text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">{i + 1}</div>
+              <div>
+                <div className="text-sm font-semibold text-slate-800">{item.step}</div>
+                <div className="text-xs text-slate-500 mt-0.5">{item.desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Legal Tab ────────────────────────────────────────────────────────────────
+
+function LegalSection({ title, children }: { title: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="card overflow-hidden">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-slate-50 transition-colors"
+      >
+        <span className="font-bold text-slate-800">{title}</span>
+        <ChevronDown className={cn('w-4 h-4 text-slate-400 transition-transform', open && 'rotate-180')} />
+      </button>
+      {open && (
+        <div className="px-5 pb-6 border-t border-slate-100 text-sm text-slate-600 leading-relaxed space-y-4 max-h-[60vh] overflow-y-auto">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LegalTab() {
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-lg font-bold text-slate-900">Legal & Policies</h2>
+        <p className="text-sm text-slate-500 mt-0.5">Privacy, cookies and terms of service for Vyasa Integrated Healthcare Pvt. Ltd.</p>
+      </div>
+
+      {/* Privacy Policy */}
+      <LegalSection title="Privacy Policy">
+        <p className="text-xs text-slate-400 pt-3">Last updated: June 2026</p>
+
+        <p>Vyasa Integrated Healthcare Pvt. Ltd. ("Vyasa", "the Company", "we" or "us") owns and operates <strong>vyasaa.com</strong> and <strong>app.vyasaa.com</strong>. We are committed to your privacy.</p>
+
+        <p>This Privacy Policy is published in compliance of Section 43A of the IT Act 2000, Regulation 4 of the SPI Rules 2011, and Regulation 3(1) of the IT (Intermediary Guidelines) Rules 2011.</p>
+
+        <p className="font-semibold text-slate-700">Information We Collect</p>
+        <p>We collect information when you register or use the platform — including name, email, phone number, and (for doctors) NMC registration number, qualifications and practice details. For patients, medical records and visit history may be stored on your doctor's behalf.</p>
+
+        <p className="font-semibold text-slate-700">How We Use Your Information</p>
+        <ul className="list-disc list-inside space-y-1">
+          <li>To create and manage your account</li>
+          <li>To facilitate appointment bookings</li>
+          <li>To send appointment confirmations and notifications</li>
+          <li>To improve platform features</li>
+          <li>To comply with legal obligations</li>
+        </ul>
+
+        <p className="font-semibold text-slate-700">Data Security</p>
+        <p>We use HTTPS encryption, JWT-based authentication and role-based access controls. Patient data is accessible only to the treating doctor and their authorised clinic staff.</p>
+
+        <p className="font-semibold text-slate-700">Data Retention & Deletion</p>
+        <p>Your data is retained for as long as your account is active. To request deletion, email <strong>support@vyasaa.com</strong> with subject "Data Deletion Request" and your registered email. We process requests within 30 days. Some data may be retained where required by law.</p>
+
+        <p className="font-semibold text-slate-700">Doctor Profiles</p>
+        <p>Upon approval, your professional profile (name, specialty, city, qualification, booking availability) is listed publicly on app.vyasaa.com/doctors and accessible to all users.</p>
+
+        <p>For the full policy visit <a href="https://vyasaa.com/privacy" target="_blank" rel="noopener noreferrer" className="text-teal-600 hover:underline">vyasaa.com/privacy</a></p>
+      </LegalSection>
+
+      {/* Cookie Policy */}
+      <LegalSection title="Cookie Policy">
+        <p className="text-xs text-slate-400 pt-3">Last updated: June 2026</p>
+
+        <p>This Cookie Policy explains how Vyasa Integrated Healthcare Pvt. Ltd. uses cookies and similar local storage technologies on app.vyasaa.com.</p>
+
+        <p className="font-semibold text-slate-700">What We Store</p>
+        <ul className="list-disc list-inside space-y-1">
+          <li><strong>Authentication token (localStorage):</strong> A JWT token that keeps you logged in during your session. This is required for the app to function.</li>
+          <li><strong>App preferences (localStorage):</strong> Your Rx Pad settings, theme, and clinic configuration are saved locally so they persist across sessions.</li>
+          <li><strong>Session state (sessionStorage):</strong> Temporary UI state such as active tab or current queue view.</li>
+        </ul>
+
+        <p className="font-semibold text-slate-700">What We Do NOT Use</p>
+        <ul className="list-disc list-inside space-y-1">
+          <li>We do not use third-party advertising cookies</li>
+          <li>We do not use tracking pixels or cross-site tracking</li>
+          <li>We do not share any stored data with advertisers</li>
+        </ul>
+
+        <p className="font-semibold text-slate-700">Controlling Storage</p>
+        <p>You can clear all locally stored data by logging out and clearing your browser's site data for app.vyasaa.com. Note that this will also log you out and reset your local Rx Pad settings.</p>
+
+        <p>If you have questions about our storage practices, contact us at <strong>support@vyasaa.com</strong>.</p>
+      </LegalSection>
+
+      {/* Terms of Service */}
+      <LegalSection title="Terms of Service">
+        <p className="text-xs text-slate-400 pt-3">Last updated: June 2026</p>
+
+        <p>By accessing or using app.vyasaa.com, you agree to be bound by these Terms of Service. If you do not agree, do not use the platform.</p>
+
+        <p className="font-semibold text-slate-700">1. Eligibility</p>
+        <p>Doctors and clinic staff must be licensed to practice medicine in India and hold a valid NMC or State Medical Council registration. You must provide accurate and up-to-date information during registration.</p>
+
+        <p className="font-semibold text-slate-700">2. Platform Use</p>
+        <ul className="list-disc list-inside space-y-1">
+          <li>Vyasa is a clinical workflow tool — it does not provide medical advice</li>
+          <li>Doctors are solely responsible for the accuracy of prescriptions, diagnoses and patient records created on the platform</li>
+          <li>You may not use the platform for unlawful purposes or to impersonate another person</li>
+          <li>You may not attempt to reverse-engineer, scrape or disrupt the platform</li>
+        </ul>
+
+        <p className="font-semibold text-slate-700">3. Patient Data</p>
+        <p>Doctors are responsible for obtaining patient consent before creating digital records. Vyasa stores this data on your behalf as a data processor. You remain the data controller for all patient information.</p>
+
+        <p className="font-semibold text-slate-700">4. Accounts & Approval</p>
+        <p>All doctor accounts are subject to verification and approval by Vyasa. We reserve the right to suspend or terminate accounts found to have provided false credentials or that violate these Terms.</p>
+
+        <p className="font-semibold text-slate-700">5. Disclaimer of Liability</p>
+        <p>Vyasa Integrated Healthcare Pvt. Ltd. is not responsible for outcomes of medical treatments arranged through or recorded on the platform. The platform is a tool — clinical judgment remains with the treating doctor.</p>
+
+        <p className="font-semibold text-slate-700">6. Changes to Terms</p>
+        <p>We may update these Terms at any time. Continued use of the platform after changes constitutes your acceptance of the updated Terms.</p>
+
+        <p className="font-semibold text-slate-700">7. Governing Law</p>
+        <p>These Terms are governed by the laws of India. Any disputes shall be subject to the exclusive jurisdiction of the courts of India.</p>
+
+        <p>For any questions, contact us at <strong>support@vyasaa.com</strong></p>
+      </LegalSection>
     </div>
   );
 }
@@ -822,17 +1550,37 @@ const TABS: { id: Tab; label: string; icon: typeof Settings; desc: string }[] = 
   { id: 'rxpad',   label: 'Rx Pad',     icon: Pill,      desc: 'Letterhead & prescription format' },
   { id: 'staff',   label: 'My Staff',   icon: Users,     desc: 'Add & manage clinic team' },
   { id: 'clinics', label: 'My Clinics', icon: Building2, desc: 'Locations · schedule · patient caps' },
+  { id: 'video',   label: 'Video',      icon: Video,     desc: 'Google Meet · video consultations' },
+  { id: 'legal',   label: 'Legal',      icon: Shield,    desc: 'Privacy · Cookies · Terms of Service' },
 ];
 
 export default function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { user } = useAuthStore();
+  const isClinicAdmin = user?.role === 'clinic_admin';
+
   const rawTab = searchParams.get('tab') as Tab | null;
-  const activeTab: Tab = (rawTab && TABS.some(t => t.id === rawTab)) ? rawTab : 'rxpad';
+  const visibleTabs = TABS;
+  const activeTab: Tab = (rawTab && TABS.some(t => t.id === rawTab)) ? rawTab as Tab : 'rxpad';
+
+  // Only clinic admins (main doctors) can access Settings.
+  // Invited doctors use /app/pad-settings for their personal Rx Pad.
+  if (!isClinicAdmin) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 text-center px-6">
+        <Settings className="w-10 h-10 text-slate-300 mb-4" />
+        <h2 className="text-lg font-bold text-slate-700 mb-1">Settings not available</h2>
+        <p className="text-sm text-slate-400 max-w-xs">
+          Clinic settings are managed by the clinic admin. Use <strong>Rx Pad Settings</strong> in the sidebar to configure your personal prescription pad.
+        </p>
+      </div>
+    );
+  }
 
   function setTab(t: Tab) { setSearchParams({ tab: t }); }
 
   return (
-    <div className="p-4 md:p-6 space-y-5">
+    <div className="p-0 md:p-6 space-y-5">
       <div>
         <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
           <Settings className="w-6 h-6 text-teal-500" /> Settings
@@ -840,8 +1588,8 @@ export default function SettingsPage() {
         <p className="text-sm text-slate-500 mt-0.5">Rx pad, staff, and clinic configuration</p>
       </div>
 
-      <div className="grid grid-cols-3 gap-2">
-        {TABS.map(t => (
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        {visibleTabs.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             className={cn('flex items-center gap-3 p-4 rounded-2xl border-2 text-left transition-all',
               activeTab === t.id ? 'border-teal-500 bg-teal-50' : 'border-slate-200 bg-white hover:border-teal-200 hover:bg-slate-50')}>
@@ -859,9 +1607,14 @@ export default function SettingsPage() {
 
       <div>
         {activeTab === 'rxpad'   && <RxPadTab />}
-        {activeTab === 'staff'   && <StaffTab />}
+        {activeTab === 'staff'   && isClinicAdmin && <StaffTab />}
         {activeTab === 'clinics' && <ClinicsTab />}
+        {activeTab === 'video'   && <VideoTab />}
+        {activeTab === 'legal'   && <LegalTab />}
       </div>
+
+      {/* Install App banner — always visible at the bottom of Settings */}
+      <PWAInstallGuide compact />
     </div>
   );
 }

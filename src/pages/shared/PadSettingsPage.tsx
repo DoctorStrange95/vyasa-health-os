@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Save, Plus, Trash2, CheckCircle2, RefreshCw, Printer } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { Save, Plus, Trash2, CheckCircle2, RefreshCw, Printer, Upload, X, Image } from 'lucide-react';
 import { usePadStore } from '@/store/usePadStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { cn } from '@/lib/utils';
@@ -15,9 +15,20 @@ export default function PadSettingsPage() {
   const { settings, setSettings, resetSettings } = usePadStore();
   const { user } = useAuthStore();
   const [saved, setSaved] = useState(false);
+  const logoRef = useRef<HTMLInputElement>(null);
+  const stampRef = useRef<HTMLInputElement>(null);
 
   const S = settings;
   const set = (k: string, v: unknown) => setSettings({ [k]: v } as never);
+
+  function handleImageUpload(key: 'logoUrl' | 'stampUrl', file: File | undefined) {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { alert('Please select an image file'); return; }
+    if (file.size > 2 * 1024 * 1024) { alert('Image must be under 2 MB'); return; }
+    const reader = new FileReader();
+    reader.onload = e => set(key, e.target?.result as string);
+    reader.readAsDataURL(file);
+  }
 
   function handleSave() {
     setSaved(true);
@@ -104,6 +115,83 @@ export default function PadSettingsPage() {
                     placeholder={f.placeholder} className="input" />
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/* Logo & Stamp Uploads */}
+          <div className="card p-5 space-y-4">
+            <h2 className="font-semibold text-slate-800 text-sm uppercase tracking-wide text-teal-600">Logo & Stamp</h2>
+
+            {/* Clinic Logo */}
+            <div>
+              <label className="label">Clinic / Hospital Logo</label>
+              <p className="text-xs text-slate-400 mb-2">Appears in the top-left of the prescription header. PNG/JPG, max 2 MB.</p>
+              <div className="flex items-center gap-3">
+                {S.logoUrl ? (
+                  <div className="relative flex-shrink-0">
+                    <img src={S.logoUrl} alt="Logo" className="h-16 max-w-[120px] object-contain rounded-lg border border-slate-200 bg-white p-1" />
+                    <button type="button" onClick={() => set('logoUrl', '')}
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-white hover:bg-red-600">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="w-20 h-16 rounded-lg border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-300 bg-slate-50">
+                    <Image className="w-6 h-6" />
+                  </div>
+                )}
+                <div className="flex flex-col gap-2">
+                  <button type="button" onClick={() => logoRef.current?.click()}
+                    className="btn-secondary btn-sm flex items-center gap-2">
+                    <Upload className="w-3.5 h-3.5" />
+                    {S.logoUrl ? 'Replace Logo' : 'Upload Logo'}
+                  </button>
+                  {S.logoUrl && (
+                    <button type="button" onClick={() => set('logoUrl', '')}
+                      className="text-xs text-red-500 hover:underline text-left">
+                      Remove
+                    </button>
+                  )}
+                </div>
+              </div>
+              <input ref={logoRef} type="file" accept="image/*" className="hidden"
+                onChange={e => handleImageUpload('logoUrl', e.target.files?.[0])} />
+            </div>
+
+            {/* Doctor's Stamp */}
+            <div>
+              <label className="label">Doctor's Stamp / Seal</label>
+              <p className="text-xs text-slate-400 mb-2">Appears below the signature on the prescription. PNG with transparent background recommended.</p>
+              <div className="flex items-center gap-3">
+                {S.stampUrl ? (
+                  <div className="relative flex-shrink-0">
+                    <img src={S.stampUrl} alt="Stamp" className="h-16 max-w-[120px] object-contain rounded-lg border border-slate-200 bg-white p-1" />
+                    <button type="button" onClick={() => set('stampUrl', '')}
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-white hover:bg-red-600">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="w-20 h-16 rounded-lg border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-300 bg-slate-50">
+                    <Image className="w-6 h-6" />
+                  </div>
+                )}
+                <div className="flex flex-col gap-2">
+                  <button type="button" onClick={() => stampRef.current?.click()}
+                    className="btn-secondary btn-sm flex items-center gap-2">
+                    <Upload className="w-3.5 h-3.5" />
+                    {S.stampUrl ? 'Replace Stamp' : 'Upload Stamp'}
+                  </button>
+                  {S.stampUrl && (
+                    <button type="button" onClick={() => set('stampUrl', '')}
+                      className="text-xs text-red-500 hover:underline text-left">
+                      Remove
+                    </button>
+                  )}
+                </div>
+              </div>
+              <input ref={stampRef} type="file" accept="image/*" className="hidden"
+                onChange={e => handleImageUpload('stampUrl', e.target.files?.[0])} />
             </div>
           </div>
 

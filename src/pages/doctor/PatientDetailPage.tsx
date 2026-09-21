@@ -1,8 +1,12 @@
-import { useParams, Link } from 'react-router-dom';
-import { useState } from 'react';
-import { ArrowLeft, Activity, Pill, FlaskConical, MessageSquare, ClipboardList, FileText, Info, Send, Plus, AlertTriangle, Printer, History, Syringe, Scissors, Camera, Skull, Calendar } from 'lucide-react';
+import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { ArrowLeft, Activity, Pill, FlaskConical, MessageSquare, ClipboardList, FileText, Info, Send, Plus, AlertTriangle, Printer, History, Syringe, Scissors, Camera, Skull, Calendar, MoreVertical, Upload, CheckCircle2, AlertCircle, Eye, Trash2 } from 'lucide-react';
 import { useAppStore, uid, nowIso } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
+import { api, isApiEnabled } from '@/lib/api';
+import { connectSocket, joinPatientRoom, leavePatientRoom, emitChatMessage } from '@/lib/socket';
+import { usePadStore } from '@/store/usePadStore';
+import { PrintPreview } from '@/components/PrintPreview';
 import { PriorityBadge, StatusBadge, LabStatusBadge } from '@/components/ui/Badge';
 import { ScheduleModal } from '@/components/ScheduleModal';
 import { Modal } from '@/components/ui/Modal';
@@ -13,16 +17,79 @@ type Tab = 'overview' | 'vitals' | 'prescriptions' | 'labs' | 'notes' | 'chat' |
 
 export default function PatientDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { patients, vitals, prescriptions, labOrders, nursingNotes, chatMessages, visits, appointments, nursingPhotos, addVitals, addPrescription, addLabOrder, addChatMessage, addNursingPhoto, upsertPatient, updateAppointment, showToast } = useAppStore();
+  const { patients, vitals, prescriptions, labOrders, nursingNotes, chatMessages, visits, appointments, nursingPhotos, addVitals, addPrescription, addLabOrder, updateLabResult, setChatMessages, addNursingPhoto, upsertPatient, updateAppointment, showToast, setVitals, setPrescriptions, setLabOrders, setPatientVisits, setPatients } = useAppStore();
   const { user } = useAuthStore();
-  const [tab, setTab] = useState<Tab>('overview');
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [tab, setTab] = useState<Tab>((searchParams.get('tab') as Tab) || 'overview');
   const [chatInput, setChatInput] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [deathModal, setDeathModal] = useState(false);
   const [deathDate, setDeathDate] = useState(new Date().toISOString().slice(0, 16));
   const [deathCause, setDeathCause] = useState('');
   const [showSchedule, setShowSchedule] = useState(false);
+  const [ipdMenuOpen, setIpdMenuOpen] = useState(false);
+  const [showTopPrint, setShowTopPrint] = useState(false);
+  const { settings: padTop } = usePadStore();
 
   const patient = patients.find(p => p.id === id);
+
+  // Fetch patient-specific clinical data from backend on mount (vitals/rx/labs are not part of syncFromBackend)
+  useEffect(() => {
+    if (!id || !isApiEnabled()) return;
+    api.get<any[]>(`/vitals/patient/${id}`).then(rows => {
+      if (rows.length > 0) setVitals(id, rows);
+    }).catch(() => {});
+    api.get<any[]>(`/prescriptions/patient/${id}`).then(rows => {
+      if (rows.length > 0) setPrescriptions(id, rows.map(r => ({
+        id: r.id, patientId: r.patient_id, drug: r.drug, dose: r.dose ?? '',
+        route: r.route ?? '', frequency: r.frequency ?? '', duration: r.duration ?? '',
+        instructions: r.instructions ?? '', status: r.status ?? 'active',
+        time: r.prescribed_at ?? r.created_at, prescribedBy: r.doctor_name ?? '',
+      })));
+    }).catch(() => {});
+    api.get<any[]>(`/labs/patient/${id}`).then(rows => {
+      if (rows.length > 0) setLabOrders(id, rows.map(r => ({
+        id: r.id, patientId: r.patient_id, testName: r.test_name, panel: r.panel ?? '',
+        orderedBy: r.ordered_by ?? '', orderedAt: r.ordered_at ?? r.created_at,
+        status: r.status ?? 'ordered', urgency: r.urgency ?? 'routine',
+        result: r.result ?? '', unit: r.unit ?? '', refRange: r.ref_range ?? '',
+        critical: r.critical ?? false, resultTime: r.result_time ?? '',
+        reportDataUrl: r.report_data_url ?? '',
+      })));
+    }).catch(() => {});
+    // Visits for this patient — includes orphaned visits saved with empty clinic_id (solo practice)
+    api.get<any[]>(`/visits/patient/${id}`).then(rows => {
+      if (rows.length > 0) setPatientVisits(id, rows as any);
+    }).catch(() => {});
+    // Care-team chat history for this patient
+    api.get<any[]>(`/chat/${id}`).then(rows => {
+      if (rows.length > 0) setChatMessages(id, rows as any);
+    }).catch(() => {});
+    // Live updates: join this patient's real-time room (chat + vitals from other staff)
+    connectSocket();
+    joinPatientRoom(id);
+    return () => { leavePatientRoom(id); };
+  }, [id]);
+
+  // While the Care Team Chat tab is open, poll so messages/notes from other
+  // devices appear without a manual refresh. Merge by id so a just-sent
+  // optimistic message is never dropped before it's persisted.
+  useEffect(() => {
+    if (tab !== 'chat' || !id || !isApiEnabled()) return;
+    const iv = setInterval(() => {
+      api.get<any[]>(`/chat/${id}`).then(rows => {
+        const cur = useAppStore.getState().chatMessages[id] ?? [];
+        const serverIds = new Set(rows.map(r => r.id));
+        const localOnly = cur.filter(m => !serverIds.has(m.id));
+        const merged = [...rows, ...localOnly].sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
+        setChatMessages(id, merged as any);
+      }).catch(() => {});
+    }, 5000);
+    return () => clearInterval(iv);
+  }, [id, tab]);
+
   if (!patient) return (
     <div className="flex flex-col items-center justify-center h-64 text-slate-400">
       <AlertTriangle className="w-10 h-10 mb-3" />
@@ -31,13 +98,66 @@ export default function PatientDetailPage() {
     </div>
   );
 
-  const ptVitals = vitals[id!] || [];
-  const ptRx = prescriptions[id!] || [];
-  const ptLabs = labOrders[id!] || [];
+  const ptVisits = visits[id!] || [];
+
+  // Merge vitals from visit snapshots (handles cross-device / missing addVitals calls)
+  const rawVitals = vitals[id!] || [];
+  const snapshotVitals = ptVisits
+    .filter(v => v.vitalsSnapshot && Object.values(v.vitalsSnapshot as Record<string, string>).some(Boolean))
+    .map(v => {
+      const vs = v.vitalsSnapshot as Record<string, string>;
+      return {
+        id: `snap-${v.id}`, patientId: id!, time: v.date, recordedBy: v.doctorName ?? 'Doctor',
+        bp: vs.bp || '', pulse: vs.hr ? +vs.hr : undefined, temp: vs.temp ? +vs.temp : undefined,
+        spo2: vs.spo2 ? +vs.spo2 : undefined, rr: vs.rr ? +vs.rr : undefined, weight: vs.weight ? +vs.weight : undefined,
+      };
+    })
+    .filter(s => {
+      // Skip if rawVitals already has an entry with same BP within 10 minutes (addVitals called on finalize)
+      const snapMs = new Date(s.time).getTime();
+      return !rawVitals.some((r: any) =>
+        r.bp === s.bp && Math.abs(new Date(r.time).getTime() - snapMs) < 10 * 60 * 1000
+      );
+    });
+  const ptVitals = [...rawVitals, ...snapshotVitals]
+    .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+
+  // Merge drugs from visits into Rx tab
+  const rawRx = prescriptions[id!] || [];
+  const rawRxIds = new Set(rawRx.map((r: any) => r.id));
+  const visitDrugs = ptVisits.flatMap(v =>
+    (v.drugs ?? []).map((d: any, i: number) => ({
+      id: `visit-${v.id}-${i}`, patientId: id!, time: v.date, status: 'active',
+      drug: d.drug || '',
+      form: d.form || 'Tab',
+      dose: d.dose || '', route: d.route || 'Oral', frequency: d.frequency || '',
+      duration: d.duration || '', instructions: d.instructions || '',
+      prescribedBy: v.doctorName ?? 'Doctor',
+    }))
+  ).filter(d => !rawRxIds.has(d.id));
+  const ptRx = [...rawRx, ...visitDrugs]
+    .sort((a: any, b: any) => new Date(b.time).getTime() - new Date(a.time).getTime());
+
+  // Merge investigation text from visits into Labs tab
+  const rawLabs = labOrders[id!] || [];
+  const rawLabIds = new Set(rawLabs.map((l: any) => l.id));
+  const visitLabs = ptVisits
+    .filter(v => v.investigation?.trim())
+    .flatMap(v =>
+      String(v.investigation).split(/[,\n]+/).map((t: string) => t.trim()).filter(Boolean).map((t: string, i: number) => ({
+        id: `visit-lab-${v.id}-${i}`, patientId: id!, testName: t, panel: '',
+        orderedBy: v.doctorName ?? 'Doctor', orderedAt: v.date, status: 'ordered',
+      }))
+    )
+    .filter(l => !rawLabIds.has(l.id));
+  const ptLabs = [...rawLabs, ...visitLabs]
+    .sort((a: any, b: any) => new Date(b.orderedAt).getTime() - new Date(a.orderedAt).getTime());
   const ptNotes = nursingNotes[id!] || [];
   const ptChat = chatMessages[id!] || [];
 
   const isIPD = patient.status === 'IPD' || patient.status === 'Critical';
+  // Nurses are vitals + "given" only — no consult / prescribe / print / discharge.
+  const isNurse = user?.role === 'nurse';
 
   const ALL_TABS: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }>; ipdOnly?: boolean }[] = [
     { id: 'overview', label: 'Overview', icon: Info },
@@ -57,9 +177,25 @@ export default function PatientDetailPage() {
     showToast('Patient record updated', 'success');
   }
 
+  async function deletePatient() {
+    if (!id) return;
+    setDeleting(true);
+    try {
+      if (isApiEnabled()) await api.del(`/patients/${id}`);
+      setPatients(patients.filter(p => p.id !== id));
+      showToast('Patient deleted', 'success');
+      navigate('/app/patients');
+    } catch (e) {
+      showToast(`Could not delete: ${e instanceof Error ? e.message : 'error'}`, 'error');
+      setDeleting(false);
+    }
+  }
+
   function sendChat() {
     if (!chatInput.trim() || !user) return;
-    addChatMessage({ id: uid(), patientId: id!, senderId: user.id, senderName: user.name, senderRole: user.role, message: chatInput.trim(), time: nowIso() });
+    // Send over the socket — the backend persists it and echoes to the whole
+    // care team (including us), which adds it to the store with a stable id.
+    emitChatMessage(id!, chatInput.trim());
     setChatInput('');
   }
 
@@ -92,13 +228,15 @@ export default function PatientDetailPage() {
             {patient.insurance && <span>Insurance: {patient.insurance}</span>}
           </div>
         </div>
+        {!isNurse && (
         <div className="flex gap-2 flex-shrink-0 flex-wrap justify-end">
-          <button className="btn-secondary btn-sm">
-            <Printer className="w-3.5 h-3.5" /> Print Summary
+          <button onClick={() => setShowTopPrint(true)} className="btn-secondary btn-sm hidden sm:flex">
+            <Printer className="w-3.5 h-3.5" /> Print
           </button>
           {patient.status !== 'Deceased' && (
             <button onClick={() => setShowSchedule(true)} className="btn-secondary btn-sm">
-              <Calendar className="w-3.5 h-3.5" /> Schedule
+              <Calendar className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Schedule</span>
             </button>
           )}
           {patient.status !== 'Deceased' && patient.status !== 'Discharged' && (
@@ -106,35 +244,89 @@ export default function PatientDetailPage() {
               <FileText className="w-3.5 h-3.5" /> Consult
             </Link>
           )}
+          {/* Desktop: show buttons inline */}
           {isIPD && (
-            <Link to={`/app/discharge?pid=${id}`} className="btn-secondary btn-sm">
+            <Link to={`/app/discharge?pid=${id}`} className="btn-secondary btn-sm hidden sm:flex">
               <FileText className="w-3.5 h-3.5" /> Discharge
             </Link>
           )}
           {patient.status !== 'Deceased' && (
-            <button onClick={() => setDeathModal(true)} className="btn-sm bg-slate-100 hover:bg-red-50 text-slate-500 hover:text-red-600 border border-slate-200 hover:border-red-200 transition-colors">
-              <Skull className="w-3.5 h-3.5" /> Mark Deceased
+            <button onClick={() => setDeathModal(true)} className="btn-sm bg-slate-100 hover:bg-red-50 text-slate-500 hover:text-red-600 border border-slate-200 hover:border-red-200 transition-colors hidden sm:flex">
+              <Skull className="w-3.5 h-3.5" />
             </button>
           )}
+          <button onClick={() => setConfirmDelete(true)} title="Delete record" className="btn-sm bg-slate-100 hover:bg-red-50 text-slate-500 hover:text-red-600 border border-slate-200 hover:border-red-200 transition-colors hidden sm:flex">
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+          {/* Mobile: 3-dot kebab */}
+          <div className="relative sm:hidden">
+            <button onClick={() => setIpdMenuOpen(o => !o)}
+              className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors">
+              <MoreVertical className="w-4 h-4" />
+            </button>
+            {ipdMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setIpdMenuOpen(false)} />
+                <div className="absolute right-0 top-full mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden w-48">
+                  <button onClick={() => { setShowTopPrint(true); setIpdMenuOpen(false); }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-700 hover:bg-slate-50">
+                    <Printer className="w-4 h-4 text-slate-400" />
+                    Print Prescription
+                  </button>
+                  {isIPD && (
+                    <Link to={`/app/discharge?pid=${id}`}
+                      onClick={() => setIpdMenuOpen(false)}
+                      className="flex items-center gap-3 px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 border-t border-slate-100">
+                      <FileText className="w-4 h-4 text-slate-400" />
+                      Discharge Patient
+                    </Link>
+                  )}
+                  {patient.status !== 'Deceased' && (
+                    <button onClick={() => { setDeathModal(true); setIpdMenuOpen(false); }}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-600 hover:bg-red-50 border-t border-slate-100">
+                      <Skull className="w-4 h-4" />
+                      Record Death
+                    </button>
+                  )}
+                  <button onClick={() => { setConfirmDelete(true); setIpdMenuOpen(false); }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-600 hover:bg-red-50 border-t border-slate-100">
+                    <Trash2 className="w-4 h-4" />
+                    Delete Record
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
+        )}
       </div>
 
       {/* Tabs */}
-      <div className="tab-bar">
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} className={cn('tab-btn flex items-center gap-1.5', tab === t.id && 'active')}>
-            <t.icon className="w-3.5 h-3.5" />
-            {t.label}
-          </button>
-        ))}
+      <div className="sticky top-0 z-20 bg-white/95 backdrop-blur-sm -mx-4 md:-mx-5 px-3 md:px-4 mb-5 border-b border-slate-100 shadow-[0_1px_8px_rgba(0,0,0,0.06)]">
+        <div className="flex gap-0.5 overflow-x-auto scrollbar-hide py-2">
+          {TABS.map(t => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={cn(
+                'flex-shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all duration-200 cursor-pointer min-h-[40px]',
+                tab === t.id
+                  ? 'bg-teal-500 text-white shadow-sm shadow-teal-200 font-semibold'
+                  : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
+              )}>
+              <t.icon className="w-3.5 h-3.5 flex-shrink-0" />
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Tab content */}
       {tab === 'overview' && <OverviewTab patient={patient} />}
-      {tab === 'history' && <VisitsTab visits={visits[id!] ?? []} />}
+      {tab === 'history' && <VisitsTab visits={visits[id!] ?? []} patient={patient} />}
       {tab === 'vitals' && <VitalsTab vitals={ptVitals} patientId={id!} onAdd={addVitals} showToast={showToast} />}
-      {tab === 'prescriptions' && <PrescriptionsTab rx={ptRx} patientId={id!} doctorName={user?.name || ''} onAdd={addPrescription} showToast={showToast} />}
-      {tab === 'labs' && <LabsTab labs={ptLabs} patientId={id!} doctorName={user?.name || ''} onAdd={addLabOrder} showToast={showToast} />}
+      {tab === 'prescriptions' && <PrescriptionsTab rx={ptRx} patientId={id!} doctorName={user?.name || ''} onAdd={addPrescription} showToast={showToast} readOnly={isNurse} />}
+      {tab === 'labs' && <LabsTab labs={ptLabs} patientId={id!} doctorName={user?.name || ''} onAdd={addLabOrder} onUpdateResult={updateLabResult} showToast={showToast} readOnly={isNurse} />}
       {tab === 'appointments' && (
         <AppointmentsTab
           appointments={appointments.filter(a => a.patientId === id)}
@@ -163,6 +355,25 @@ export default function PatientDetailPage() {
         />
       )}
 
+      {/* Delete patient confirm */}
+      <Modal
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        title="Delete Record"
+        footer={
+          <>
+            <button onClick={() => setConfirmDelete(false)} className="btn-secondary" disabled={deleting}>Cancel</button>
+            <button onClick={deletePatient} disabled={deleting} className="btn-sm bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg">
+              {deleting ? 'Deleting…' : 'Delete permanently'}
+            </button>
+          </>
+        }
+      >
+        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+          This permanently deletes <strong>{patient.name}</strong> and removes the entry from your patient list. This cannot be undone.
+        </div>
+      </Modal>
+
       {/* Mark Deceased modal */}
       <Modal
         open={deathModal}
@@ -189,25 +400,85 @@ export default function PatientDetailPage() {
           </div>
         </div>
       </Modal>
+
+      {/* Top-level Print button → latest visit on customised PAD */}
+      {showTopPrint && (() => {
+        const ptVisits = visits[id!] ?? [];
+        const latest = [...ptVisits].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+        const vs = latest?.vitalsSnapshot ?? {};
+        const draft = {
+          chiefComplaint: latest?.chiefComplaint ?? '',
+          hopi: latest?.hopi ?? '',
+          diagnosis: latest?.diagnosis ?? '',
+          icdCode: latest?.icdCode ?? '',
+          secondaryDx: latest?.secondaryDx ?? '',
+          rxRows: (latest?.drugs ?? []).map((d: any, i: number) => ({
+            id: String(i), form: d.form ?? 'Tab', drug: d.drug ?? '',
+            dose: d.dose ?? '', strength: d.strength ?? '', puffs: d.puffs ?? '',
+            route: d.route ?? 'Oral', frequency: d.frequency ?? '',
+            duration: d.duration ?? '', instructions: d.instructions ?? '',
+          })),
+          vitals: { bp: vs.bp ?? '', hr: vs.hr ?? '', temp: vs.temp ?? '',
+            spo2: vs.spo2 ?? '', weight: vs.weight ?? '', height: vs.height ?? '', rr: vs.rr ?? '' },
+          investigation: latest?.investigation ?? '',
+          advice: latest?.advice ?? '',
+          followUp: latest?.followUp ?? '',
+          referredTo: latest?.referral?.specialty ?? '',
+        };
+        return (
+          <PrintPreview
+            pad={padTop}
+            patient={patient}
+            draft={draft}
+            onClose={() => setShowTopPrint(false)}
+          />
+        );
+      })()}
     </div>
   );
 }
 
 // ─── Tab: Visit History ───────────────────────────────────────────────────────
 
-function SectionBlock({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2 border-b border-slate-100 pb-1">{title}</div>
-      {children}
-    </div>
-  );
-}
 
-function VisitsTab({ visits }: { visits: any[] }) {
+function VisitsTab({ visits, patient }: { visits: any[]; patient: any }) {
   const sorted = [...visits].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   const [selected, setSelected] = useState<string>(sorted[0]?.id ?? '');
   const visit = sorted.find(v => v.id === selected) ?? sorted[0];
+  const { settings: pad, clinics } = usePadStore();
+  const [showPrint, setShowPrint] = useState(false);
+
+  // Map a stored visit into the PrintPreview "draft" shape so it prints on the customised PAD
+  function visitToDraft(v: any) {
+    const vs = v?.vitalsSnapshot ?? {};
+    return {
+      chiefComplaint: v?.chiefComplaint ?? '',
+      hopi: v?.hopi ?? '',
+      diagnosis: v?.diagnosis ?? '',
+      icdCode: v?.icdCode ?? '',
+      secondaryDx: v?.secondaryDx ?? '',
+      rxRows: (v?.drugs ?? []).map((d: any, i: number) => ({
+        id: String(i),
+        form: d.form ?? 'Tab',
+        drug: d.drug ?? '',
+        dose: d.dose ?? '',
+        strength: d.strength ?? '',
+        puffs: d.puffs ?? '',
+        route: d.route ?? 'Oral',
+        frequency: d.frequency ?? '',
+        duration: d.duration ?? '',
+        instructions: d.instructions ?? '',
+      })),
+      vitals: {
+        bp: vs.bp ?? '', hr: vs.hr ?? '', temp: vs.temp ?? '', spo2: vs.spo2 ?? '',
+        weight: vs.weight ?? '', height: vs.height ?? '', rr: vs.rr ?? '',
+      },
+      investigation: v?.investigation ?? '',
+      advice: v?.advice ?? '',
+      followUp: v?.followUp ?? '',
+      referredTo: v?.referral?.specialty ?? '',
+    };
+  }
 
   if (visits.length === 0) {
     return (
@@ -230,30 +501,72 @@ function VisitsTab({ visits }: { visits: any[] }) {
     || (visit.bodySigns?.length ?? 0) > 0
     || Object.values(visit.bodyNotes ?? {}).some(Boolean);
 
+  /* ── shared label style ── */
+  const SectionLabel = ({ children }: { children: React.ReactNode }) => (
+    <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">{children}</div>
+  );
+
   return (
-    <div className="flex gap-4 items-start">
-      {/* ── Visit timeline ── */}
-      <div className="w-52 flex-shrink-0 space-y-1.5">
-        <div className="text-xs font-semibold text-slate-500 px-1 mb-2">{sorted.length} visit{sorted.length !== 1 ? 's' : ''}</div>
+    <div className="flex flex-col sm:flex-row sm:gap-4 sm:items-start gap-3">
+
+      {/* ── Visit timeline ──────────────────────────────────────────── */}
+      {/* Mobile: horizontal scroll chips */}
+      <div className="sm:hidden">
+        <div className="text-xs font-semibold text-slate-400 mb-2 px-0.5">{sorted.length} visit{sorted.length !== 1 ? 's' : ''}</div>
+        <div className="flex gap-2 overflow-x-auto pb-1 -mx-0.5 px-0.5 scrollbar-hide">
+          {sorted.map((v, idx) => {
+            const isSelected = v.id === selected;
+            const isLatest = idx === 0;
+            return (
+              <button key={v.id} onClick={() => setSelected(v.id)}
+                className={cn(
+                  'flex-shrink-0 rounded-2xl px-4 py-2.5 transition-all border text-left min-w-[130px] cursor-pointer',
+                  isSelected
+                    ? 'bg-teal-500 border-teal-500 shadow-md shadow-teal-100'
+                    : 'bg-white border-slate-200 hover:border-teal-300'
+                )}>
+                <div className={cn('text-xs font-bold', isSelected ? 'text-white' : 'text-slate-800')}>{vDate(v)}</div>
+                <div className={cn('text-[10px] mt-0.5 truncate', isSelected ? 'text-teal-100' : 'text-slate-400')}>
+                  {v.diagnosis || v.chiefComplaint || 'Consultation'}
+                </div>
+                <div className="flex items-center gap-1.5 mt-1.5">
+                  {isLatest && (
+                    <span className={cn('text-[9px] font-bold px-1.5 py-0.5 rounded-full', isSelected ? 'bg-white/25 text-white' : 'bg-teal-100 text-teal-700')}>
+                      LATEST
+                    </span>
+                  )}
+                  {v.drugs?.length > 0 && (
+                    <span className={cn('text-[10px] flex items-center gap-0.5', isSelected ? 'text-teal-100' : 'text-slate-400')}>
+                      <Pill className="w-2.5 h-2.5" />{v.drugs.length}
+                    </span>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Desktop: vertical sidebar */}
+      <div className="hidden sm:block w-52 flex-shrink-0 space-y-1.5">
+        <div className="text-xs font-semibold text-slate-400 px-1 mb-2">{sorted.length} visit{sorted.length !== 1 ? 's' : ''}</div>
         {sorted.map((v, idx) => {
           const isSelected = v.id === selected;
           const isLatest = idx === 0;
           return (
             <button key={v.id} onClick={() => setSelected(v.id)}
-              className={cn('w-full text-left rounded-xl px-3 py-2.5 transition-all border',
+              className={cn('w-full text-left rounded-xl px-3 py-2.5 transition-all border cursor-pointer',
                 isSelected
-                  ? 'bg-teal-500 text-white border-teal-500 shadow-sm'
+                  ? 'bg-teal-500 text-white border-teal-500 shadow-sm shadow-teal-100'
                   : 'bg-white border-slate-200 hover:border-teal-300 hover:bg-teal-50'
               )}>
-              <div className={cn('text-xs font-semibold', isSelected ? 'text-white' : 'text-slate-800')}>
-                {vDate(v)}
-              </div>
+              <div className={cn('text-xs font-bold', isSelected ? 'text-white' : 'text-slate-800')}>{vDate(v)}</div>
               <div className={cn('text-[11px] mt-0.5 truncate', isSelected ? 'text-teal-100' : 'text-slate-400')}>
-                {v.chiefComplaint || v.diagnosis || 'Consultation'}
+                {v.diagnosis || v.chiefComplaint || 'Consultation'}
               </div>
-              <div className="flex items-center gap-2 mt-1">
+              <div className="flex items-center gap-2 mt-1.5">
                 {isLatest && (
-                  <span className={cn('text-[9px] font-bold px-1.5 py-0.5 rounded-full', isSelected ? 'bg-white/20 text-white' : 'bg-teal-100 text-teal-700')}>
+                  <span className={cn('text-[9px] font-bold px-1.5 py-0.5 rounded-full', isSelected ? 'bg-white/25 text-white' : 'bg-teal-100 text-teal-700')}>
                     LATEST
                   </span>
                 )}
@@ -268,310 +581,254 @@ function VisitsTab({ visits }: { visits: any[] }) {
         })}
       </div>
 
-      {/* ── Consultation sheet ── */}
+      {/* ── Consultation sheet ──────────────────────────────────────── */}
       {visit && (
-        <div className="flex-1 min-w-0 card overflow-hidden">
-          {/* Sheet header */}
-          <div className="bg-gradient-to-r from-teal-600 to-teal-700 px-6 py-4 text-white">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-widest text-teal-200 mb-1">Consultation Sheet</div>
-                <div className="text-lg font-bold">{vDate(visit)} &nbsp;·&nbsp; {vTime(visit)}</div>
-                <div className="text-sm text-teal-200 mt-0.5">Dr. {visit.doctorName}</div>
+        <div className="flex-1 min-w-0 rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+
+          {/* Header */}
+          <div className="bg-gradient-to-br from-[#0a7b6e] to-[#0d9488] px-5 py-4 text-white">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-teal-200/80 mb-1">Consultation Sheet</div>
+                <div className="text-base font-bold leading-tight">{vDate(visit)}</div>
+                <div className="text-xs text-teal-200 mt-0.5">{vTime(visit)} &nbsp;·&nbsp; Dr. {visit.doctorName}</div>
               </div>
-              <div className="text-right flex-shrink-0">
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {visit.drugs?.length > 0 && (
+                  <button onClick={() => setShowPrint(true)}
+                    className="flex items-center gap-1.5 bg-white/15 hover:bg-white/25 border border-white/20 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer">
+                    <Printer className="w-3.5 h-3.5" /> Print Rx
+                  </button>
+                )}
                 {visit.admitted && (
-                  <span className="text-xs bg-white/20 text-white px-2 py-0.5 rounded-full">Admitted</span>
+                  <span className="text-[10px] font-semibold bg-white/15 border border-white/20 text-white px-2.5 py-1 rounded-xl">Admitted</span>
                 )}
               </div>
             </div>
           </div>
 
-          <div className="p-5 space-y-5">
+          <div className="p-4 space-y-4 bg-white">
 
-            {/* S — Subjective */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-xs font-bold flex items-center justify-center flex-shrink-0">S</span>
-                <span className="text-xs font-bold uppercase tracking-widest text-slate-500">Subjective</span>
+            {/* Chief Complaint */}
+            {visit.chiefComplaint && (
+              <div className="bg-slate-50 rounded-xl px-4 py-3">
+                <SectionLabel>Chief Complaint</SectionLabel>
+                <p className="text-sm text-slate-800 font-medium leading-relaxed">{visit.chiefComplaint}</p>
               </div>
+            )}
 
-              {visit.chiefComplaint && (
-                <SectionBlock title="Chief Complaint">
-                  <p className="text-sm text-slate-800 font-medium">{visit.chiefComplaint}</p>
-                </SectionBlock>
-              )}
-
-              {hasHistory && (
-                <SectionBlock title="History">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
-                    {visit.hopi && (
-                      <div className="sm:col-span-2">
-                        <span className="text-xs font-semibold text-slate-500">Present Illness &nbsp;</span>
-                        <span className="text-sm text-slate-700">{visit.hopi}</span>
-                      </div>
-                    )}
-                    {visit.pastMedical && (
-                      <div>
-                        <span className="text-xs font-semibold text-slate-500">Past Medical &nbsp;</span>
-                        <span className="text-sm text-slate-700">{visit.pastMedical}</span>
-                      </div>
-                    )}
-                    {visit.pastSurgical && (
-                      <div>
-                        <span className="text-xs font-semibold text-slate-500">Past Surgical &nbsp;</span>
-                        <span className="text-sm text-slate-700">{visit.pastSurgical}</span>
-                      </div>
-                    )}
-                    {visit.familyHistory && (
-                      <div>
-                        <span className="text-xs font-semibold text-slate-500">Family &nbsp;</span>
-                        <span className="text-sm text-slate-700">{visit.familyHistory}</span>
-                      </div>
-                    )}
-                    {visit.socialHistory && (
-                      <div>
-                        <span className="text-xs font-semibold text-slate-500">Social &nbsp;</span>
-                        <span className="text-sm text-slate-700">{visit.socialHistory}</span>
-                      </div>
-                    )}
-                    {visit.allergiesNote && (
-                      <div>
-                        <span className="text-xs font-semibold text-red-500">Allergies &nbsp;</span>
-                        <span className="text-sm text-red-700 font-medium">{visit.allergiesNote}</span>
-                      </div>
-                    )}
-                    {visit.currentMeds && (
-                      <div className="sm:col-span-2">
-                        <span className="text-xs font-semibold text-slate-500">Current Meds &nbsp;</span>
-                        <span className="text-sm text-slate-700">{visit.currentMeds}</span>
-                      </div>
-                    )}
-                  </div>
-                </SectionBlock>
-              )}
+            {/* Diagnosis */}
+            <div className="bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3">
+              <SectionLabel>Diagnosis</SectionLabel>
+              <div className="text-sm font-bold text-slate-900 leading-snug">{visit.diagnosis || '—'}</div>
+              {visit.icdCode && <div className="text-xs text-slate-400 mt-1">ICD-10: {visit.icdCode}</div>}
+              {visit.secondaryDx && <div className="text-xs text-slate-500 mt-1 pt-1 border-t border-emerald-100">Secondary: {visit.secondaryDx}</div>}
             </div>
 
-            <div className="border-t border-slate-100" />
-
-            {/* O — Objective */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <span className="w-6 h-6 rounded-full bg-green-100 text-green-700 text-xs font-bold flex items-center justify-center flex-shrink-0">O</span>
-                <span className="text-xs font-bold uppercase tracking-widest text-slate-500">Objective</span>
-              </div>
-
-              {hasVitals && (
-                <SectionBlock title="Vitals at Visit">
-                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-                    {[
-                      { label: 'BP', value: vs.bp, unit: 'mmHg' },
-                      { label: 'Pulse', value: vs.hr, unit: 'bpm' },
-                      { label: 'Temp', value: vs.temp, unit: '°F' },
-                      { label: 'SpO2', value: vs.spo2, unit: '%' },
-                      { label: 'RR', value: vs.rr, unit: '/min' },
-                      { label: 'Weight', value: vs.weight, unit: 'kg' },
-                    ].filter(i => i.value).map(i => (
-                      <div key={i.label} className="bg-slate-50 rounded-lg px-2.5 py-2 text-center">
-                        <div className="text-[10px] text-slate-400 font-medium">{i.label}</div>
-                        <div className="text-sm font-bold text-slate-800 mt-0.5">{i.value}</div>
-                        <div className="text-[9px] text-slate-400">{i.unit}</div>
-                      </div>
-                    ))}
-                  </div>
-                </SectionBlock>
-              )}
-
-              {hasExam && (
-                <SectionBlock title="Examination">
-                  <div className="space-y-1.5">
-                    {visit.generalExam && (
-                      <div className="text-sm text-slate-700">
-                        <span className="text-xs font-semibold text-slate-500">General: &nbsp;</span>{visit.generalExam}
-                      </div>
-                    )}
-                    {visit.systemicExam && (
-                      <div className="text-sm text-slate-700">
-                        <span className="text-xs font-semibold text-slate-500">Systemic: &nbsp;</span>{visit.systemicExam}
-                      </div>
-                    )}
-                    {visit.bodySigns && visit.bodySigns.length > 0 && (
-                      <div>
-                        <div className="text-xs font-semibold text-slate-500 mb-1.5">Clinical Signs</div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {(visit.bodySigns as string[]).map(s => (
-                            <span key={s} className="text-xs bg-red-50 border border-red-200 text-red-700 px-2 py-0.5 rounded-full font-medium">● {s}</span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {visit.bodyNotes && Object.values(visit.bodyNotes).some(Boolean) && (
-                      <div>
-                        <div className="text-xs font-semibold text-slate-500 mb-1.5">Regional Findings</div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                          {Object.entries(visit.bodyNotes as Record<string, string>).filter(([, v]) => v.trim()).map(([region, note]) => (
-                            <div key={region} className="bg-teal-50 rounded-lg px-2.5 py-1.5">
-                              <span className="text-[10px] font-bold uppercase text-teal-600 block">{region.replace(/-/g, ' ')}</span>
-                              <span className="text-xs text-slate-700">{note}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {visit.investigation && (
-                      <div className="text-sm text-slate-700">
-                        <span className="text-xs font-semibold text-slate-500">Investigations: &nbsp;</span>{visit.investigation}
-                      </div>
-                    )}
-                  </div>
-                </SectionBlock>
-              )}
-            </div>
-
-            <div className="border-t border-slate-100" />
-
-            {/* A — Assessment */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <span className="w-6 h-6 rounded-full bg-orange-100 text-orange-700 text-xs font-bold flex items-center justify-center flex-shrink-0">A</span>
-                <span className="text-xs font-bold uppercase tracking-widest text-slate-500">Assessment</span>
-              </div>
-
-              <SectionBlock title="Diagnosis">
-                <div className="flex items-start gap-3 flex-wrap">
-                  <div>
-                    <div className="text-sm font-bold text-slate-900">{visit.diagnosis || '—'}</div>
-                    {visit.icdCode && <div className="text-xs text-slate-400 mt-0.5">ICD: {visit.icdCode}</div>}
-                  </div>
-                  {visit.secondaryDx && (
-                    <div className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-lg">
-                      Secondary: {visit.secondaryDx}
+            {/* Vitals */}
+            {hasVitals && (
+              <div>
+                <SectionLabel>Vitals</SectionLabel>
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                  {[
+                    { label: 'BP', value: vs.bp, unit: 'mmHg' },
+                    { label: 'Pulse', value: vs.hr, unit: 'bpm' },
+                    { label: 'Temp', value: vs.temp, unit: '°C' },
+                    { label: 'SpO₂', value: vs.spo2, unit: '%' },
+                    { label: 'RR', value: vs.rr, unit: '/min' },
+                    { label: 'Weight', value: vs.weight, unit: 'kg' },
+                  ].filter(i => i.value).map(i => (
+                    <div key={i.label} className="bg-slate-50 border border-slate-100 rounded-xl px-2 py-2 text-center">
+                      <div className="text-[9px] text-slate-400 font-bold uppercase tracking-wide">{i.label}</div>
+                      <div className="text-sm font-bold text-slate-800 mt-0.5">{i.value}</div>
+                      <div className="text-[9px] text-slate-400">{i.unit}</div>
                     </div>
-                  )}
+                  ))}
                 </div>
-              </SectionBlock>
-            </div>
-
-            <div className="border-t border-slate-100" />
-
-            {/* P — Plan */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <span className="w-6 h-6 rounded-full bg-violet-100 text-violet-700 text-xs font-bold flex items-center justify-center flex-shrink-0">P</span>
-                <span className="text-xs font-bold uppercase tracking-widest text-slate-500">Plan</span>
               </div>
+            )}
 
-              {visit.drugs?.length > 0 && (
-                <SectionBlock title="Prescription">
-                  <div className="space-y-2">
-                    {visit.drugs.map((d: any, i: number) => (
-                      <div key={i} className="flex items-start gap-3 bg-teal-50 border border-teal-100 rounded-xl px-4 py-2.5">
-                        <div className="text-teal-600 font-bold text-sm flex-shrink-0 mt-0.5">Rx {i + 1}</div>
-                        <div className="flex-1 min-w-0">
-                          <div className="font-semibold text-slate-900 text-sm">
-                            {d.form && d.form !== 'Tab' ? `${d.form}. ` : 'Tab. '}{d.drug}
-                            {d.dose && <span className="font-normal text-slate-600"> {d.dose}</span>}
-                            {(d as any).strength && <span className="text-xs text-slate-400"> ({(d as any).strength})</span>}
-                          </div>
-                          <div className="text-xs text-slate-500 mt-0.5">
-                            {(d as any).puffs && <span>{(d as any).puffs} &nbsp;·&nbsp; </span>}
-                            {d.route && d.form !== 'Cream' && d.form !== 'MDI' ? `${d.route} · ` : ''}{d.frequency} &nbsp;·&nbsp; {d.duration}
-                            {d.instructions && <span className="text-slate-400 italic ml-2">({d.instructions})</span>}
-                          </div>
+            {/* Prescription */}
+            {visit.drugs?.length > 0 && (
+              <div>
+                <SectionLabel>Prescription</SectionLabel>
+                <div className="space-y-2">
+                  {visit.drugs.map((d: any, i: number) => (
+                    <div key={i} className="flex items-start gap-3 bg-teal-50 border border-teal-100 rounded-xl px-3 py-2.5">
+                      <div className="w-5 h-5 rounded-full bg-teal-500 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
+                        {i + 1}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-slate-900 text-sm leading-snug">
+                          {d.form && d.form !== 'Tab' ? `${d.form}. ` : 'Tab. '}{d.drug}
+                          {d.dose && <span className="font-normal text-slate-600"> · {d.dose}</span>}
+                          {(d as any).strength && <span className="text-xs text-slate-400"> ({(d as any).strength})</span>}
+                        </div>
+                        <div className="text-xs text-slate-500 mt-0.5">
+                          {d.frequency}{d.duration ? ` · ${d.duration}` : ''}
+                          {d.instructions && <span className="text-slate-400 italic"> · {d.instructions}</span>}
                         </div>
                       </div>
-                    ))}
-                  </div>
-                </SectionBlock>
-              )}
-
-              {visit.vaccines?.length > 0 && (
-                <SectionBlock title="Vaccines">
-                  <div className="flex flex-wrap gap-2">
-                    {visit.vaccines.map((v: any) => (
-                      <span key={v.id} className="text-xs bg-teal-50 text-teal-700 border border-teal-200 px-3 py-1.5 rounded-full">
-                        <Syringe className="w-3 h-3 inline mr-1" />
-                        {v.name}{v.site ? ` (${v.site})` : ''}{v.nextDueDate ? ` · Next: ${v.nextDueDate}` : ''}
-                      </span>
-                    ))}
-                  </div>
-                </SectionBlock>
-              )}
-
-              {visit.procedures?.length > 0 && (
-                <SectionBlock title="Procedures">
-                  <div className="flex flex-wrap gap-2">
-                    {visit.procedures.map((p: any) => (
-                      <span key={p.id} className="text-xs bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1.5 rounded-full">
-                        <Scissors className="w-3 h-3 inline mr-1" />
-                        {p.name}{p.notes ? ` · ${p.notes}` : ''}
-                      </span>
-                    ))}
-                  </div>
-                </SectionBlock>
-              )}
-
-              {(visit.advice || visit.followUp) && (
-                <SectionBlock title="Advice &amp; Follow-Up">
-                  <div className="space-y-1.5">
-                    {visit.advice && <p className="text-sm text-slate-700">{visit.advice}</p>}
-                    {visit.followUp && (
-                      <div className="flex items-center gap-2 text-xs text-teal-700 bg-teal-50 border border-teal-100 rounded-lg px-3 py-1.5 w-fit">
-                        <Activity className="w-3 h-3" />
-                        Follow-up: <span className="font-semibold">{visit.followUp}</span>
-                      </div>
-                    )}
-                  </div>
-                </SectionBlock>
-              )}
-
-              {visit.referral?.specialty && (
-                <div className="bg-violet-50 border border-violet-200 rounded-xl px-4 py-3">
-                  <div className="text-[10px] font-bold uppercase tracking-widest text-violet-400 mb-1">Referral</div>
-                  <div className="text-sm font-semibold text-violet-900">
-                    {visit.referral.doctorName ? `Dr. ${visit.referral.doctorName}, ` : ''}{visit.referral.specialty}
-                  </div>
-                  {visit.referral.reason && <div className="text-xs text-violet-600 mt-0.5">{visit.referral.reason}</div>}
-                  {visit.referral.urgency && (
-                    <span className="text-[10px] font-bold bg-violet-200 text-violet-700 px-2 py-0.5 rounded-full mt-1 inline-block">{visit.referral.urgency}</span>
-                  )}
+                    </div>
+                  ))}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
+
+            {/* Investigations */}
+            {visit.investigation && (
+              <div className="bg-slate-50 rounded-xl px-4 py-3">
+                <SectionLabel>Investigations</SectionLabel>
+                <p className="text-sm text-slate-700 leading-relaxed">{visit.investigation}</p>
+              </div>
+            )}
+
+            {/* History */}
+            {hasHistory && (
+              <div className="border border-slate-100 rounded-xl px-4 py-3 space-y-2">
+                <SectionLabel>History</SectionLabel>
+                {visit.hopi && <p className="text-xs text-slate-600 leading-relaxed"><span className="font-semibold text-slate-500">HoPi: </span>{visit.hopi}</p>}
+                {visit.pastMedical && <p className="text-xs text-slate-600"><span className="font-semibold text-slate-500">Past Medical: </span>{visit.pastMedical}</p>}
+                {visit.pastSurgical && <p className="text-xs text-slate-600"><span className="font-semibold text-slate-500">Surgical: </span>{visit.pastSurgical}</p>}
+                {visit.familyHistory && <p className="text-xs text-slate-600"><span className="font-semibold text-slate-500">Family: </span>{visit.familyHistory}</p>}
+                {visit.socialHistory && <p className="text-xs text-slate-600"><span className="font-semibold text-slate-500">Social: </span>{visit.socialHistory}</p>}
+                {visit.currentMeds && <p className="text-xs text-slate-600"><span className="font-semibold text-slate-500">Current Meds: </span>{visit.currentMeds}</p>}
+                {visit.allergiesNote && <p className="text-xs text-red-600 font-medium bg-red-50 rounded-lg px-2 py-1"><span className="font-bold">Allergies: </span>{visit.allergiesNote}</p>}
+              </div>
+            )}
+
+            {/* Examination */}
+            {hasExam && (
+              <div className="border border-slate-100 rounded-xl px-4 py-3 space-y-2">
+                <SectionLabel>Examination</SectionLabel>
+                {visit.generalExam && <p className="text-xs text-slate-600"><span className="font-semibold text-slate-500">General: </span>{visit.generalExam}</p>}
+                {visit.systemicExam && <p className="text-xs text-slate-600"><span className="font-semibold text-slate-500">Systemic: </span>{visit.systemicExam}</p>}
+                {visit.bodySigns?.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-1">
+                    {(visit.bodySigns as string[]).map(s => (
+                      <span key={s} className="text-xs bg-red-50 border border-red-200 text-red-700 px-2 py-0.5 rounded-full">{s}</span>
+                    ))}
+                  </div>
+                )}
+                {visit.bodyNotes && Object.values(visit.bodyNotes).some(Boolean) && (
+                  <div className="grid grid-cols-2 gap-1.5 mt-1">
+                    {Object.entries(visit.bodyNotes as Record<string, string>).filter(([, v]) => v.trim()).map(([region, note]) => (
+                      <div key={region} className="bg-teal-50 rounded-lg px-2.5 py-1.5">
+                        <span className="text-[9px] font-bold uppercase text-teal-600 block">{region.replace(/-/g, ' ')}</span>
+                        <span className="text-xs text-slate-700">{note}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Advice & Follow-up */}
+            {(visit.advice || visit.followUp) && (
+              <div className="space-y-2">
+                {visit.advice && (
+                  <div className="bg-slate-50 rounded-xl px-4 py-3">
+                    <SectionLabel>Advice</SectionLabel>
+                    <p className="text-sm text-slate-700 leading-relaxed">{visit.advice}</p>
+                  </div>
+                )}
+                {visit.followUp && (
+                  <div className="flex items-center gap-2 text-xs text-teal-700 bg-teal-50 border border-teal-100 rounded-xl px-4 py-2.5">
+                    <Activity className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span>Follow-up: <span className="font-bold">{visit.followUp}</span></span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Vaccines */}
+            {visit.vaccines?.length > 0 && (
+              <div>
+                <SectionLabel>Vaccines</SectionLabel>
+                <div className="flex flex-wrap gap-2">
+                  {visit.vaccines.map((v: any) => (
+                    <span key={v.id} className="inline-flex items-center gap-1.5 text-xs bg-teal-50 text-teal-700 border border-teal-200 px-3 py-1.5 rounded-full">
+                      <Syringe className="w-3 h-3" />
+                      {v.name}{v.site ? ` (${v.site})` : ''}{v.nextDueDate ? ` · Next: ${v.nextDueDate}` : ''}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Procedures */}
+            {visit.procedures?.length > 0 && (
+              <div>
+                <SectionLabel>Procedures</SectionLabel>
+                <div className="flex flex-wrap gap-2">
+                  {visit.procedures.map((p: any) => (
+                    <span key={p.id} className="inline-flex items-center gap-1.5 text-xs bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1.5 rounded-full">
+                      <Scissors className="w-3 h-3" />
+                      {p.name}{p.notes ? ` · ${p.notes}` : ''}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Referral */}
+            {visit.referral?.specialty && (
+              <div className="bg-violet-50 border border-violet-100 rounded-xl px-4 py-3">
+                <SectionLabel>Referral</SectionLabel>
+                <div className="text-sm font-semibold text-violet-900">
+                  {visit.referral.doctorName ? `Dr. ${visit.referral.doctorName}, ` : ''}{visit.referral.specialty}
+                </div>
+                {visit.referral.reason && <div className="text-xs text-violet-600 mt-1">{visit.referral.reason}</div>}
+                {visit.referral.urgency && (
+                  <span className="text-[10px] font-bold bg-violet-200 text-violet-700 px-2 py-0.5 rounded-full mt-1.5 inline-block">{visit.referral.urgency}</span>
+                )}
+              </div>
+            )}
 
             {/* Attachments */}
             {visit.attachments?.length > 0 && (
-              <>
-                <div className="border-t border-slate-100" />
-                <SectionBlock title="Attachments">
-                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-                    {visit.attachments.map((a: any) => (
-                      <a key={a.id} href={a.dataUrl} target="_blank" rel="noreferrer"
-                        className="rounded-xl overflow-hidden border border-slate-200 hover:border-teal-400 transition-colors">
-                        {a.type === 'photo' || a.type === 'xray' ? (
-                          <img src={a.dataUrl} alt={a.label} className="w-full h-16 object-cover" />
-                        ) : (
-                          <div className="w-full h-16 flex items-center justify-center bg-slate-50">
-                            <FileText className="w-5 h-5 text-slate-400" />
-                          </div>
-                        )}
-                        <div className="text-[10px] text-slate-500 px-1.5 py-1 truncate">{a.label}</div>
-                      </a>
-                    ))}
-                  </div>
-                </SectionBlock>
-              </>
+              <div>
+                <SectionLabel>Attachments</SectionLabel>
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                  {visit.attachments.map((a: any) => (
+                    <a key={a.id} href={a.dataUrl} target="_blank" rel="noreferrer"
+                      className="rounded-xl overflow-hidden border border-slate-200 hover:border-teal-400 transition-colors cursor-pointer">
+                      {a.type === 'photo' || a.type === 'xray' ? (
+                        <img src={a.dataUrl} alt={a.label} className="w-full h-16 object-cover" />
+                      ) : (
+                        <div className="w-full h-16 flex items-center justify-center bg-slate-50">
+                          <FileText className="w-5 h-5 text-slate-400" />
+                        </div>
+                      )}
+                      <div className="text-[10px] text-slate-500 px-1.5 py-1 truncate">{a.label}</div>
+                    </a>
+                  ))}
+                </div>
+              </div>
             )}
 
-            {/* Private note — doctor only */}
+            {/* Private note */}
             {visit.privateNote && (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
-                <div className="text-[10px] font-bold uppercase tracking-widest text-amber-500 mb-1">Private Note (Doctor only)</div>
-                <p className="text-sm text-amber-900">{visit.privateNote}</p>
+              <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
+                <SectionLabel>Private Note</SectionLabel>
+                <p className="text-sm text-amber-900 leading-relaxed">{visit.privateNote}</p>
               </div>
             )}
           </div>
         </div>
+      )}
+
+      {/* Customised PAD print preview for this visit */}
+      {showPrint && visit && (
+        <PrintPreview
+          patient={patient}
+          draft={visitToDraft(visit)}
+          pad={pad}
+          clinicName={clinics[0]?.name}
+          clinicAddress={clinics[0]?.address}
+          clinicPhone={clinics[0]?.phone}
+          onClose={() => setShowPrint(false)}
+        />
       )}
     </div>
   );
@@ -655,9 +912,11 @@ function AppointmentsTab({ appointments, onCancel, onSchedule }: {
 // ─── Tab: Overview ────────────────────────────────────────────────────────────
 
 function OverviewTab({ patient }: { patient: ReturnType<typeof useAppStore.getState>['patients'][0] }) {
-  const { vitals } = useAppStore();
+  const { vitals, staff, assignNurse, showToast } = useAppStore();
   const latest = vitals[patient.id]?.[0];
   const isIPD = patient.status === 'IPD' || patient.status === 'Critical';
+  const nurses = staff.filter(s => s.role === 'nurse' && s.status === 'active');
+  const [nurseOpen, setNurseOpen] = useState(false);
 
   const items = latest ? [
     { label: 'Blood Pressure', value: latest.bp || '—', alert: latest.bp && parseInt(latest.bp) > 160 },
@@ -668,32 +927,49 @@ function OverviewTab({ patient }: { patient: ReturnType<typeof useAppStore.getSt
     { label: 'Blood Sugar', value: latest.sugar ? `${latest.sugar} mg/dL` : '—', alert: latest.sugar && latest.sugar > 250 },
   ] : [];
 
+  const infoRows = [
+    { l: 'Full Name', v: patient.name },
+    { l: 'Age / Gender', v: `${patient.age}y · ${patient.gender === 'M' ? 'Male' : patient.gender === 'F' ? 'Female' : 'Other'}` },
+    { l: 'MRN', v: patient.mrn },
+    { l: 'Blood Group', v: patient.bloodGroup || '—' },
+    { l: 'Phone', v: patient.phone || '—' },
+    { l: 'Insurance', v: patient.insurance || '—' },
+    { l: 'Attending', v: patient.attendingDoctor || '—' },
+  ];
+
+  const visitRows = [
+    { l: 'Status',     v: patient.status,               show: true },
+    { l: 'Priority',   v: patient.priority,             show: true },
+    { l: 'Diagnosis',  v: patient.diagnosis || '—',     show: true },
+    { l: 'Ward',       v: patient.ward || '—',          show: isIPD },
+    { l: 'Bed',        v: patient.bed || '—',           show: isIPD },
+    { l: 'Admit Date', v: patient.admitDate || '—',     show: isIPD },
+    { l: 'Attending',  v: patient.attendingDoctor || '—', show: true },
+  ].filter(i => i.show);
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-      {/* Patient info card */}
-      <div className="card p-5">
-        <h3 className="font-bold text-slate-900 mb-4">Patient Information</h3>
-        <div className="space-y-3">
-          {[
-            { l: 'Full Name', v: patient.name },
-            { l: 'Age / Gender', v: `${patient.age} years · ${patient.gender === 'M' ? 'Male' : patient.gender === 'F' ? 'Female' : 'Other'}` },
-            { l: 'MRN', v: patient.mrn },
-            { l: 'Blood Group', v: patient.bloodGroup || '—' },
-            { l: 'Phone', v: patient.phone || '—' },
-            { l: 'Insurance', v: patient.insurance || '—' },
-            { l: 'Attending', v: patient.attendingDoctor || '—' },
-          ].map(i => (
-            <div key={i.l} className="flex justify-between gap-4">
-              <span className="text-xs text-slate-500">{i.l}</span>
-              <span className="text-sm font-medium text-slate-900 text-right">{i.v}</span>
+    <div className="space-y-4 lg:grid lg:grid-cols-3 lg:gap-5 lg:space-y-0">
+
+      {/* Patient Information */}
+      <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/60">
+          <h3 className="text-sm font-bold text-slate-800">Patient Information</h3>
+        </div>
+        <div className="px-4 py-3 divide-y divide-slate-50">
+          {infoRows.map(i => (
+            <div key={i.l} className="flex items-center justify-between gap-3 py-2.5">
+              <span className="text-xs text-slate-400 font-medium flex-shrink-0">{i.l}</span>
+              <span className="text-sm font-semibold text-slate-800 text-right truncate">{i.v}</span>
             </div>
           ))}
           {patient.allergies && patient.allergies.length > 0 && (
-            <div className="pt-2 border-t border-slate-100">
-              <span className="text-xs text-red-600 font-semibold">⚠ Allergies:</span>
-              <div className="flex flex-wrap gap-1 mt-1">
+            <div className="py-2.5">
+              <span className="text-xs font-bold text-red-600 flex items-center gap-1 mb-1.5">
+                <AlertTriangle className="w-3 h-3" /> Allergies
+              </span>
+              <div className="flex flex-wrap gap-1">
                 {patient.allergies.map(a => (
-                  <span key={a} className="badge bg-red-100 text-red-700">{a}</span>
+                  <span key={a} className="text-xs bg-red-50 text-red-700 border border-red-200 px-2 py-0.5 rounded-full">{a}</span>
                 ))}
               </div>
             </div>
@@ -701,48 +977,84 @@ function OverviewTab({ patient }: { patient: ReturnType<typeof useAppStore.getSt
         </div>
       </div>
 
-      {/* Visit / Admission details — OPD vs IPD */}
-      <div className="card p-5">
-        <h3 className="font-bold text-slate-900 mb-4">
-          {isIPD ? 'Admission Details' : 'Visit Details'}
-        </h3>
-        <div className="space-y-3">
-          {[
-            { l: 'Status',    v: patient.status,                    show: true },
-            { l: 'Priority',  v: patient.priority,                  show: true },
-            { l: 'Diagnosis', v: patient.diagnosis || '—',          show: true },
-            { l: 'Ward',      v: patient.ward || '—',               show: isIPD },
-            { l: 'Bed',       v: patient.bed || '—',                show: isIPD },
-            { l: 'Admit Date', v: patient.admitDate || '—',         show: isIPD },
-            { l: 'Attending', v: patient.attendingDoctor || '—',    show: true },
-            { l: 'Insurance', v: patient.insurance || '—',          show: isIPD },
-          ].filter(i => i.show).map(i => (
-            <div key={i.l} className="flex justify-between gap-4">
-              <span className="text-xs text-slate-500">{i.l}</span>
-              <span className="text-sm font-medium text-slate-900 text-right">{i.v}</span>
+      {/* Visit / Admission */}
+      <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/60">
+          <h3 className="text-sm font-bold text-slate-800">{isIPD ? 'Admission Details' : 'Visit Details'}</h3>
+        </div>
+        <div className="px-4 py-3 divide-y divide-slate-50">
+          {visitRows.map(i => (
+            <div key={i.l} className="flex items-center justify-between gap-3 py-2.5">
+              <span className="text-xs text-slate-400 font-medium flex-shrink-0">{i.l}</span>
+              <span className="text-sm font-semibold text-slate-800 text-right">{i.v}</span>
             </div>
           ))}
+
+          {/* Assigned Nurse — assign so the nurse sees this patient in their portal */}
+          <div className="py-2.5">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs text-slate-400 font-medium flex-shrink-0">Assigned Nurse</span>
+              {patient.assignedNurseName
+                ? <span className="text-sm font-semibold text-teal-700 text-right">{patient.assignedNurseName}</span>
+                : <span className="text-sm text-slate-400 text-right">Not assigned</span>}
+            </div>
+            {nurses.length > 0 ? (
+              <div className="relative mt-2">
+                <button
+                  type="button"
+                  onClick={() => setNurseOpen(o => !o)}
+                  className="text-xs font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-lg px-2.5 py-1.5"
+                >
+                  {patient.assignedNurseName ? 'Reassign nurse' : 'Assign nurse'}
+                </button>
+                {nurseOpen && (
+                  <div className="absolute z-20 mt-1 left-0 w-56 max-h-56 overflow-auto rounded-xl border border-slate-200 bg-white shadow-lg py-1">
+                    {nurses.map(n => (
+                      <button
+                        key={n.id}
+                        type="button"
+                        onClick={() => {
+                          assignNurse(patient.id, n.id, n.name);
+                          showToast(`Assigned to ${n.name}`, 'success');
+                          setNurseOpen(false);
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-teal-50 flex items-center justify-between gap-2"
+                      >
+                        <span>{n.name}</span>
+                        {patient.assignedNurseId === n.id && <CheckCircle2 className="w-3.5 h-3.5 text-teal-600 flex-shrink-0" />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-[11px] text-slate-400 mt-1">No nurses on staff yet — add one in Settings → My Staff.</p>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Latest vitals */}
-      <div className="card p-5">
-        <h3 className="font-bold text-slate-900 mb-4">Latest Vitals</h3>
-        {latest ? (
-          <>
-            <p className="text-xs text-slate-400 mb-3">{formatDateTime(latest.time)} · by {latest.recordedBy}</p>
-            <div className="grid grid-cols-2 gap-3">
+      {/* Latest Vitals */}
+      <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/60">
+          <h3 className="text-sm font-bold text-slate-800">Latest Vitals</h3>
+          {latest && <p className="text-[11px] text-slate-400 mt-0.5">{formatDateTime(latest.time)} · {latest.recordedBy}</p>}
+        </div>
+        <div className="p-4">
+          {latest ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
               {items.map(v => (
-                <div key={v.label} className={cn('rounded-xl p-3', v.alert ? 'bg-red-50 border border-red-200' : 'bg-slate-50')}>
-                  <div className="text-[10px] text-slate-500 font-medium uppercase tracking-wide">{v.label}</div>
-                  <div className={cn('text-lg font-black mt-0.5', v.alert ? 'text-red-600' : 'text-slate-900')}>{v.value}</div>
+                <div key={v.label} className={cn('rounded-xl p-3 text-center', v.alert ? 'bg-red-50 border border-red-200' : 'bg-slate-50 border border-slate-100')}>
+                  <div className="text-[9px] font-bold uppercase tracking-wide text-slate-400">{v.label}</div>
+                  <div className={cn('text-base font-black mt-0.5 leading-tight', v.alert ? 'text-red-600' : 'text-slate-900')}>{v.value}</div>
+                  {v.alert && <div className="text-[9px] text-red-500 font-semibold mt-0.5">High</div>}
                 </div>
               ))}
             </div>
-          </>
-        ) : (
-          <div className="text-sm text-slate-400 text-center py-6">No vitals recorded yet</div>
-        )}
+          ) : (
+            <div className="text-sm text-slate-400 text-center py-8">No vitals recorded yet</div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -762,34 +1074,64 @@ function VitalsTab({ vitals, patientId, onAdd, showToast }: { vitals: any[]; pat
     setForm({ bp: '', pulse: '', temp: '', spo2: '', rr: '', sugar: '', notes: '' });
   }
 
+  const VITAL_META = [
+    { key: 'bp',    label: 'BP',      unit: 'mmHg', alert: (v: any) => v.bp && parseInt(v.bp) > 160 },
+    { key: 'pulse', label: 'Pulse',   unit: 'bpm',  alert: (v: any) => v.pulse && (v.pulse > 100 || v.pulse < 50) },
+    { key: 'temp',  label: 'Temp',    unit: '°F',   alert: (v: any) => v.temp && v.temp > 100 },
+    { key: 'spo2',  label: 'SpO₂',   unit: '%',    alert: (v: any) => v.spo2 && v.spo2 < 94 },
+    { key: 'rr',    label: 'RR',      unit: '/min', alert: () => false },
+    { key: 'sugar', label: 'Sugar',   unit: 'mg/dL', alert: (v: any) => v.sugar && v.sugar > 250 },
+  ];
+
   return (
     <div>
-      <div className="flex justify-end mb-4">
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-xs text-slate-400">{vitals.length} reading{vitals.length !== 1 ? 's' : ''} recorded</p>
         <button onClick={() => setOpen(true)} className="btn-primary btn-sm">
           <Plus className="w-4 h-4" /> Record Vitals
         </button>
       </div>
-      <div className="table-wrapper">
-        <table className="data-table">
-          <thead><tr><th>Time</th><th>BP</th><th>Pulse</th><th>Temp</th><th>SpO2</th><th>RR</th><th>Sugar</th><th>By</th></tr></thead>
-          <tbody>
-            {vitals.map(v => (
-              <tr key={v.id}>
-                <td className="whitespace-nowrap text-xs">{formatDateTime(v.time)}</td>
-                <td className={cn('font-semibold', v.alert ? 'text-red-600' : '')}>{v.bp || '—'}</td>
-                <td>{v.pulse ? `${v.pulse} bpm` : '—'}</td>
-                <td>{v.temp ? `${v.temp}°F` : '—'}</td>
-                <td className={cn(v.spo2 && v.spo2 < 94 ? 'text-red-600 font-semibold' : '')}>{v.spo2 ? `${v.spo2}%` : '—'}</td>
-                <td>{v.rr ? `${v.rr}/min` : '—'}</td>
-                <td className={cn(v.sugar && v.sugar > 250 ? 'text-red-600 font-semibold' : '')}>{v.sugar ? `${v.sugar} mg/dL` : '—'}</td>
-                <td className="text-xs text-slate-500">{v.recordedBy}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {vitals.length === 0 && <div className="text-center py-8 text-slate-400 text-sm">No vitals recorded</div>}
-      </div>
-      <Modal open={open} onClose={() => setOpen(false)} title="Record Vitals" footer={<><button onClick={() => setOpen(false)} className="btn-secondary">Cancel</button><button onClick={submit} className="btn-primary">Save</button></>}>
+
+      {vitals.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-14 text-center">
+          <Activity className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+          <p className="text-sm text-slate-400">No vitals recorded yet</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {vitals.map(v => (
+            <div key={v.id} className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50/80 border-b border-slate-100">
+                <span className="text-xs font-semibold text-slate-600">{formatDateTime(v.time)}</span>
+                <span className="text-[11px] text-slate-400">by {v.recordedBy}</span>
+              </div>
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-0 divide-x divide-slate-100">
+                {VITAL_META.map(m => {
+                  const val = v[m.key as keyof typeof v];
+                  const isAlert = m.alert(v);
+                  if (!val) return (
+                    <div key={m.key} className="px-3 py-2.5 text-center">
+                      <div className="text-[9px] font-bold uppercase text-slate-300 tracking-wide">{m.label}</div>
+                      <div className="text-sm text-slate-300 mt-0.5">—</div>
+                    </div>
+                  );
+                  return (
+                    <div key={m.key} className={cn('px-3 py-2.5 text-center', isAlert ? 'bg-red-50' : '')}>
+                      <div className={cn('text-[9px] font-bold uppercase tracking-wide', isAlert ? 'text-red-400' : 'text-slate-400')}>{m.label}</div>
+                      <div className={cn('text-sm font-bold mt-0.5', isAlert ? 'text-red-600' : 'text-slate-800')}>{String(val)}</div>
+                      <div className={cn('text-[9px]', isAlert ? 'text-red-400' : 'text-slate-400')}>{m.unit}</div>
+                    </div>
+                  );
+                })}
+              </div>
+              {v.notes && <div className="px-4 py-2 text-xs text-slate-500 border-t border-slate-100 bg-slate-50/50">{v.notes}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Modal open={open} onClose={() => setOpen(false)} title="Record Vitals"
+        footer={<><button onClick={() => setOpen(false)} className="btn-secondary">Cancel</button><button onClick={submit} className="btn-primary">Save</button></>}>
         <div className="grid grid-cols-2 gap-4">
           {[['Blood Pressure', 'bp', '120/80'], ['Pulse (bpm)', 'pulse', '72'], ['Temperature (°F)', 'temp', '98.6'], ['SpO2 (%)', 'spo2', '98'], ['Resp. Rate (/min)', 'rr', '16'], ['Blood Sugar (mg/dL)', 'sugar', '100']].map(([label, key, ph]) => (
             <div key={key}>
@@ -809,7 +1151,7 @@ function VitalsTab({ vitals, patientId, onAdd, showToast }: { vitals: any[]; pat
 
 // ─── Tab: Prescriptions ───────────────────────────────────────────────────────
 
-function PrescriptionsTab({ rx, patientId, doctorName, onAdd, showToast }: { rx: any[]; patientId: string; doctorName: string; onAdd: (r: any) => void; showToast: (m: string, t?: any) => void }) {
+function PrescriptionsTab({ rx, patientId, doctorName, onAdd, showToast, readOnly }: { rx: any[]; patientId: string; doctorName: string; onAdd: (r: any) => void; showToast: (m: string, t?: any) => void; readOnly?: boolean }) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ drug: '', dose: '', route: 'Oral', frequency: 'OD', duration: '', instructions: '' });
 
@@ -824,34 +1166,73 @@ function PrescriptionsTab({ rx, patientId, doctorName, onAdd, showToast }: { rx:
     setForm({ drug: '', dose: '', route: 'Oral', frequency: 'OD', duration: '', instructions: '' });
   }
 
+  // Group by date (YYYY-MM-DD)
+  const grouped = rx.reduce((acc: Record<string, any[]>, r: any) => {
+    const day = (r.time || r.date || '').slice(0, 10);
+    (acc[day] = acc[day] || []).push(r);
+    return acc;
+  }, {});
+  const sortedDays = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
+
   return (
     <div>
-      <div className="flex justify-end mb-4">
-        <button onClick={() => setOpen(true)} className="btn-primary btn-sm">
-          <Plus className="w-4 h-4" /> Add Rx
-        </button>
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-xs text-slate-400">{rx.length} prescription{rx.length !== 1 ? 's' : ''}</p>
+        {!readOnly && (
+          <button onClick={() => setOpen(true)} className="btn-primary btn-sm">
+            <Plus className="w-4 h-4" /> Add Rx
+          </button>
+        )}
       </div>
-      <div className="table-wrapper">
-        <table className="data-table">
-          <thead><tr><th>Drug</th><th>Dose</th><th>Route</th><th>Frequency</th><th>Duration</th><th>Instructions</th><th>Prescribed By</th><th>Status</th></tr></thead>
-          <tbody>
-            {rx.map(r => (
-              <tr key={r.id}>
-                <td className="font-semibold text-slate-900">{r.drug}</td>
-                <td>{r.dose}</td>
-                <td><span className="badge bg-blue-100 text-blue-700">{r.route}</span></td>
-                <td>{r.frequency}</td>
-                <td>{r.duration}</td>
-                <td className="text-xs text-slate-500">{r.instructions || '—'}</td>
-                <td className="text-xs text-slate-500">{r.prescribedBy}</td>
-                <td><span className={cn('badge', r.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500')}>{r.status}</span></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {rx.length === 0 && <div className="text-center py-8 text-slate-400 text-sm">No prescriptions yet</div>}
-      </div>
-      <Modal open={open} onClose={() => setOpen(false)} title="Add Prescription" footer={<><button onClick={() => setOpen(false)} className="btn-secondary">Cancel</button><button onClick={submit} className="btn-primary">Add</button></>}>
+
+      {rx.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-14 text-center">
+          <Pill className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+          <p className="text-sm text-slate-400">No prescriptions yet</p>
+        </div>
+      ) : (
+        <div className="space-y-5">
+          {sortedDays.map(day => (
+            <div key={day}>
+              <div className="flex items-center gap-2 mb-2.5">
+                <span className="text-xs font-bold text-slate-600 bg-slate-100 rounded-lg px-2.5 py-1">
+                  {new Date(day).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                </span>
+                <span className="text-[10px] text-slate-400">{grouped[day].length} drug{grouped[day].length !== 1 ? 's' : ''}</span>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden divide-y divide-slate-100">
+                {grouped[day].map((r: any, i: number) => (
+                  <div key={r.id} className="flex items-start gap-3 px-4 py-3">
+                    <div className="w-6 h-6 rounded-full bg-teal-500 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
+                      {i + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2 flex-wrap">
+                        <span className="text-sm font-bold text-slate-900">
+                          {r.form && r.form !== 'Tab' ? `${r.form}. ` : 'Tab. '}{r.drug}
+                          {r.dose && <span className="font-normal text-slate-600"> · {r.dose}</span>}
+                        </span>
+                        <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0', r.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500')}>
+                          {r.status || 'active'}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1">
+                        <span className="text-xs bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full">{r.route || 'Oral'}</span>
+                        <span className="text-xs text-slate-500">{r.frequency}{r.duration ? ` · ${r.duration}` : ''}</span>
+                        {r.instructions && <span className="text-xs text-slate-400 italic">{r.instructions}</span>}
+                      </div>
+                      <div className="text-[10px] text-slate-400 mt-1">by {r.prescribedBy}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Modal open={open} onClose={() => setOpen(false)} title="Add Prescription"
+        footer={<><button onClick={() => setOpen(false)} className="btn-secondary">Cancel</button><button onClick={submit} className="btn-primary">Add</button></>}>
         <div className="space-y-4">
           <div>
             <label className="label">Drug Name *</label>
@@ -891,66 +1272,212 @@ function PrescriptionsTab({ rx, patientId, doctorName, onAdd, showToast }: { rx:
 
 // ─── Tab: Labs ────────────────────────────────────────────────────────────────
 
-function LabsTab({ labs, patientId, doctorName, onAdd, showToast }: { labs: any[]; patientId: string; doctorName: string; onAdd: (l: any) => void; showToast: (m: string, t?: any) => void }) {
-  const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ testName: '', panel: '' });
+function LabsTab({ labs, patientId, doctorName, onAdd, onUpdateResult, showToast, readOnly }: {
+  labs: any[]; patientId: string; doctorName: string;
+  onAdd: (l: any) => void;
+  onUpdateResult: (id: string, patientId: string, patch: any) => void;
+  showToast: (m: string, t?: any) => void;
+  readOnly?: boolean;
+}) {
+  const [orderOpen, setOrderOpen] = useState(false);
+  const [resultOpen, setResultOpen] = useState(false);
+  const [activeLab, setActiveLab] = useState<any>(null);
+  const [orderForm, setOrderForm] = useState({ testName: '', panel: '' });
+  const [resultForm, setResultForm] = useState({ result: '', unit: '', refRange: '', critical: false, reportDataUrl: '' });
 
-  const COMMON = ['CBC', 'LFT', 'RFT', 'KFT', 'Blood Sugar (F/PP)', 'HbA1c', 'Lipid Profile', 'Thyroid (T3/T4/TSH)', 'Urine R/M', 'Blood Culture', 'ECG', 'Chest X-Ray', 'USG Abdomen', '2D Echo', 'ABG'];
+  const COMMON = ['CBC', 'LFT', 'RFT', 'KFT', 'Blood Sugar (F/PP)', 'HbA1c', 'Lipid Profile', 'Thyroid (T3/T4/TSH)', 'S. Vitamin B12', 'S. Vitamin D', 'Urine R/M', 'Blood Culture', 'ECG', 'Chest X-Ray', 'USG Abdomen', '2D Echo', 'ABG'];
 
-  function submit() {
-    if (!form.testName) return;
-    onAdd({ id: uid(), patientId, testName: form.testName, panel: form.panel, orderedBy: doctorName, orderedAt: nowIso(), status: 'ordered' });
+  function submitOrder() {
+    if (!orderForm.testName) return;
+    onAdd({ id: uid(), patientId, testName: orderForm.testName, panel: orderForm.panel, orderedBy: doctorName, orderedAt: nowIso(), status: 'ordered' });
     showToast('Lab order placed', 'success');
-    setOpen(false);
-    setForm({ testName: '', panel: '' });
+    setOrderOpen(false);
+    setOrderForm({ testName: '', panel: '' });
   }
+
+  function openResultModal(lab: any) {
+    setActiveLab(lab);
+    setResultForm({
+      result: lab.result || '',
+      unit: lab.unit || '',
+      refRange: lab.refRange || '',
+      critical: lab.critical || false,
+      reportDataUrl: lab.reportDataUrl || '',
+    });
+    setResultOpen(true);
+  }
+
+  function submitResult() {
+    if (!activeLab) return;
+    onUpdateResult(activeLab.id, patientId, {
+      result: resultForm.result || null,
+      unit: resultForm.unit || null,
+      refRange: resultForm.refRange || null,
+      critical: resultForm.critical,
+      reportDataUrl: resultForm.reportDataUrl || null,
+      resultTime: nowIso(),
+      status: 'resulted',
+    });
+    showToast('Result saved', 'success');
+    setResultOpen(false);
+    setActiveLab(null);
+  }
+
+  function handleReportUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setResultForm(f => ({ ...f, reportDataUrl: reader.result as string }));
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  }
+
+  const pending = labs.filter(l => !l.result);
 
   return (
     <div>
-      <div className="flex justify-end mb-4">
-        <button onClick={() => setOpen(true)} className="btn-primary btn-sm">
-          <Plus className="w-4 h-4" /> Order Lab
-        </button>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-400">{labs.length} test{labs.length !== 1 ? 's' : ''}</span>
+          {pending.length > 0 && <span className="text-xs bg-amber-100 text-amber-700 font-semibold px-2 py-0.5 rounded-full">{pending.length} pending</span>}
+        </div>
+        {!readOnly && (
+          <button onClick={() => setOrderOpen(true)} className="btn-primary btn-sm">
+            <Plus className="w-4 h-4" /> Order Lab
+          </button>
+        )}
       </div>
-      <div className="table-wrapper">
-        <table className="data-table">
-          <thead><tr><th>Test</th><th>Panel</th><th>Ordered By</th><th>Ordered At</th><th>Status</th><th>Result</th></tr></thead>
-          <tbody>
-            {labs.map(l => (
-              <tr key={l.id}>
-                <td className="font-semibold text-slate-900">{l.testName}</td>
-                <td className="text-xs text-slate-500">{l.panel || '—'}</td>
-                <td className="text-xs text-slate-500">{l.orderedBy}</td>
-                <td className="text-xs whitespace-nowrap">{formatDateTime(l.orderedAt)}</td>
-                <td><LabStatusBadge status={l.status} /></td>
-                <td>
+
+      {labs.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-14 text-center">
+          <FlaskConical className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+          <p className="text-sm text-slate-400">No lab orders yet</p>
+        </div>
+      ) : (
+        <div className="space-y-2.5">
+          {labs.map(l => (
+            <div key={l.id} className={cn('rounded-2xl border bg-white overflow-hidden transition-all', l.critical ? 'border-red-200' : 'border-slate-200')}>
+              <div className="flex items-start gap-3 px-4 py-3">
+                {/* Icon */}
+                <div className={cn('w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5',
+                  l.result ? (l.critical ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600') : 'bg-slate-100 text-slate-400')}>
+                  {l.result ? (l.critical ? <AlertCircle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />) : <FlaskConical className="w-4 h-4" />}
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-2 flex-wrap">
+                    <div>
+                      <span className="text-sm font-bold text-slate-900">{l.testName}</span>
+                      {l.panel && <span className="text-xs text-slate-400 ml-1.5">({l.panel})</span>}
+                    </div>
+                    <LabStatusBadge status={l.status} />
+                  </div>
+
+                  {/* Result display */}
                   {l.result ? (
-                    <span className={cn('text-sm font-medium', l.critical ? 'text-red-600' : 'text-slate-700')}>
-                      {l.result} {l.unit || ''} {l.critical && <span className="badge bg-red-100 text-red-700 ml-1">Critical</span>}
-                    </span>
-                  ) : <span className="text-slate-400 text-xs">Pending</span>}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {labs.length === 0 && <div className="text-center py-8 text-slate-400 text-sm">No lab orders</div>}
-      </div>
-      <Modal open={open} onClose={() => setOpen(false)} title="Order Lab Test" footer={<><button onClick={() => setOpen(false)} className="btn-secondary">Cancel</button><button onClick={submit} className="btn-primary">Order</button></>}>
+                    <div className={cn('mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5')}>
+                      <span className={cn('text-base font-black', l.critical ? 'text-red-600' : 'text-slate-900')}>
+                        {l.result} {l.unit}
+                      </span>
+                      {l.refRange && <span className="text-xs text-slate-400">Ref: {l.refRange}</span>}
+                      {l.critical && <span className="text-[10px] font-bold bg-red-100 text-red-700 px-2 py-0.5 rounded-full">CRITICAL</span>}
+                      {l.reportDataUrl && (
+                        <a href={l.reportDataUrl} target="_blank" rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-[10px] font-semibold text-teal-600 hover:text-teal-700 cursor-pointer">
+                          <Eye className="w-3 h-3" /> View Report
+                        </a>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-400 mt-1">Awaiting result</p>
+                  )}
+
+                  <div className="flex items-center justify-between mt-2 flex-wrap gap-2">
+                    <span className="text-[10px] text-slate-400">{l.orderedBy} · {formatDateTime(l.orderedAt)}</span>
+                    {!readOnly && (
+                      <button onClick={() => openResultModal(l)}
+                        className="text-xs font-semibold text-teal-600 hover:text-teal-700 bg-teal-50 hover:bg-teal-100 px-3 py-1 rounded-lg transition-colors cursor-pointer">
+                        {l.result ? 'Edit Result' : 'Enter Result'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Order modal */}
+      <Modal open={orderOpen} onClose={() => setOrderOpen(false)} title="Order Lab Test"
+        footer={<><button onClick={() => setOrderOpen(false)} className="btn-secondary">Cancel</button><button onClick={submitOrder} className="btn-primary">Order</button></>}>
         <div className="space-y-4">
           <div>
             <label className="label">Test Name *</label>
-            <input className="input" placeholder="e.g. CBC" value={form.testName} onChange={e => setForm(f => ({ ...f, testName: e.target.value }))} />
+            <input className="input" placeholder="e.g. CBC" value={orderForm.testName} onChange={e => setOrderForm(f => ({ ...f, testName: e.target.value }))} />
           </div>
           <div>
-            <label className="label">Or select common test</label>
+            <label className="label">Common Tests</label>
             <div className="flex flex-wrap gap-2 mt-2">
               {COMMON.map(t => (
-                <button key={t} onClick={() => setForm(f => ({ ...f, testName: t }))} className={cn('badge cursor-pointer', form.testName === t ? 'bg-teal-100 text-teal-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200')}>
+                <button key={t} onClick={() => setOrderForm(f => ({ ...f, testName: t }))}
+                  className={cn('text-xs px-3 py-1.5 rounded-xl border font-medium transition-colors cursor-pointer',
+                    orderForm.testName === t ? 'bg-teal-500 text-white border-teal-500' : 'bg-white border-slate-200 text-slate-600 hover:border-teal-300 hover:text-teal-700')}>
                   {t}
                 </button>
               ))}
             </div>
+          </div>
+          <div>
+            <label className="label">Panel / Category (optional)</label>
+            <input className="input" placeholder="e.g. Haematology" value={orderForm.panel} onChange={e => setOrderForm(f => ({ ...f, panel: e.target.value }))} />
+          </div>
+        </div>
+      </Modal>
+
+      {/* Result entry modal */}
+      <Modal open={resultOpen} onClose={() => setResultOpen(false)} title={`Enter Result — ${activeLab?.testName ?? ''}`}
+        footer={<><button onClick={() => setResultOpen(false)} className="btn-secondary">Cancel</button><button onClick={submitResult} className="btn-primary">Save Result</button></>}>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label">Result Value</label>
+              <input className="input" placeholder="e.g. 12.5, Normal, Positive" value={resultForm.result} onChange={e => setResultForm(f => ({ ...f, result: e.target.value }))} />
+            </div>
+            <div>
+              <label className="label">Unit</label>
+              <input className="input" placeholder="e.g. g/dL, mg/dL" value={resultForm.unit} onChange={e => setResultForm(f => ({ ...f, unit: e.target.value }))} />
+            </div>
+          </div>
+          <div>
+            <label className="label">Reference Range</label>
+            <input className="input" placeholder="e.g. 11.5–16.5 g/dL" value={resultForm.refRange} onChange={e => setResultForm(f => ({ ...f, refRange: e.target.value }))} />
+          </div>
+          <label className="flex items-center gap-3 cursor-pointer group">
+            <input type="checkbox" checked={resultForm.critical}
+              onChange={e => setResultForm(f => ({ ...f, critical: e.target.checked }))}
+              className="w-4 h-4 accent-red-500" />
+            <span className="text-sm font-medium text-slate-700">Mark as Critical / Abnormal</span>
+          </label>
+          <div>
+            <label className="label">Upload Report (optional)</label>
+            <label className={cn('flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-5 cursor-pointer transition-colors',
+              resultForm.reportDataUrl ? 'border-teal-300 bg-teal-50' : 'border-slate-200 hover:border-teal-300 bg-slate-50')}>
+              {resultForm.reportDataUrl ? (
+                <>
+                  <CheckCircle2 className="w-6 h-6 text-teal-500" />
+                  <span className="text-xs font-semibold text-teal-700">Report uploaded</span>
+                  <span className="text-[10px] text-slate-400">Click to replace</span>
+                </>
+              ) : (
+                <>
+                  <Upload className="w-6 h-6 text-slate-300" />
+                  <span className="text-xs text-slate-500">Upload PDF or image report</span>
+                </>
+              )}
+              <input type="file" accept="image/*,application/pdf" onChange={handleReportUpload} className="hidden" />
+            </label>
           </div>
         </div>
       </Modal>
@@ -959,6 +1486,32 @@ function LabsTab({ labs, patientId, doctorName, onAdd, showToast }: { labs: any[
 }
 
 // ─── Tab: Notes ───────────────────────────────────────────────────────────────
+
+function NoteComposer({ patientId }: { patientId: string }) {
+  const [text, setText] = useState('');
+  const [sent, setSent] = useState(false);
+  function add() {
+    if (!text.trim()) return;
+    emitChatMessage(patientId, `📝 ${text.trim()}`);
+    setText('');
+    setSent(true);
+    setTimeout(() => setSent(false), 2500);
+  }
+  return (
+    <div className="card p-4">
+      <h4 className="font-semibold text-slate-700 text-sm flex items-center gap-2 mb-2">
+        <ClipboardList className="w-4 h-4 text-teal-500" /> Add Nursing Note
+      </h4>
+      <textarea value={text} onChange={e => setText(e.target.value)} rows={3}
+        className="input resize-none"
+        placeholder="Patient resting comfortably, vitals stable, took oral feeds, no fresh complaints…" />
+      <div className="flex items-center justify-end gap-2 mt-2">
+        {sent && <span className="text-xs text-emerald-600 font-medium">Sent to care team ✓</span>}
+        <button onClick={add} disabled={!text.trim()} className="btn-primary btn-sm">Add Note</button>
+      </div>
+    </div>
+  );
+}
 
 function NotesTab({ notes, patientId, nursePhotos, onAddPhoto, nurseUser }: {
   notes: any[];
@@ -987,6 +1540,9 @@ function NotesTab({ notes, patientId, nursePhotos, onAddPhoto, nurseUser }: {
 
   return (
     <div className="space-y-4">
+      {/* Add a text nursing note — reaches the whole care team (persists via chat) */}
+      <NoteComposer patientId={patientId} />
+
       {/* Photo upload section */}
       <div className="card p-4">
         <div className="flex items-center justify-between mb-3">
@@ -1034,6 +1590,11 @@ function NotesTab({ notes, patientId, nursePhotos, onAddPhoto, nurseUser }: {
 // ─── Tab: Chat ────────────────────────────────────────────────────────────────
 
 function ChatTab({ messages, currentUser, input, onInputChange, onSend }: { messages: any[]; currentUser: any; input: string; onInputChange: (v: string) => void; onSend: () => void }) {
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+  // WhatsApp style: oldest at top, newest at bottom, auto-scroll to newest.
+  useEffect(() => {
+    if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+  }, [messages]);
   return (
     <div className="flex flex-col h-[500px] card overflow-hidden">
       <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-200 bg-slate-50">
@@ -1041,7 +1602,7 @@ function ChatTab({ messages, currentUser, input, onInputChange, onSend }: { mess
         <span className="font-semibold text-slate-900 text-sm">Care Team Chat</span>
         <span className="badge bg-emerald-100 text-emerald-700 ml-auto">Live</span>
       </div>
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+      <div ref={chatScrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         {messages.map(m => {
           const isMe = m.senderId === currentUser?.id;
           return (

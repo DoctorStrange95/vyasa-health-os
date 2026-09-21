@@ -1,18 +1,102 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Stethoscope, Eye, EyeOff, Loader2, ArrowLeft, CheckCircle2, ChevronRight } from 'lucide-react';
+import { Eye, EyeOff, Loader2, ArrowLeft, CheckCircle2, ChevronRight, Stethoscope, Building2, Link2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { INDIAN_MEDICAL_COUNCILS } from '@/lib/medicalCouncils';
 
 type Mode = 'choose' | 'doctor' | 'hospital';
 
-const SPECIALTIES = [
-  'General Medicine', 'Internal Medicine', 'Cardiology', 'Pulmonology',
-  'Neurology', 'Neurosurgery', 'Orthopaedics', 'General Surgery',
-  'Gastroenterology', 'Nephrology', 'Endocrinology', 'Oncology',
-  'Obstetrics & Gynaecology', 'Paediatrics', 'Neonatology',
-  'Psychiatry', 'Dermatology', 'Ophthalmology', 'ENT',
-  'Radiology', 'Pathology', 'Anaesthesiology', 'Emergency Medicine',
-  'Critical Care', 'Urology', 'Plastic Surgery', 'Vascular Surgery',
+const SPECIALTY_GROUPS: { label: string; options: string[] }[] = [
+  { label: 'Allopathy — General & Internal Medicine', options: [
+    'General Medicine', 'Internal Medicine', 'Family Medicine / General Practice',
+    'Geriatrics', 'Occupational Medicine', 'Aviation Medicine', 'Sports Medicine',
+  ]},
+  { label: 'Allopathy — Cardiology & Chest', options: [
+    'Cardiology', 'Interventional Cardiology', 'Cardiac Electrophysiology',
+    'Cardiothoracic Surgery', 'Pulmonology / Respiratory Medicine',
+    'Sleep Medicine', 'Thoracic Surgery',
+  ]},
+  { label: 'Allopathy — Neurosciences', options: [
+    'Neurology', 'Neurosurgery', 'Neuropsychiatry', 'Epileptology', 'Stroke Medicine',
+  ]},
+  { label: 'Allopathy — Gastroenterology & Liver', options: [
+    'Gastroenterology', 'Hepatology', 'Colorectal Surgery', 'Surgical Gastroenterology',
+  ]},
+  { label: 'Allopathy — Kidneys & Urology', options: [
+    'Nephrology', 'Urology', 'Andrology', 'Renal Transplant Surgery',
+  ]},
+  { label: 'Allopathy — Oncology', options: [
+    'Medical Oncology', 'Surgical Oncology', 'Radiation Oncology',
+    'Haematology & BMT', 'Gynaecological Oncology', 'Paediatric Oncology',
+  ]},
+  { label: 'Allopathy — Endocrine & Metabolism', options: [
+    'Endocrinology & Diabetes', 'Obesity & Metabolic Medicine', 'Thyroid Surgery',
+  ]},
+  { label: 'Allopathy — Musculoskeletal', options: [
+    'Orthopaedics & Traumatology', 'Arthroscopy & Sports Medicine', 'Spine Surgery',
+    'Rheumatology', 'Physical Medicine & Rehabilitation', 'Hand Surgery',
+  ]},
+  { label: 'Allopathy — Obstetrics, Gynaecology & Reproductive Medicine', options: [
+    'Obstetrics & Gynaecology', 'Maternal-Fetal Medicine', 'Reproductive Medicine & IVF',
+    'Urogynaecology', 'Laparoscopic Gynaecology',
+  ]},
+  { label: 'Allopathy — Paediatrics & Neonatology', options: [
+    'Paediatrics', 'Neonatology', 'Paediatric Surgery', 'Paediatric Neurology',
+    'Paediatric Cardiology', 'Paediatric Haematology-Oncology', 'Developmental Paediatrics',
+  ]},
+  { label: 'Allopathy — Surgery', options: [
+    'General Surgery', 'Laparoscopic & Minimally Invasive Surgery', 'Vascular Surgery',
+    'Plastic & Reconstructive Surgery', 'Burns & Wound Care', 'Transplant Surgery',
+    'Trauma Surgery', 'Bariatric Surgery',
+  ]},
+  { label: 'Allopathy — Critical Care & Emergency', options: [
+    'Critical Care Medicine', 'Emergency Medicine', 'Anaesthesiology',
+    'Pain Management', 'Palliative Care & Hospice',
+  ]},
+  { label: 'Allopathy — Skin, Eye & ENT', options: [
+    'Dermatology', 'Dermatosurgery', 'Venereology & STD',
+    'Ophthalmology', 'Vitreoretinal Surgery',
+    'ENT (Otorhinolaryngology)', 'Head & Neck Surgery',
+  ]},
+  { label: 'Allopathy — Mental Health', options: [
+    'Psychiatry', 'Addiction Medicine', 'Child & Adolescent Psychiatry', 'Liaison Psychiatry',
+  ]},
+  { label: 'Allopathy — Diagnostics & Support', options: [
+    'Radiology & Imaging', 'Interventional Radiology', 'Nuclear Medicine',
+    'Pathology & Lab Medicine', 'Transfusion Medicine', 'Microbiology',
+    'Biochemistry', 'Forensic Medicine', 'Community Medicine / Public Health',
+  ]},
+  { label: 'Allopathy — Other Specialties', options: [
+    'Immunology & Allergy', 'Infectious Diseases & HIV Medicine', 'Haematology',
+    'Transplant Medicine', 'Hyperbaric Medicine',
+  ]},
+  { label: 'AYUSH', options: [
+    'Ayurveda', 'Yoga & Naturopathy', 'Unani', 'Siddha', 'Homeopathy',
+    'Panchakarma (Ayurveda)', 'Ksharasutra (Ayurvedic Surgery)',
+  ]},
+  { label: 'Dental', options: [
+    'General Dentistry', 'Orthodontics & Dentofacial Orthopaedics',
+    'Oral & Maxillofacial Surgery', 'Paediatric Dentistry', 'Periodontology',
+    'Endodontics', 'Prosthodontics & Implantology',
+    'Oral Medicine & Radiology', 'Oral Pathology & Microbiology',
+    'Public Health Dentistry', 'Cosmetic Dentistry',
+  ]},
+  { label: 'Nursing', options: [
+    'General Nursing & Midwifery', 'Critical Care Nursing', 'Paediatric Nursing',
+    'Psychiatric & Mental Health Nursing', 'Community Health Nursing',
+    'Oncology Nursing', 'Neonatal Nursing', 'Cardiac Care Nursing',
+    'Nurse Practitioner / Advanced Practice Nursing',
+  ]},
+  { label: 'Allied Health & Paramedical', options: [
+    'Physiotherapy & Rehabilitation', 'Occupational Therapy',
+    'Speech & Language Therapy', 'Dietetics & Clinical Nutrition',
+    'Clinical Psychology', 'Medical Social Work', 'Audiology & Hearing Sciences',
+    'Optometry & Vision Science', 'Pharmacy / Clinical Pharmacology',
+    'Medical Laboratory Technology', 'Radiography & Imaging Technology',
+    'Operation Theatre Technology', 'Perfusion Technology',
+    'Cardiac Technology', 'Respiratory Therapy',
+    'Prosthetics & Orthotics', 'Health Information Management',
+  ]},
 ];
 
 const HOSPITAL_TYPES = [
@@ -30,8 +114,56 @@ const STATES = [
   'West Bengal',
 ];
 
+function SpecialtyCombobox({ value, onChange, error }: { value: string; onChange: (v: string) => void; error?: string }) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) { setOpen(false); setQuery(''); }
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const allOptions = SPECIALTY_GROUPS.flatMap(g => g.options);
+  const filtered = query.trim()
+    ? allOptions.filter(s => s.toLowerCase().includes(query.toLowerCase()))
+    : allOptions;
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <input
+        type="text"
+        autoComplete="off"
+        className={cn('input', error && 'border-red-400')}
+        value={open ? query : value}
+        placeholder={value || 'Type to search specialty…'}
+        onFocus={() => { setOpen(true); setQuery(''); }}
+        onChange={e => { setQuery(e.target.value); onChange(''); }}
+      />
+      {open && (
+        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200, background: 'white', border: '1.5px solid #e2e8f0', borderRadius: 10, boxShadow: '0 8px 28px rgba(0,0,0,0.13)', maxHeight: 240, overflowY: 'auto', marginTop: 4 }}>
+          {filtered.length === 0
+            ? <div style={{ padding: '12px 14px', fontSize: 13, color: '#94a3b8' }}>No matches</div>
+            : filtered.map(s => (
+              <div key={s}
+                onMouseDown={e => { e.preventDefault(); onChange(s); setOpen(false); setQuery(''); }}
+                style={{ padding: '9px 14px', fontSize: 13, cursor: 'pointer', color: '#1e293b', background: s === value ? '#f0fdfa' : 'white' }}
+                onMouseOver={e => (e.currentTarget.style.background = '#f0fdfa')}
+                onMouseOut={e => (e.currentTarget.style.background = s === value ? '#f0fdfa' : 'white')}
+              >{s}</div>
+            ))
+          }
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function RegisterPage() {
-  const [mode, setMode] = useState<Mode>('choose');
+  const [mode, setMode] = useState<Mode>('doctor');
   const navigate = useNavigate();
 
   return (
@@ -45,9 +177,7 @@ export default function RegisterPage() {
 
         <div className="relative">
           <Link to="/login" className="flex items-center gap-3 mb-12 group">
-            <div className="w-10 h-10 rounded-xl bg-teal-500 flex items-center justify-center">
-              <Stethoscope className="w-5 h-5 text-white" />
-            </div>
+            <img src="/logo.svg" alt="Vyasa" className="w-10 h-10 rounded-xl" />
             <span className="text-white text-2xl font-bold tracking-tight">Vyasa</span>
           </Link>
 
@@ -62,12 +192,12 @@ export default function RegisterPage() {
 
         <div className="relative space-y-4">
           {[
-            { icon: '🩺', title: 'Free for doctors', desc: 'Full Rx + patient management, zero cost' },
-            { icon: '🏥', title: 'Hospital plans from ₹999/mo', desc: 'Full HMIS, unlimited staff, pharmacy + lab' },
-            { icon: '🔗', title: 'Marketplace access', desc: 'List beds/OTs — earn on idle infrastructure' },
+            { icon: <Stethoscope className="w-4 h-4 text-teal-400" />, title: 'Free for doctors', desc: 'Full Rx + patient management, zero cost' },
+            { icon: <Building2 className="w-4 h-4 text-teal-400" />, title: 'Hospital plans from ₹999/mo', desc: 'Full HMIS, unlimited staff, pharmacy + lab' },
+            { icon: <Link2 className="w-4 h-4 text-teal-400" />, title: 'Marketplace access', desc: 'List beds/OTs — earn on idle infrastructure' },
           ].map(f => (
             <div key={f.title} className="flex items-start gap-3">
-              <div className="w-9 h-9 rounded-lg bg-teal-500/15 flex items-center justify-center text-lg flex-shrink-0">{f.icon}</div>
+              <div className="w-9 h-9 rounded-lg bg-teal-500/15 flex items-center justify-center flex-shrink-0">{f.icon}</div>
               <div>
                 <div className="text-white font-semibold text-sm">{f.title}</div>
                 <div className="text-slate-400 text-xs">{f.desc}</div>
@@ -82,10 +212,8 @@ export default function RegisterPage() {
         <div className="w-full max-w-lg py-8">
           {/* Mobile logo */}
           <div className="lg:hidden flex items-center gap-2 mb-8 justify-center">
-            <div className="w-9 h-9 rounded-xl bg-teal-500 flex items-center justify-center">
-              <Stethoscope className="w-5 h-5 text-white" />
-            </div>
-            <span className="text-navy-800 text-xl font-bold">Vyasa Health OS</span>
+            <img src="/logo.svg" alt="Vyasa" className="w-9 h-9 rounded-xl" />
+            <span className="text-navy-800 text-xl font-bold">Vyasa Integrated Healthcare</span>
           </div>
 
           {mode === 'choose' && <ChooseMode onSelect={setMode} />}
@@ -116,8 +244,8 @@ function ChooseMode({ onSelect }: { onSelect: (m: 'doctor' | 'hospital') => void
           onClick={() => onSelect('doctor')}
           className="w-full card p-5 flex items-center gap-5 hover:border-teal-400 hover:shadow-md active:scale-[.99] transition-all text-left group"
         >
-          <div className="w-14 h-14 rounded-2xl bg-teal-50 flex items-center justify-center text-3xl flex-shrink-0 group-hover:bg-teal-100 transition-colors">
-            🩺
+          <div className="w-14 h-14 rounded-2xl bg-teal-50 flex items-center justify-center flex-shrink-0 group-hover:bg-teal-100 transition-colors text-teal-600">
+            <Stethoscope className="w-7 h-7" />
           </div>
           <div className="flex-1 min-w-0">
             <div className="font-bold text-slate-900 text-base">I'm a Doctor</div>
@@ -135,8 +263,8 @@ function ChooseMode({ onSelect }: { onSelect: (m: 'doctor' | 'hospital') => void
           onClick={() => onSelect('hospital')}
           className="w-full card p-5 flex items-center gap-5 hover:border-teal-400 hover:shadow-md active:scale-[.99] transition-all text-left group"
         >
-          <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center text-3xl flex-shrink-0 group-hover:bg-blue-100 transition-colors">
-            🏥
+          <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center flex-shrink-0 group-hover:bg-blue-100 transition-colors text-blue-600">
+            <Building2 className="w-7 h-7" />
           </div>
           <div className="flex-1 min-w-0">
             <div className="font-bold text-slate-900 text-base">Register a Hospital / Clinic</div>
@@ -161,9 +289,10 @@ function DoctorForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [form, setForm] = useState({
-    name: '', email: '', phone: '', specialty: '',
-    mciNumber: '', hospital: '', city: '', state: '',
+    name: '', email: '', phone: '', specialty: '', degrees: '',
+    mciNumber: '', medicalCouncil: '', otherCouncil: '', regState: '', hospital: '', city: '', state: '',
     password: '', confirm: '',
+    consultationFee: '', onlineFee: '', videoMeetLink: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -171,25 +300,70 @@ function DoctorForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =
 
   function validate() {
     const e: Record<string, string> = {};
-    if (!form.name.trim()) e.name = 'Required';
-    if (!form.email.includes('@')) e.email = 'Enter a valid email';
-    if (form.phone.length < 10) e.phone = 'Enter a valid 10-digit number';
-    if (!form.specialty) e.specialty = 'Required';
-    if (!form.mciNumber.trim()) e.mciNumber = 'Required';
-    if (form.password.length < 8) e.password = 'At least 8 characters';
-    if (form.password !== form.confirm) e.confirm = 'Passwords do not match';
+    const nameClean = form.name.trim();
+    const emailClean = form.email.trim().toLowerCase();
+    const phoneDigits = form.phone.replace(/\D/g, '');
+
+    if (!nameClean)                                      e.name = 'Required';
+    else if (nameClean.length > 100)                     e.name = 'Name too long (max 100 chars)';
+    // RFC-compliant basic email check
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(emailClean)) e.email = 'Enter a valid email address';
+    if (phoneDigits.length < 10)                         e.phone = 'Enter a valid 10-digit number';
+    else if (phoneDigits.length > 15)                    e.phone = 'Phone number too long';
+    if (!form.specialty)                                 e.specialty = 'Required';
+    if (!form.degrees.trim())                            e.degrees = 'Required';
+    else if (form.degrees.trim().length > 200)           e.degrees = 'Too long (max 200 chars)';
+    if (!form.medicalCouncil)                            e.medicalCouncil = 'Required';
+    if (form.medicalCouncil === 'other' && !form.otherCouncil.trim()) e.otherCouncil = 'Please specify your council';
+    if (!form.mciNumber.trim())                          e.mciNumber = 'Required';
+    else if (!/^[A-Za-z0-9\-\/\s]{3,30}$/.test(form.mciNumber.trim())) e.mciNumber = 'Enter a valid registration number';
+    if (!form.regState)                                  e.regState = 'Required';
+    if (form.password.length < 8)                        e.password = 'At least 8 characters required';
+    else if (form.password.length > 128)                 e.password = 'Password too long';
+    else if (!/[A-Z]/.test(form.password) && !/[0-9]/.test(form.password))
+                                                         e.password = 'Include at least one uppercase letter or number';
+    if (form.password !== form.confirm)                  e.confirm = 'Passwords do not match';
     return e;
   }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (loading) return; // prevent duplicate submission
     const errs = validate();
     if (Object.keys(errs).length) { setErrors(errs); return; }
     setLoading(true);
-    await new Promise(r => setTimeout(r, 1200));
-    setLoading(false);
-    setDone(true);
-    setTimeout(onSuccess, 2000);
+    try {
+      const { api } = await import('@/lib/api');
+      await api.post('/auth/register', {
+        name: form.name.trim(),
+        email: form.email.trim().toLowerCase(),
+        phone: form.phone.replace(/\D/g, '').slice(0, 15),
+        specialty: form.specialty,
+        degrees: form.degrees.trim(),
+        password: form.password,
+        medicalCouncil: form.medicalCouncil === 'other' ? form.otherCouncil.trim() : form.medicalCouncil,
+        licenseNumber: form.mciNumber.trim(),
+        regState: form.regState,
+        state: form.state,
+        city: form.city?.trim(),
+        clinicName: form.hospital?.trim(),
+        role: 'clinic_admin',
+      });
+      setDone(true);
+      setTimeout(onSuccess, 2000);
+    } catch (err) {
+      // Never display raw server messages to prevent info leakage
+      const msg = err instanceof Error ? err.message : '';
+      if (msg.toLowerCase().includes('already registered') || msg.includes('409')) {
+        setErrors({ email: 'This email is already registered. Try logging in instead.' });
+      } else if (msg.toLowerCase().includes('invalid') || msg.toLowerCase().includes('required')) {
+        setErrors({ email: 'Please check your details and try again.' });
+      } else {
+        setErrors({ email: 'Registration failed. Please try again in a moment.' });
+      }
+    } finally {
+      setLoading(false);
+    }
   }
 
   if (done) return <SuccessCard title="Registration submitted!" message="Your doctor profile is under review. You'll receive a login link on your email within 24 hours." />;
@@ -200,7 +374,9 @@ function DoctorForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =
         <ArrowLeft className="w-4 h-4" /> Back
       </button>
       <div className="flex items-center gap-3 mb-6">
-        <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center text-2xl">🩺</div>
+        <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center text-teal-600">
+          <Stethoscope className="w-5 h-5" />
+        </div>
         <div>
           <h2 className="text-xl font-bold text-slate-900">Doctor Registration</h2>
           <p className="text-xs text-slate-500">Free — takes 2 minutes</p>
@@ -228,29 +404,73 @@ function DoctorForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =
         <div className="card p-4 space-y-4">
           <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Professional Details</h3>
           <Field label="Specialty *" error={errors.specialty}>
-            <select className={cn('input', errors.specialty && 'border-red-400')} value={form.specialty} onChange={e => set('specialty', e.target.value)}>
-              <option value="">Select specialty…</option>
-              {SPECIALTIES.map(s => <option key={s}>{s}</option>)}
+            <SpecialtyCombobox value={form.specialty} onChange={v => set('specialty', v)} error={errors.specialty} />
+          </Field>
+          <Field label="Degrees / Qualifications *" error={errors.degrees}>
+            <input className={cn('input', errors.degrees && 'border-red-400')} placeholder="e.g. MBBS, MD" value={form.degrees} onChange={e => set('degrees', e.target.value)} />
+          </Field>
+          <Field label="Medical Council / Registration Body *" error={errors.medicalCouncil}>
+            <select className={cn('input', errors.medicalCouncil && 'border-red-400')} value={form.medicalCouncil} onChange={e => set('medicalCouncil', e.target.value)}>
+              <option value="">Select your medical council…</option>
+              {INDIAN_MEDICAL_COUNCILS.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="MCI / State Medical Council No. *" error={errors.mciNumber}>
-              <input className={cn('input', errors.mciNumber && 'border-red-400')} placeholder="MH-12345" value={form.mciNumber} onChange={e => set('mciNumber', e.target.value)} />
+          {form.medicalCouncil === 'other' && (
+            <Field label="Specify Council Name *" error={errors.otherCouncil}>
+              <input className={cn('input', errors.otherCouncil && 'border-red-400')} placeholder="Enter your council or board name" value={form.otherCouncil} onChange={e => set('otherCouncil', e.target.value)} />
             </Field>
-            <Field label="Primary Hospital / Clinic">
-              <input className="input" placeholder="e.g. Apollo, Fortis" value={form.hospital} onChange={e => set('hospital', e.target.value)} />
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Council Registration Number *" error={errors.mciNumber}>
+              <input className={cn('input', errors.mciNumber && 'border-red-400')} placeholder="e.g. MH-12345 or 123456" value={form.mciNumber} onChange={e => set('mciNumber', e.target.value)} />
+            </Field>
+            <Field label="State of Registration (Medical Council) *" error={errors.regState}>
+              <select className={cn('input', errors.regState && 'border-red-400')} value={form.regState} onChange={e => set('regState', e.target.value)}>
+                <option value="">Which state issued it?</option>
+                {STATES.map(s => <option key={s}>{s}</option>)}
+              </select>
             </Field>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Field label="City">
               <input className="input" placeholder="Mumbai" value={form.city} onChange={e => set('city', e.target.value)} />
             </Field>
-            <Field label="State">
+            <Field label="State of Practice">
               <select className="input" value={form.state} onChange={e => set('state', e.target.value)}>
-                <option value="">Select…</option>
+                <option value="">Which state do you practice in?</option>
                 {STATES.map(s => <option key={s}>{s}</option>)}
               </select>
             </Field>
+          </div>
+          <Field label="Primary Hospital / Clinic">
+            <input className="input" placeholder="e.g. Apollo, Fortis, or your own clinic name" value={form.hospital} onChange={e => set('hospital', e.target.value)} />
+          </Field>
+        </div>
+
+        {/* Consultation Fees + Video */}
+        <div className="card p-4 space-y-4">
+          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Consultation Fees</h3>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="In-Clinic Fee (₹)">
+              <input type="number" className="input" placeholder="e.g. 500" min={0}
+                value={form.consultationFee} onChange={e => set('consultationFee', e.target.value)} />
+            </Field>
+            <Field label="Online / Video Fee (₹)">
+              <input type="number" className="input" placeholder="e.g. 300" min={0}
+                value={form.onlineFee} onChange={e => set('onlineFee', e.target.value)} />
+            </Field>
+          </div>
+          <div>
+            <label className="label flex items-center gap-2">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+              Google Meet Link <span className="text-slate-400 font-normal normal-case tracking-normal">(for video consultations)</span>
+            </label>
+            <input type="url" className="input"
+              placeholder="https://meet.google.com/abc-defg-hij  (optional — add later in Settings too)"
+              value={form.videoMeetLink} onChange={e => set('videoMeetLink', e.target.value)} />
+            <p className="text-xs text-slate-400 mt-1">
+              Create a reusable room at <a href="https://meet.google.com" target="_blank" rel="noopener noreferrer" className="text-teal-600 font-medium">meet.google.com</a> → "Create a meeting for later". You can skip this and add it later in Settings.
+            </p>
           </div>
         </div>
 
@@ -272,9 +492,20 @@ function DoctorForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =
           </div>
         </div>
 
-        <p className="text-xs text-slate-400">
-          By registering you agree to Vyasa's <span className="text-teal-600 cursor-pointer">Terms of Service</span> and <span className="text-teal-600 cursor-pointer">Privacy Policy</span>.
-        </p>
+        <label className="flex items-start gap-3 cursor-pointer group">
+          <input
+            type="checkbox"
+            required
+            className="mt-0.5 w-4 h-4 accent-teal-600 flex-shrink-0 cursor-pointer"
+          />
+          <span className="text-xs text-slate-500 leading-relaxed">
+            I have read and agree to Vyasa Integrated Healthcare Pvt. Ltd.'s{' '}
+            <a href="https://vyasaa.com/privacy" target="_blank" rel="noopener noreferrer" className="text-teal-600 hover:underline">Privacy Policy</a>
+            {' '}and{' '}
+            <a href="https://vyasaa.com/privacy" target="_blank" rel="noopener noreferrer" className="text-teal-600 hover:underline">Terms of Service</a>.
+            {' '}I understand my patient data will be stored securely and processed in accordance with Indian healthcare law.
+          </span>
+        </label>
 
         <button type="submit" disabled={loading} className="btn-primary w-full py-3">
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
@@ -331,7 +562,9 @@ function HospitalForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: ()
         <ArrowLeft className="w-4 h-4" /> Back
       </button>
       <div className="flex items-center gap-3 mb-6">
-        <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-2xl">🏥</div>
+        <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
+          <Building2 className="w-5 h-5" />
+        </div>
         <div>
           <h2 className="text-xl font-bold text-slate-900">Register your Hospital</h2>
           <p className="text-xs text-slate-500">Full HMIS workspace in minutes</p>
@@ -367,7 +600,7 @@ function HospitalForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: ()
           <Field label="Street Address">
             <input className="input" placeholder="123, MG Road" value={form.address} onChange={e => set('address', e.target.value)} />
           </Field>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Field label="City">
               <input className="input" placeholder="Mumbai" value={form.city} onChange={e => set('city', e.target.value)} />
             </Field>
@@ -417,9 +650,20 @@ function HospitalForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: ()
           </div>
         </div>
 
-        <p className="text-xs text-slate-400">
-          By registering you agree to Vyasa's <span className="text-teal-600 cursor-pointer">Terms of Service</span> and <span className="text-teal-600 cursor-pointer">Privacy Policy</span>.
-        </p>
+        <label className="flex items-start gap-3 cursor-pointer group">
+          <input
+            type="checkbox"
+            required
+            className="mt-0.5 w-4 h-4 accent-teal-600 flex-shrink-0 cursor-pointer"
+          />
+          <span className="text-xs text-slate-500 leading-relaxed">
+            I have read and agree to Vyasa Integrated Healthcare Pvt. Ltd.'s{' '}
+            <a href="https://vyasaa.com/privacy" target="_blank" rel="noopener noreferrer" className="text-teal-600 hover:underline">Privacy Policy</a>
+            {' '}and{' '}
+            <a href="https://vyasaa.com/privacy" target="_blank" rel="noopener noreferrer" className="text-teal-600 hover:underline">Terms of Service</a>.
+            {' '}I understand my patient data will be stored securely and processed in accordance with Indian healthcare law.
+          </span>
+        </label>
 
         <button type="submit" disabled={loading} className="btn-primary w-full py-3">
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}

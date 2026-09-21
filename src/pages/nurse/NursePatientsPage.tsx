@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { Activity, Stethoscope, AlertTriangle, Clock, ChevronRight, User2, HeartPulse, CheckCircle2, Circle, ChevronDown, ChevronUp } from 'lucide-react';
@@ -60,8 +60,38 @@ export default function NursePatientsPage() {
   const { user } = useAuthStore();
   const { patients, vitals, queue, nursingNotes, marEntries } = useAppStore();
   const [tab, setTab] = useState<'assigned' | 'queue'>('assigned');
+  const [posting, setPosting] = useState<string>('');
 
-  const assigned = patients.filter(p => p.assignedNurseId === user?.id);
+  // The nurse's posting (OPD / IPD / Both) decides which patients she covers.
+  useEffect(() => {
+    import('@/lib/api').then(({ isApiEnabled, api }) => {
+      if (isApiEnabled()) api.get<{ department?: string }>('/auth/me').then(me => setPosting(me.department || '')).catch(() => {});
+    });
+  }, []);
+
+  const [searchParams] = useSearchParams();
+  const cardFilter = searchParams.get('filter') || 'all'; // all | assigned | opd | critical (from Home cards)
+
+  const isIpd = (p: Patient) => p.status === 'IPD' || p.status === 'Critical';
+  const isCritical = (p: Patient) => {
+    if (p.priority === 'Critical') return true;
+    const v = (vitals[p.id] ?? [])[0];
+    if (!v) return false;
+    const sys = v.bp ? parseInt(v.bp) : NaN;
+    return (!Number.isNaN(sys) && (sys > 160 || sys < 90)) || (v.spo2 != null && v.spo2 < 94);
+  };
+  const inPosting = (p: Patient) => {
+    if (posting === 'OPD') return p.status === 'OPD';
+    if (posting === 'IPD') return isIpd(p);
+    return true; // 'Both' or unset posting → all of the clinic's patients
+  };
+  const assigned = patients.filter(p => {
+    if (!inPosting(p)) return false;
+    if (cardFilter === 'assigned') return p.assignedNurseId === user?.id;
+    if (cardFilter === 'opd') return p.status === 'OPD';
+    if (cardFilter === 'critical') return isCritical(p);
+    return true;
+  });
   const myQueue   = queue.filter(q => (q as { assignedNurse?: string }).assignedNurse === user?.name);
 
   const activeList: Patient[] = tab === 'assigned' ? assigned : myQueue.map(q => patients.find(p => p.id === q.patientId)).filter(Boolean) as Patient[];
@@ -73,7 +103,7 @@ export default function NursePatientsPage() {
         <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
           <HeartPulse className="w-6 h-6 text-pink-500" /> My Patients
         </h1>
-        <p className="text-sm text-slate-500 mt-0.5">Patients assigned to you by the doctor</p>
+        <p className="text-sm text-slate-500 mt-0.5">{posting ? `${posting} · patients in your care` : 'Patients in your care'}</p>
       </div>
 
       {/* Summary */}

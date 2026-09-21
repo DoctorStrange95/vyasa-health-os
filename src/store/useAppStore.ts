@@ -26,6 +26,8 @@ interface AppState {
   activePatientId: string | null;
   sidebarCollapsed: boolean;
   mobileSidebarOpen: boolean;
+  quickRegisterOpen: boolean;
+  quickRxModalOpen: boolean;
   toasts: Toast[];
 
   // Actions
@@ -40,6 +42,7 @@ interface AppState {
   addPrescription: (rx: Medication) => void;
   setLabOrders: (patientId: string, labs: LabOrder[]) => void;
   addLabOrder: (lab: LabOrder) => void;
+  updateLabResult: (id: string, patientId: string, patch: Partial<Pick<LabOrder, 'result' | 'unit' | 'refRange' | 'critical' | 'resultTime' | 'reportDataUrl' | 'status'>>) => void;
   setNursingNotes: (patientId: string, notes: NursingNote[]) => void;
   addNursingNote: (note: NursingNote) => void;
   setChatMessages: (patientId: string, msgs: ChatMessage[]) => void;
@@ -53,9 +56,14 @@ interface AppState {
   toggleSidebar: () => void;
   toggleMobileSidebar: () => void;
   closeMobileSidebar: () => void;
+  openQuickRegister: () => void;
+  closeQuickRegister: () => void;
+  openQuickRxModal: () => void;
+  closeQuickRxModal: () => void;
   showToast: (msg: string, type?: Toast['type']) => void;
   removeToast: (id: string) => void;
   addVisit: (v: VisitRecord) => void;
+  setPatientVisits: (patientId: string, visitList: VisitRecord[]) => void;
   updateVisit: (id: string, patch: Partial<VisitRecord>) => void;
   addAppointment: (a: AppointmentEntry) => void;
   updateAppointment: (id: string, patch: Partial<AppointmentEntry>) => void;
@@ -66,6 +74,8 @@ interface AppState {
   updateBookingSlot: (id: string, patch: Partial<BookingSlot>) => void;
   loadDemo: (doctorName?: string, doctorId?: number) => void;
   resetStore: () => void;
+  syncFromBackend: () => Promise<void>;
+  refreshAppointments: () => Promise<void>;
 }
 
 export interface Toast {
@@ -83,7 +93,7 @@ const DEMO_PATIENTS: Patient[] = [
   { id: 'P003', name: 'Vikram Singh', age: 35, gender: 'M', mrn: 'MRN-003', status: 'OPD', diagnosis: 'Fever with chills, R/O Malaria', attendingDoctor: 'Dr. Arjun Mehta', attendingDoctorId: 1, priority: 'Medium', allergies: [] },
   { id: 'P004', name: 'Meena Patel', age: 55, gender: 'F', mrn: 'MRN-004', bloodGroup: 'O+', status: 'IPD', ward: 'ICU', bed: 'ICU-02', admitDate: '2026-05-30', diagnosis: 'Septic Shock, Post-op', attendingDoctor: 'Dr. Arjun Mehta', attendingDoctorId: 1, priority: 'Critical', allergies: ['Sulfa'], insurance: 'Mediclaim' },
   { id: 'P005', name: 'Arun Joshi', age: 28, gender: 'M', mrn: 'MRN-005', status: 'OPD', diagnosis: 'Acute Gastroenteritis', attendingDoctor: 'Dr. Arjun Mehta', attendingDoctorId: 1, priority: 'Stable', allergies: [] },
-  { id: 'P006', name: 'Kavitha Rao', age: 70, gender: 'F', mrn: 'MRN-006', bloodGroup: 'AB+', status: 'Discharged', admitDate: '2026-05-25', diagnosis: 'COPD Exacerbation', attendingDoctor: 'Dr. Arjun Mehta', attendingDoctorId: 1, priority: 'Stable', allergies: [] },
+  { id: 'P006', name: 'Kavitha Rao', age: 70, gender: 'F', mrn: 'MRN-006', bloodGroup: 'AB+', status: 'OPD', admitDate: '2026-05-25', diagnosis: 'COPD Exacerbation', attendingDoctor: 'Dr. Arjun Mehta', attendingDoctorId: 1, priority: 'Stable', allergies: [] },
 ];
 
 const DEMO_VITALS: Record<string, Vitals[]> = {
@@ -193,6 +203,8 @@ const EMPTY_STATE = {
   activePatientId: null as string | null,
   sidebarCollapsed: false,
   mobileSidebarOpen: false,
+  quickRegisterOpen: false,
+  quickRxModalOpen: false,
   toasts: [] as Toast[],
 };
 
@@ -202,32 +214,96 @@ export const useAppStore = create<AppState>()(
   ...EMPTY_STATE,
 
   setPatients: (p) => set({ patients: p }),
-  upsertPatient: (p) => set(s => ({
-    patients: s.patients.find(x => x.id === p.id)
-      ? s.patients.map(x => x.id === p.id ? p : x)
-      : [...s.patients, p]
-  })),
+  upsertPatient: (p) => {
+    set(s => ({
+      patients: s.patients.find(x => x.id === p.id)
+        ? s.patients.map(x => x.id === p.id ? p : x)
+        : [...s.patients, p]
+    }));
+    import('@/lib/api').then(({ isApiEnabled, api }) => {
+      if (!isApiEnabled()) return;
+      // Retry up to 3 times with exponential backoff — handles Render cold starts
+      const attempt = (n: number) =>
+        api.post('/patients', p).catch((e) => {
+          const msg = e instanceof Error ? e.message : String(e);
+          // Don't retry on 4xx client errors (e.g. 409 Conflict / duplicate MRN)
+          const is4xx = msg.includes('40') || msg.includes('Conflict') || msg.includes('duplicate');
+          if (!is4xx && n < 3) {
+            setTimeout(() => attempt(n + 1), 1000 * Math.pow(2, n)); // 1s, 2s, 4s
+          } else {
+            const err = e instanceof Error ? e.message : String(e);
+            console.warn('Patient save error (all retries exhausted):', err);
+            get().showToast(`Patient sync failed — check connection`, 'error');
+          }
+        });
+      attempt(0);
+    });
+  },
   setAlerts: (a) => set({ alerts: a }),
   addAlert: (a) => set(s => ({ alerts: [a, ...s.alerts] })),
   acknowledgeAlert: (id) => set(s => ({
     alerts: s.alerts.map(a => a.id === id ? { ...a, acknowledged: true } : a)
   })),
   setVitals: (pid, v) => set(s => ({ vitals: { ...s.vitals, [pid]: v } })),
-  addVitals: (v) => set(s => ({
-    vitals: { ...s.vitals, [v.patientId]: [v, ...(s.vitals[v.patientId] || [])] }
-  })),
+  addVitals: (v) => {
+    set(s => ({
+      vitals: { ...s.vitals, [v.patientId]: [v, ...(s.vitals[v.patientId] || [])] }
+    }));
+    import('@/lib/api').then(({ isApiEnabled, api }) => {
+      if (isApiEnabled()) api.post('/vitals', v).catch((e: unknown) => console.warn('[vitals sync]', e instanceof Error ? e.message : e));
+    });
+    import('@/lib/socket').then(({ emitVitalsUpdate }) => emitVitalsUpdate(v)).catch(() => {});
+  },
   setPrescriptions: (pid, rx) => set(s => ({ prescriptions: { ...s.prescriptions, [pid]: rx } })),
-  addPrescription: (rx) => set(s => ({
-    prescriptions: { ...s.prescriptions, [rx.patientId ?? '']: [rx, ...(s.prescriptions[rx.patientId ?? ''] || [])] }
-  })),
+  addPrescription: (rx) => {
+    // Silently drop prescriptions with no patientId — they can never be displayed
+    if (!rx.patientId) { console.warn('[addPrescription] missing patientId, skipping'); return; }
+    set(s => ({
+      prescriptions: { ...s.prescriptions, [rx.patientId!]: [rx, ...(s.prescriptions[rx.patientId!] || [])] }
+    }));
+    import('@/lib/api').then(({ isApiEnabled, api }) => {
+      if (isApiEnabled()) {
+        api.post('/prescriptions', rx).catch((e) => {
+          console.warn('Prescription sync error:', e instanceof Error ? e.message : e);
+        });
+      }
+    });
+  },
   setLabOrders: (pid, labs) => set(s => ({ labOrders: { ...s.labOrders, [pid]: labs } })),
-  addLabOrder: (lab) => set(s => ({
-    labOrders: { ...s.labOrders, [lab.patientId]: [lab, ...(s.labOrders[lab.patientId] || [])] }
-  })),
+  addLabOrder: (lab) => {
+    set(s => ({ labOrders: { ...s.labOrders, [lab.patientId]: [lab, ...(s.labOrders[lab.patientId] || [])] } }));
+    import('@/lib/api').then(({ isApiEnabled, api }) => {
+      if (isApiEnabled()) api.post('/labs', lab).catch((e: unknown) => console.warn('[labs sync]', e));
+    });
+  },
+  updateLabResult: (id, patientId, patch) => {
+    set(s => ({
+      labOrders: {
+        ...s.labOrders,
+        [patientId]: (s.labOrders[patientId] || []).map(l => l.id === id ? { ...l, ...patch } : l),
+      },
+    }));
+    import('@/lib/api').then(({ isApiEnabled, api }) => {
+      if (isApiEnabled()) api.patch(`/labs/${id}/result`, {
+        result: patch.result,
+        unit: patch.unit,
+        refRange: patch.refRange,
+        critical: patch.critical,
+        resultTime: patch.resultTime,
+        reportDataUrl: patch.reportDataUrl,
+        status: patch.status ?? 'resulted',
+      }).catch((e: unknown) => console.warn('[labs result sync]', e));
+    });
+  },
   setNursingNotes: (pid, notes) => set(s => ({ nursingNotes: { ...s.nursingNotes, [pid]: notes } })),
-  addNursingNote: (note) => set(s => ({
-    nursingNotes: { ...s.nursingNotes, [note.patientId]: [note, ...(s.nursingNotes[note.patientId] || [])] }
-  })),
+  addNursingNote: (note) => {
+    set(s => ({
+      nursingNotes: { ...s.nursingNotes, [note.patientId]: [note, ...(s.nursingNotes[note.patientId] || [])] }
+    }));
+    import('@/lib/api').then(({ isApiEnabled, api }) => {
+      if (isApiEnabled()) api.post('/nursing-notes', note).catch((e: unknown) => console.warn('[nursing-notes sync]', e instanceof Error ? e.message : e));
+    });
+  },
   setChatMessages: (pid, msgs) => set(s => ({ chatMessages: { ...s.chatMessages, [pid]: msgs } })),
   addChatMessage: (msg) => set(s => ({
     chatMessages: { ...s.chatMessages, [msg.patientId]: [...(s.chatMessages[msg.patientId] || []), msg] }
@@ -241,6 +317,10 @@ export const useAppStore = create<AppState>()(
   toggleSidebar: () => set(s => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   toggleMobileSidebar: () => set(s => ({ mobileSidebarOpen: !s.mobileSidebarOpen })),
   closeMobileSidebar: () => set({ mobileSidebarOpen: false }),
+  openQuickRegister: () => set({ quickRegisterOpen: true, mobileSidebarOpen: false }),
+  closeQuickRegister: () => set({ quickRegisterOpen: false }),
+  openQuickRxModal: () => set({ quickRxModalOpen: true, mobileSidebarOpen: false }),
+  closeQuickRxModal: () => set({ quickRxModalOpen: false }),
 
   showToast: (message, type = 'info') => {
     const toastId = id();
@@ -249,24 +329,122 @@ export const useAppStore = create<AppState>()(
   },
   removeToast: (toastId) => set(s => ({ toasts: s.toasts.filter(t => t.id !== toastId) })),
 
-  addAppointment: (a) => set(s => ({ appointments: [...s.appointments, a] })),
-  updateAppointment: (id, patch) => set(s => ({ appointments: s.appointments.map(a => a.id === id ? { ...a, ...patch } : a) })),
-  addVisit: (v) => set(s => ({
-    visits: { ...s.visits, [v.patientId]: [v, ...(s.visits[v.patientId] ?? [])] },
-  })),
-  updateVisit: (id, patch) => set(s => ({
-    visits: Object.fromEntries(
-      Object.entries(s.visits).map(([pid, list]) => [
-        pid,
-        list.map(v => v.id === id ? { ...v, ...patch } : v),
-      ])
-    ),
-  })),
+  addAppointment: (a) => {
+    set(s => ({ appointments: [...s.appointments, a] }));
+    import('@/lib/api').then(({ isApiEnabled, api }) => {
+      if (isApiEnabled()) {
+        api.post('/appointments', a).catch((e) => {
+          const err = e instanceof Error ? e.message : String(e);
+          console.warn('Appointment save error:', err);
+          get().showToast(`Appointment sync failed: ${err}`, 'error');
+        });
+      }
+    });
+  },
+  updateAppointment: (id, patch) => {
+    set(s => ({ appointments: s.appointments.map(a => a.id === id ? { ...a, ...patch } : a) }));
+    import('@/lib/api').then(({ isApiEnabled, api }) => {
+      if (isApiEnabled()) {
+        api.patch(`/appointments/${id}`, patch).catch((e) => {
+          const err = e instanceof Error ? e.message : String(e);
+          console.warn('Appointment update error:', err);
+          get().showToast(`Appointment update failed: ${err}`, 'error');
+        });
+      }
+    });
+  },
+  refreshAppointments: async () => {
+    const { isApiEnabled, api } = await import('@/lib/api');
+    if (!isApiEnabled()) return;
+    try {
+      const { localDate } = await import('@/lib/utils');
+      const today = localDate();
+
+      const [apts, rawBookings] = await Promise.all([
+        api.get<AppointmentEntry[]>('/appointments'),
+        api.get<Array<{
+          id: number; patient_name: string; patient_age: number | null;
+          patient_phone: string | null; patient_gender: string | null;
+          preferred_date: string | null; preferred_time: string | null;
+          reason: string | null; clinic_id: string | null; clinic_name?: string | null;
+          created_at: string;
+        }>>('/booking-requests?status=pending').catch(() => [] as never[]),
+      ]);
+
+      // Today's pending bookings → shown as scheduled appointments so doctor can Confirm immediately
+      type AppStatus = AppointmentEntry['status'];
+      const confirmedNums = new Set(apts.filter(a => a.id.startsWith('BOOK-')).map(a => a.id.split('-')[1]));
+      const bookingApts: AppointmentEntry[] = rawBookings
+        .filter(b => b.preferred_date === today && !confirmedNums.has(String(b.id)))
+        .map(b => ({
+          id: `BR-${b.id}`,
+          patientId: '' as string,
+          patientName: b.patient_name,
+          patientAge: b.patient_age ?? undefined,
+          patientGender: b.patient_gender ?? 'M',
+          patientPhone: b.patient_phone ?? undefined,
+          clinicId: b.clinic_id ?? '',
+          clinicName: b.clinic_name ?? undefined,
+          date: today,
+          time: b.preferred_time ?? '09:00',
+          reason: b.reason ?? 'Booking Request',
+          status: 'scheduled' as AppStatus,
+          createdAt: b.created_at,
+          doctorName: undefined,
+        }));
+
+      set({ appointments: [...apts, ...bookingApts] });
+    } catch { /* silently ignore — stale data is acceptable */ }
+  },
+  setPatientVisits: (patientId, visitList) =>
+    set(s => ({ visits: { ...s.visits, [patientId]: visitList } })),
+
+  addVisit: (v) => {
+    set(s => ({
+      visits: { ...s.visits, [v.patientId]: [v, ...(s.visits[v.patientId] ?? [])] },
+    }));
+    import('@/lib/api').then(({ isApiEnabled, api }) => {
+      if (isApiEnabled()) {
+        api.post('/visits', v).catch((e) => {
+          const err = e instanceof Error ? e.message : String(e);
+          console.warn('Visit save error:', err);
+          get().showToast(`Visit sync failed: ${err}`, 'error');
+        });
+      }
+    });
+  },
+  updateVisit: (id, patch) => {
+    set(s => ({
+      visits: Object.fromEntries(
+        Object.entries(s.visits).map(([pid, list]) => [
+          pid,
+          list.map(v => v.id === id ? { ...v, ...patch } : v),
+        ])
+      ),
+    }));
+    // Push update to backend so other devices get the latest version
+    import('@/lib/api').then(({ isApiEnabled, api }) => {
+      if (isApiEnabled()) {
+        api.patch(`/visits/${id}`, patch).catch((e) => {
+          const err = e instanceof Error ? e.message : String(e);
+          console.warn('Visit update sync error:', err);
+        });
+      }
+    });
+  },
   setTodayAvailability: (a) => set({ todayAvailability: a }),
-  assignNurse: (patientId, nurseId, nurseName) => set(s => ({
-    patients: s.patients.map(p => p.id === patientId ? { ...p, assignedNurseId: nurseId, assignedNurseName: nurseName } : p),
-    queue: s.queue.map(q => q.patientId === patientId ? { ...q, assignedNurse: nurseName } : q),
-  })),
+  assignNurse: (patientId, nurseId, nurseName) => {
+    set(s => ({
+      patients: s.patients.map(p => p.id === patientId ? { ...p, assignedNurseId: nurseId, assignedNurseName: nurseName } : p),
+      queue: s.queue.map(q => q.patientId === patientId ? { ...q, assignedNurse: nurseName } : q),
+    }));
+    import('@/lib/api').then(({ isApiEnabled, api }) => {
+      if (isApiEnabled()) {
+        api.patch(`/patients/${patientId}`, { assignedNurseId: nurseId, assignedNurseName: nurseName })
+          .catch((e: unknown) => console.warn('[nurse assign sync]', e instanceof Error ? e.message : e));
+      }
+    });
+  },
 
   addNursingPhoto: (photo) => set(s => ({
     nursingPhotos: { ...s.nursingPhotos, [photo.patientId]: [photo, ...(s.nursingPhotos[photo.patientId] ?? [])] },
@@ -286,6 +464,15 @@ export const useAppStore = create<AppState>()(
       ...q,
       assignedDoctor: q.assignedDoctor ? doc : q.assignedDoctor,
     }));
+    // Build appointments relative to today (only OPD patients: P003, P005)
+    const d = (n: number) => { const dt = new Date(); dt.setDate(dt.getDate() + n); return dt.toISOString().slice(0, 10); };
+    const appointments: AppointmentEntry[] = [
+      { id: 'APT001', patientId: 'P003', patientName: 'Vikram Singh', patientAge: 35, date: d(0), time: '09:00', reason: 'Fever with chills, R/O Malaria', status: 'scheduled', doctorId: docId, doctorName: doc, clinicId: 'C1', clinicName: 'Roy Clinic', createdAt: now(), token: 1, consultationFee: 500, amountPaid: 500, paymentMode: 'cash' },
+      { id: 'APT002', patientId: 'P005', patientName: 'Arun Joshi', patientAge: 28, date: d(0), time: '11:00', reason: 'Acute Gastroenteritis', status: 'scheduled', doctorId: docId, doctorName: doc, clinicId: 'C1', clinicName: 'Roy Clinic', createdAt: now(), token: 2, consultationFee: 500, amountPaid: 500, paymentMode: 'upi' },
+      { id: 'APT003', patientId: 'P003', patientName: 'Vikram Singh', patientAge: 35, date: d(2), time: '10:00', reason: 'Fever follow-up', status: 'scheduled', doctorId: docId, doctorName: doc, clinicId: 'C1', clinicName: 'Roy Clinic', createdAt: now(), token: 1, consultationFee: 500, amountPaid: 500, paymentMode: 'cash' },
+      { id: 'APT004', patientId: 'P005', patientName: 'Arun Joshi', patientAge: 28, date: d(3), time: '09:30', reason: 'Gastro follow-up', status: 'scheduled', doctorId: docId, doctorName: doc, clinicId: 'C2', clinicName: 'City Nursing Home OPD', createdAt: now(), token: 1, consultationFee: 300, amountPaid: 300, paymentMode: 'cash' },
+      { id: 'APT005', patientId: 'P006', patientName: 'Kavitha Rao', patientAge: 70, date: d(5), time: '10:00', reason: 'COPD post-discharge review', status: 'scheduled', doctorId: docId, doctorName: doc, clinicId: 'C1', clinicName: 'Roy Clinic', createdAt: now(), token: 1, consultationFee: 500, amountPaid: 500, paymentMode: 'insurance' },
+    ];
     return set({
       patients,
       prescriptions,
@@ -296,6 +483,9 @@ export const useAppStore = create<AppState>()(
       queue,
       beds: DEMO_BEDS,
       staff: DEMO_STAFF,
+      appointments,
+      // Set today's clinic to Roy Clinic to match today's demo appointments (APT001, APT002)
+      todayAvailability: { date: d(0), clinicId: 'C1', clinicName: 'Roy Clinic', isOpen: true, startTime: '09:00', endTime: '13:00', maxPatients: 15 },
       alerts: [
         { id: 'A1', patientId: 'P001', patientName: 'Ramesh Kumar', type: 'BP Alert', message: 'BP 178/105 — Hypertensive Urgency', severity: 'critical', time: '2026-06-04T08:00:00', acknowledged: false },
         { id: 'A2', patientId: 'P002', patientName: 'Sunita Devi', type: 'Sugar Alert', message: 'Blood sugar 450 mg/dL — Critical', severity: 'critical', time: '2026-06-04T08:00:00', acknowledged: false },
@@ -305,6 +495,94 @@ export const useAppStore = create<AppState>()(
   },
 
   resetStore: () => set({ ...EMPTY_STATE }),
+
+  syncFromBackend: async () => {
+    const { isApiEnabled, api } = await import('@/lib/api');
+    if (!isApiEnabled()) return;
+
+    // Fetch each independently so one failure doesn't wipe everything
+    const [patientsResult, visitsResult, appointmentsResult, prescriptionsResult, labsResult, staffResult] = await Promise.allSettled([
+      api.get<Patient[]>('/patients'),
+      api.get<VisitRecord[]>('/visits/clinic'),
+      api.get<AppointmentEntry[]>('/appointments'),
+      api.get<Medication[]>('/prescriptions/clinic'),
+      api.get<LabOrder[]>('/labs/clinic'),
+      api.get<Staff[]>('/staff/active'),
+    ]);
+
+    const update: Partial<typeof EMPTY_STATE> = {};
+
+    if (patientsResult.status === 'fulfilled') {
+      const backendIds = new Set(patientsResult.value.map(p => p.id));
+      const local = get().patients;
+      // Keep any locally-created patients whose POST hasn't landed on the backend
+      // yet (cold-start race, network blip). Backend patients always win on conflict.
+      const localOnly = local.filter(p => !backendIds.has(p.id));
+      update.patients = [...patientsResult.value, ...localOnly];
+    } else {
+      console.warn('[vyasa] patients sync failed:', patientsResult.reason);
+    }
+
+    if (visitsResult.status === 'fulfilled') {
+      const visitsMap: Record<string, VisitRecord[]> = {};
+      for (const v of visitsResult.value) {
+        if (!visitsMap[v.patientId]) visitsMap[v.patientId] = [];
+        visitsMap[v.patientId].push(v);
+      }
+      // Merge: keep local visits not yet on backend (same race-condition protection)
+      const localVisits = get().visits;
+      for (const [pid, list] of Object.entries(localVisits)) {
+        const backendVisitIds = new Set((visitsMap[pid] ?? []).map(v => v.id));
+        const localOnly = list.filter(v => !backendVisitIds.has(v.id));
+        if (localOnly.length) visitsMap[pid] = [...(visitsMap[pid] ?? []), ...localOnly];
+      }
+      update.visits = visitsMap;
+    } else {
+      console.warn('[vyasa] visits sync failed:', visitsResult.reason);
+    }
+
+    if (appointmentsResult.status === 'fulfilled') {
+      const backendAptIds = new Set(appointmentsResult.value.map(a => a.id));
+      const localApts = get().appointments;
+      const localOnly = localApts.filter(a => !backendAptIds.has(a.id));
+      update.appointments = [...appointmentsResult.value, ...localOnly];
+    } else {
+      console.warn('[vyasa] appointments sync failed:', appointmentsResult.reason);
+    }
+
+    if (prescriptionsResult.status === 'fulfilled') {
+      const rxMap: Record<string, Medication[]> = {};
+      for (const rx of prescriptionsResult.value) {
+        const pid = rx.patientId ?? '';
+        if (!pid) continue;
+        if (!rxMap[pid]) rxMap[pid] = [];
+        rxMap[pid].push(rx);
+      }
+      update.prescriptions = rxMap;
+    } else {
+      console.warn('[vyasa] prescriptions sync failed:', prescriptionsResult.reason);
+    }
+
+    if (labsResult.status === 'fulfilled') {
+      const labMap: Record<string, LabOrder[]> = {};
+      for (const lab of labsResult.value) {
+        if (!lab.patientId) continue;
+        if (!labMap[lab.patientId]) labMap[lab.patientId] = [];
+        labMap[lab.patientId].push(lab);
+      }
+      update.labOrders = labMap;
+    } else {
+      console.warn('[vyasa] labs sync failed:', labsResult.reason);
+    }
+
+    if (staffResult.status === 'fulfilled') {
+      update.staff = staffResult.value.map(u => ({ ...u, id: Number(u.id), status: 'active' as const }));
+    } else {
+      console.warn('[vyasa] staff sync failed:', staffResult.reason);
+    }
+
+    if (Object.keys(update).length > 0) set(update);
+  },
     }),
     {
       name: 'vyasa-app',

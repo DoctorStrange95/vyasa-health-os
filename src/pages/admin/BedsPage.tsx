@@ -36,7 +36,7 @@ export default function BedsPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6">
         {[
           { label: 'Total', value: stats.total, color: 'bg-slate-50 text-slate-700' },
           { label: 'Available', value: stats.available, color: 'bg-emerald-50 text-emerald-700' },

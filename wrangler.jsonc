@@ -11,4 +11,7 @@
   "compatibility_flags": [
     "nodejs_compat"
   ]
+  "$schema": "https://json.schemastore.org/wrangler.json",
+  "name": "vyasa-health-os",
+  "pages_build_output_dir": "dist"
 }
