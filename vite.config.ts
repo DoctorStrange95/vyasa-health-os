@@ -4,7 +4,10 @@ import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 import { VitePWA } from 'vite-plugin-pwa'
 
+import { cloudflare } from "@cloudflare/vite-plugin";
+
 export default defineConfig({
+  plugins: [react(), tailwindcss(), cloudflare()],
   plugins: [
     react(),
     tailwindcss(),

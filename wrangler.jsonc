@@ -1,4 +1,16 @@
 {
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "vyasa-health-os",
+  "compatibility_date": "2026-06-06",
+  "observability": {
+    "enabled": true
+  },
+  "assets": {
+    "not_found_handling": "single-page-application"
+  },
+  "compatibility_flags": [
+    "nodejs_compat"
+  ]
   "$schema": "https://json.schemastore.org/wrangler.json",
   "name": "vyasa-health-os",
   "pages_build_output_dir": "dist"
