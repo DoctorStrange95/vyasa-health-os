@@ -7,8 +7,6 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "npm run build && wrangler dev",
-    "deploy": "npm run build && wrangler deploy"
     "preview": "vite preview",
     "deploy": "bash scripts/deploy.sh"
   },
@@ -21,8 +19,8 @@
     "@tanstack/react-query": "^5.101.0",
     "axios": "^1.17.0",
     "clsx": "^2.1.1",
-    "html2canvas": "^1.4.1",
-    "jspdf": "^2.5.1",
+    "html2canvas": "1.4.1",
+    "jspdf": "2.5.1",
     "lucide-react": "^1.17.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
@@ -33,7 +31,6 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "^1.40.0",
     "@eslint/js": "^10.0.1",
     "@types/node": "^24.12.3",
     "@types/react": "^19.2.14",
@@ -47,7 +44,6 @@
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2",
     "vite": "^8.0.12",
-    "wrangler": "^4.98.0"
     "vite-plugin-pwa": "^1.3.0",
     "wrangler": "^4.100.0"
   }

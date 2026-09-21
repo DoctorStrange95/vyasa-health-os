@@ -4,15 +4,12 @@ import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 import { VitePWA } from 'vite-plugin-pwa'
 
-import { cloudflare } from "@cloudflare/vite-plugin";
-
 export default defineConfig({
-  plugins: [react(), tailwindcss(), cloudflare()],
   plugins: [
     react(),
     tailwindcss(),
     VitePWA({
-      registerType: 'autoUpdate',    // immediately activate new SW so stale chunk hashes never crash iOS
+      registerType: 'autoUpdate',
       injectRegister: 'auto',
       includeAssets: ['logo.svg', 'favicon.svg', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'],
       manifest: {
@@ -53,17 +50,13 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/api\//, /^\/auth\//],
         globPatterns: ['**/*.{js,css,html,svg,woff2}'],
         cleanupOutdatedCaches: true,
-        cacheId: 'vyasa-v1.8',        // bump this to force all clients to drop old caches
+        cacheId: 'vyasa-v1.8',
         runtimeCaching: [
           {
-            // Backend API — NEVER cached. Every call goes straight to the
-            // network so the SW can never serve stale or empty medical data.
-            // (Previous NetworkFirst caching poisoned an empty doctors list.)
             urlPattern: ({ url }) => url.pathname.startsWith('/api/') || url.hostname.includes('render.com'),
             handler: 'NetworkOnly',
           },
           {
-            // Google Fonts + CDN assets
             urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com/,
             handler: 'CacheFirst',
             options: {
