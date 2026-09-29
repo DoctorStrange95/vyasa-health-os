@@ -1,6 +1,6 @@
 #!/bin/bash
-# Cloudflare Pages deploy script
-# Pages handles deployment automatically after build
-# This script is a no-op to satisfy the required "Deploy command" field
-echo "✅ Build output ready for Cloudflare Pages"
-exit 0
+# Cloudflare Pages deploy — called by the Cloudflare build pipeline
+# Uses `wrangler pages deploy` which correctly deploys a Pages project
+# (NOT `wrangler deploy` which deploys a Worker)
+echo "✅ Build output ready — deploying to Cloudflare Pages"
+npx wrangler pages deploy dist --project-name vyasa-health-os
