@@ -1,0 +1,6 @@
+# Cloudflare Pages configuration
+# This file satisfies `npx wrangler deploy` in the Cloudflare Pages build pipeline.
+# The actual deployment is handled by Cloudflare Pages automatically from the dist/ folder.
+name = "vyasa-health-os"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-06-06"
